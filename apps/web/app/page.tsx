@@ -1,7 +1,6 @@
 import Image, { type ImageProps } from "next/image";
 import { Button } from "@mont/ui/button";
 import styles from "./page.module.css";
-import { hello } from "@mont/core-game";
 
 type Props = Omit<ImageProps, "src"> & {
   srcLight: string;
@@ -37,7 +36,6 @@ export default function Home() {
             Get started by editing <code>apps/web/app/page.tsx</code>
           </li>
           <li>Save and see your changes instantly.</li>
-          <li>hello {hello()}</li>
         </ol>
 
         <div className={styles.ctas}>
