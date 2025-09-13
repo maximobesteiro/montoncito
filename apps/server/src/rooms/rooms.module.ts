@@ -4,7 +4,7 @@ import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
 import { ProfilesModule } from '../profiles/profiles.module';
 import { loadRoomDefaults, RoomDefaults } from './rooms.config';
-import { GameModule } from 'src/game/game.module';
+import { GameModule } from '../game/game.module';
 
 @Module({
   imports: [ConfigModule, ProfilesModule, GameModule], // ConfigModule is global already, but import is harmless

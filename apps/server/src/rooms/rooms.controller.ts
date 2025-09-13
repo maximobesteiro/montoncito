@@ -17,7 +17,7 @@ import {
   ListRoomsQuerySchema,
   MoveSchema,
 } from './rooms.dto';
-import { GameService } from 'src/game/game.service';
+import { GameService } from '../game/game.service';
 
 @Controller('rooms')
 export class RoomsController {

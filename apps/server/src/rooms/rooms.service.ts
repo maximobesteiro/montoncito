@@ -9,7 +9,7 @@ import {
 import { randomUUID } from 'crypto';
 import type { RoomDefaults } from './rooms.config';
 import { ProfilesService } from '../profiles/profiles.service';
-import { GameService } from 'src/game/game.service';
+import { GameService } from '../game/game.service';
 
 export type Visibility = 'public' | 'private';
 export type RoomStatus = 'open' | 'in_progress' | 'finished';
