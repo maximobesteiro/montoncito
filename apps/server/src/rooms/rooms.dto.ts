@@ -26,6 +26,28 @@ export const MoveSchema = z
   })
   .strict();
 
+export const RoomViewSchema = z.object({
+  id: z.string().min(1),
+  slug: z.string().min(1),
+  visibility: z.enum(['public', 'private']),
+  status: z.enum(['open', 'in_progress', 'finished']),
+  maxPlayers: z.number().int().min(2),
+  ownerId: z.string().min(1),
+  players: z.array(
+    z.object({
+      id: z.string().min(1),
+      displayName: z.string().min(1),
+      isOwner: z.boolean(),
+    }),
+  ),
+  createdAt: z.string().min(1),
+  gameId: z.string().min(1).optional(),
+  gameConfig: z.object({
+    discardPiles: z.number().int().min(1).max(8),
+  }),
+});
+
 export type ListRoomsQuery = z.infer<typeof ListRoomsQuerySchema>;
 export type UpdateRoomDto = z.infer<typeof UpdateRoomSchema>;
 export type MoveDto = z.infer<typeof MoveSchema>;
+export type RoomView = z.infer<typeof RoomViewSchema>;

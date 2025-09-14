@@ -9,8 +9,8 @@ import {
   Patch,
   ConflictException,
   ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { RoomsService } from './rooms.service';
 import {
   UpdateRoomSchema,
@@ -18,12 +18,17 @@ import {
   MoveSchema,
 } from './rooms.dto';
 import { GameService } from '../game/game.service';
+import { RoomsGateway } from '../ws/rooms.gateway';
+import { WsJoinClaims } from '../ws/auth';
+import jwt from 'jsonwebtoken';
 
 @Controller('rooms')
 export class RoomsController {
   public constructor(
     private readonly rooms: RoomsService,
     private readonly games: GameService,
+    private readonly ws: RoomsGateway,
+    private readonly configService: ConfigService,
   ) {}
 
   @Post()
@@ -72,7 +77,16 @@ export class RoomsController {
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
     const room = this.rooms.join({ roomId, clientId });
-    return this.rooms.toView(room);
+
+    const claims: WsJoinClaims = { roomId, playerId: clientId };
+    const wsSecret = this.configService.get<string>('WS_SECRET');
+    if (!wsSecret) throw new Error('WS_SECRET not configured');
+
+    const wsJoinToken = jwt.sign(claims, wsSecret, {
+      expiresIn: '10m',
+    });
+
+    return { ...this.rooms.toView(room), wsJoinToken };
   }
 
   @Post(':id/leave')
@@ -82,6 +96,7 @@ export class RoomsController {
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
     const result = this.rooms.leave({ roomId, clientId });
+    this.ws.disconnectPlayer(roomId, clientId);
 
     if (result.deleted) {
       return { id: result.id, deleted: true };
@@ -97,6 +112,13 @@ export class RoomsController {
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
     const room = this.rooms.start({ roomId, requesterId: clientId });
+
+    // If a game was created, broadcast initial state to room members.
+    if (room.gameId) {
+      const game = this.games.get(room.gameId);
+      this.ws.emitGameStarted(roomId, { meta: game.meta, state: game.state });
+    }
+
     return this.rooms.toView(room);
   }
 
@@ -139,10 +161,9 @@ export class RoomsController {
 
     const move = MoveSchema.parse(body ?? {});
 
-    // Optional: basic guard that a move has a type
-    if (!move.type) throw new BadRequestException('Move "type" is required');
-
     const { game, events } = this.games.applyMove(room.gameId, move);
+
+    this.ws.emitStateUpdate(roomId, { meta: game.meta, state: game.state });
 
     return {
       meta: game.meta,

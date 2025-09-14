@@ -1,9 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigModule } from '@nestjs/config';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
+import { RoomsGateway } from '../ws/rooms.gateway';
 import { GameService } from '../game/game.service';
 import { ProfilesService } from '../profiles/profiles.service';
+
+let wsGateway: {
+  emitStateUpdate: jest.Mock;
+  emitGameStarted: jest.Mock;
+  disconnectPlayer: jest.Mock;
+};
 
 describe('RoomsController', () => {
   let controller: RoomsController;
@@ -90,6 +98,14 @@ describe('RoomsController', () => {
   };
 
   beforeEach(async () => {
+    process.env.WS_SECRET = 'test-secret';
+
+    wsGateway = {
+      emitStateUpdate: jest.fn(),
+      emitGameStarted: jest.fn(),
+      disconnectPlayer: jest.fn(),
+    };
+
     mockRoomsService = {
       create: jest.fn(),
       getById: jest.fn(),
@@ -108,6 +124,7 @@ describe('RoomsController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvVars: false })],
       controllers: [RoomsController],
       providers: [
         {
@@ -121,6 +138,10 @@ describe('RoomsController', () => {
         {
           provide: ProfilesService,
           useValue: {},
+        },
+        {
+          provide: RoomsGateway,
+          useValue: wsGateway,
         },
       ],
     }).compile();
@@ -294,7 +315,10 @@ describe('RoomsController', () => {
         clientId: 'client-2',
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(joinedRoom);
-      expect(result).toEqual(joinedRoomView);
+
+      // NEW: expect a token and the same view fields
+      expect(result).toMatchObject(joinedRoomView);
+      expect(result).toHaveProperty('wsJoinToken');
     });
 
     it('should throw error when clientId is missing', () => {
@@ -362,6 +386,7 @@ describe('RoomsController', () => {
 
       roomsService.start.mockReturnValue(startedRoom);
       roomsService.toView.mockReturnValue(startedRoomView);
+      gameService.get.mockReturnValue(mockGame);
 
       const result = controller.start('room-123', 'client-1');
 
@@ -371,6 +396,10 @@ describe('RoomsController', () => {
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(startedRoom);
       expect(result).toEqual(startedRoomView);
+      expect(wsGateway.emitGameStarted).toHaveBeenCalledWith('room-123', {
+        meta: mockGame.meta,
+        state: mockGame.state,
+      });
     });
 
     it('should throw error when clientId is missing', () => {
@@ -464,6 +493,10 @@ describe('RoomsController', () => {
         'game-123',
         moveData,
       );
+      expect(wsGateway.emitStateUpdate).toHaveBeenCalledWith('room-123', {
+        meta: updatedGame.meta,
+        state: updatedGame.state,
+      });
       expect(result).toEqual({
         meta: updatedGame.meta,
         state: updatedGame.state,

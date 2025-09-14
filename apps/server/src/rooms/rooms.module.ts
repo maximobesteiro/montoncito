@@ -5,9 +5,10 @@ import { RoomsService } from './rooms.service';
 import { ProfilesModule } from '../profiles/profiles.module';
 import { loadRoomDefaults, RoomDefaults } from './rooms.config';
 import { GameModule } from '../game/game.module';
+import { WsModule } from '../ws/ws.module';
 
 @Module({
-  imports: [ConfigModule, ProfilesModule, GameModule], // ConfigModule is global already, but import is harmless
+  imports: [ConfigModule, ProfilesModule, GameModule, WsModule], // ConfigModule is global already, but import is harmless
   controllers: [RoomsController],
   providers: [
     RoomsService,

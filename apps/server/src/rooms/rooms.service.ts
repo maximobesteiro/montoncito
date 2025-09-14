@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import type { RoomDefaults } from './rooms.config';
 import { ProfilesService } from '../profiles/profiles.service';
 import { GameService } from '../game/game.service';
+import { RoomView } from './rooms.dto';
 
 export type Visibility = 'public' | 'private';
 export type RoomStatus = 'open' | 'in_progress' | 'finished';
@@ -174,7 +175,7 @@ export class RoomsService {
     };
   }
 
-  public toView(room: Room) {
+  public toView(room: Room): RoomView {
     return {
       id: room.id,
       slug: room.slug,
