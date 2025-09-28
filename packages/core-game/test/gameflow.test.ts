@@ -28,6 +28,9 @@ describe("game flow (start → draw → discard auto-ends turn)", () => {
     };
 
     // Enough cards for stock + some draws
+    // Need: 2 players * 3 stockSize = 6 cards for stock
+    // Plus: 5 handSize for initial draw
+    // Plus: some extra cards for the game to continue
     const deck: Card[] = [
       mkStd("S1", 1),
       mkStd("S2", 2), // stock to P1, P2
@@ -40,6 +43,11 @@ describe("game flow (start → draw → discard auto-ends turn)", () => {
       mkStd("H9", 9),
       mkStd("H10", 10),
       mkStd("H11", 11),
+      mkStd("H12", 12),
+      mkStd("H13", 13),
+      mkStd("C1", 1),
+      mkStd("C2", 2),
+      mkStd("C3", 3),
     ];
 
     const players = [{ id: "P1" }, { id: "P2" }];

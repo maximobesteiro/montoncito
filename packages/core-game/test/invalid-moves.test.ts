@@ -91,18 +91,24 @@ describe("invalid moves validations", () => {
 
   it("PLAY_HAND_TO_BUILD that does not match build requirement", () => {
     // B1 requires rank 1; give P1 hand cards 5 & 6 (illegal play)
+    // But also give P1 a card that CAN be played (rank 1) to prevent immediate game over
     const deck: Card[] = [
-      mkStd("S9", 9),
-      mkStd("S8", 8),
-      mkStd("H5", 5),
-      mkStd("H6", 6),
+      mkStd("S9", 9), // P1 stock
+      mkStd("S8", 8), // P2 stock
+      mkStd("H5", 5), // P1 hand
+      mkStd("H6", 6), // P1 hand
+      mkStd("H1", 1), // P1 hand - this can be played legally
+      mkStd("H2", 2), // extra card to keep deck from being empty
     ];
     let s = createInitialState(players, deck, { ...baseRules, seed: 1 });
 
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
 
-    const bad = s.byId["P1"].hand.cards[0]!;
+    // Find a card that doesn't match the build requirement (rank 5 or 6)
+    const bad = s.byId["P1"].hand.cards.find(
+      (c) => c.kind === "standard" && (c.rank === 5 || c.rank === 6)
+    )!;
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: bad.id,
@@ -130,12 +136,15 @@ describe("invalid moves validations", () => {
 
   it("PLAY_STOCK_TO_BUILD where stock top does not match requirement", () => {
     // P1 stock top = 5; B1 requires 1 initially → invalid
+    // But give P1 a hand card that CAN be played to prevent immediate game over
     const rules: Partial<RulesConfig> = { ...baseRules, stockSize: 1 };
     const deck: Card[] = [
       mkStd("S5", 5), // P1 stock
       mkStd("S9", 9), // P2 stock
-      mkStd("H7", 7), // filler
-      mkStd("H8", 8), // filler
+      mkStd("H1", 1), // P1 hand - this can be played legally
+      mkStd("H2", 2), // P1 hand
+      mkStd("H7", 7), // extra card to keep deck from being empty
+      mkStd("H8", 8), // extra card
     ];
     let s = createInitialState(players, deck, { ...rules, seed: 1 });
 
