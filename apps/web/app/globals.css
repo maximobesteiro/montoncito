@@ -1,12 +1,75 @@
+@import "tailwindcss";
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Neo-Brutalist Design Tokens */
+  --brutal-border-width: 4px;
+  --brutal-shadow-offset: 8px;
+  --brutal-primary: #3b82f6; /* Blue */
+  --brutal-secondary: #10b981; /* Green */
+  --brutal-accent: #f59e0b; /* Orange */
+  --brutal-neutral: #f3f4f6; /* Light gray */
+  --brutal-dark: #1f2937; /* Dark gray */
+  --brutal-black: #000000;
+  --brutal-white: #ffffff;
+
+  /* Typography */
+  --brutal-font-heading: var(--font-geist-sans);
+  --brutal-font-body: var(--font-geist-mono);
+
+  /* Spacing rhythm */
+  --brutal-spacing-xs: 0.5rem;
+  --brutal-spacing-sm: 1rem;
+  --brutal-spacing-md: 1.5rem;
+  --brutal-spacing-lg: 2rem;
+  --brutal-spacing-xl: 3rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+  }
+}
+
+/* Neo-Brutalist Utility Classes */
+@layer utilities {
+  .brutal-border {
+    border: var(--brutal-border-width) solid var(--brutal-black);
+  }
+
+  .brutal-shadow {
+    box-shadow: var(--brutal-shadow-offset) var(--brutal-shadow-offset) 0 0
+      var(--brutal-black);
+  }
+
+  .brutal-shadow-sm {
+    box-shadow: 4px 4px 0 0 var(--brutal-black);
+  }
+
+  .brutal-button {
+    border: var(--brutal-border-width) solid var(--brutal-black);
+    box-shadow: 4px 4px 0 0 var(--brutal-black);
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    font-weight: 700;
+    transition-property: transform;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+  }
+
+  .brutal-button:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0 0 var(--brutal-black);
+  }
+
+  .brutal-button:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 0 var(--brutal-black);
   }
 }
 
