@@ -17,7 +17,10 @@ export function ChatPanel() {
   const [input, setInput] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { roomId, currentPlayerId } = useGameStore();
+
+  // Use selectors to prevent unnecessary re-renders when other store state changes
+  const roomId = useGameStore((state) => state.roomId);
+  const currentPlayerId = useGameStore((state) => state.currentPlayerId);
   const token = null; // In real app, get from auth
   const { sendChat } = useWebSocket({
     roomId,
@@ -35,7 +38,7 @@ export function ChatPanel() {
 
   const handleSend = () => {
     if (!input.trim() || !roomId) return;
-    
+
     // In real implementation, this would come from WebSocket events
     const newMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -44,10 +47,10 @@ export function ChatPanel() {
       text: input.trim(),
       timestamp: Date.now(),
     };
-    
+
     setMessages((prev) => [...prev, newMessage]);
     setInput("");
-    
+
     if (sendChat) {
       sendChat(input.trim());
     }
@@ -107,5 +110,3 @@ export function ChatPanel() {
     </div>
   );
 }
-
-

@@ -11,17 +11,22 @@ interface UseWebSocketOptions {
   currentPlayerId: PlayerId | null;
 }
 
-export function useWebSocket({ roomId, token, currentPlayerId }: UseWebSocketOptions) {
-  const {
-    setGameState,
-    setConnectionStatus,
-    setLastSeq,
-    lastSeq,
-    pendingActions,
-    removePendingAction,
-  } = useGameStore();
+export function useWebSocket({
+  roomId,
+  token,
+  currentPlayerId,
+}: UseWebSocketOptions) {
+  // Get state values with selectors to prevent unnecessary re-renders
+  const lastSeq = useGameStore((state) => state.lastSeq);
+  const pendingActions = useGameStore((state) => state.pendingActions);
 
-  const wsClientRef = useRef<ReturnType<typeof getWebSocketClient> | null>(null);
+  // Get actions (these don't need selectors as they're stable references)
+  const { setGameState, setConnectionStatus, setLastSeq, removePendingAction } =
+    useGameStore();
+
+  const wsClientRef = useRef<ReturnType<typeof getWebSocketClient> | null>(
+    null
+  );
 
   useEffect(() => {
     if (!roomId || !token) {
@@ -87,7 +92,9 @@ export function useWebSocket({ roomId, token, currentPlayerId }: UseWebSocketOpt
 
   const sendAction = (move: Move, actionId: string) => {
     if (!roomId || !currentPlayerId || !wsClientRef.current) {
-      console.error("Cannot send action: missing roomId, playerId, or WebSocket");
+      console.error(
+        "Cannot send action: missing roomId, playerId, or WebSocket"
+      );
       return;
     }
 
@@ -109,5 +116,3 @@ export function useWebSocket({ roomId, token, currentPlayerId }: UseWebSocketOpt
     isConnected: wsClientRef.current?.isConnected ?? false,
   };
 }
-
-

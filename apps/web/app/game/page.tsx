@@ -27,13 +27,15 @@ type SelectedSource =
   | null;
 
 export default function GamePage() {
-  // Get state from store
+  // Get state from store with selectors to prevent unnecessary re-renders
+  const storeGameState = useGameStore((state) => state.gameState);
+  const storePlayerId = useGameStore((state) => state.currentPlayerId);
+  const roomId = useGameStore((state) => state.roomId);
+
+  // Get actions (these don't need selectors as they're stable references)
   const {
-    gameState: storeGameState,
     setGameState,
-    currentPlayerId: storePlayerId,
     setCurrentPlayerId,
-    roomId,
     setRoomId,
     addPendingAction,
     removePendingAction,
@@ -52,7 +54,13 @@ export default function GamePage() {
     if (!storePlayerId) {
       setCurrentPlayerId("P1");
     }
-  }, [storeGameState, storePlayerId, mockState, setGameState, setCurrentPlayerId]);
+  }, [
+    storeGameState,
+    storePlayerId,
+    mockState,
+    setGameState,
+    setCurrentPlayerId,
+  ]);
 
   // WebSocket connection (will be used when backend is ready)
   // For now, we'll use local state updates
@@ -183,8 +191,8 @@ export default function GamePage() {
               {selectedSource.type === "hand"
                 ? `Hand card ${selectedSource.cardId}`
                 : selectedSource.type === "stock"
-                ? "Stock top"
-                : `Discard pile ${selectedSource.pileIndex + 1}`}
+                  ? "Stock top"
+                  : `Discard pile ${selectedSource.pileIndex + 1}`}
             </p>
             <p className="text-sm mt-2">
               Click on a build pile to play, or click here to cancel
@@ -200,7 +208,10 @@ export default function GamePage() {
       </div>
       <div className="lg:w-80 space-y-4">
         <ActionPanel gameState={gameState} currentPlayerId={currentPlayerId} />
-        <PresenceIndicator gameState={gameState} currentPlayerId={currentPlayerId} />
+        <PresenceIndicator
+          gameState={gameState}
+          currentPlayerId={currentPlayerId}
+        />
       </div>
 
       <ChatPanel />
@@ -208,4 +219,3 @@ export default function GamePage() {
     </div>
   );
 }
-
