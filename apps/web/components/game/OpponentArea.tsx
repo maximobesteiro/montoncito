@@ -11,8 +11,10 @@ interface OpponentAreaProps {
 export function OpponentArea({ player }: OpponentAreaProps) {
   // Opponents can only see stock top and discard tops, not hand
   return (
-    <div className="p-4 brutal-border bg-gray-100 flex flex-col gap-4 brutal-shadow">
-      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-white inline-block">{player.name || player.id}</h3>
+    <div className="p-4 brutal-border bg-surface flex flex-col gap-4 brutal-shadow">
+      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-card inline-block">
+        {player.name || player.id}
+      </h3>
 
       <div className="flex flex-col gap-4">
         <div>
@@ -31,9 +33,9 @@ export function OpponentArea({ player }: OpponentAreaProps) {
             {Array.from({ length: player.hand.cards.length }).map((_, i) => (
               <div
                 key={i}
-                className="w-16 h-24 brutal-border bg-gray-800 flex items-center justify-center brutal-shadow-sm"
+                className="w-16 h-24 brutal-border bg-card-back flex items-center justify-center brutal-shadow-sm"
               >
-                <div className="text-white text-2xl font-bold">?</div>
+                <div className="text-text-on-dark text-2xl font-bold">?</div>
               </div>
             ))}
           </div>
@@ -42,4 +44,3 @@ export function OpponentArea({ player }: OpponentAreaProps) {
     </div>
   );
 }
-

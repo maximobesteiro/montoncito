@@ -11,10 +11,12 @@ export function PresenceIndicator({
   gameState,
   currentPlayerId,
 }: PresenceIndicatorProps) {
-  const players = gameState.players.map((id) => gameState.byId[id]).filter(Boolean);
+  const players = gameState.players
+    .map((id) => gameState.byId[id])
+    .filter(Boolean);
 
   return (
-    <div className="brutal-border p-3 bg-white brutal-shadow">
+    <div className="brutal-border p-3 bg-card brutal-shadow">
       <h4 className="font-bold mb-2 text-sm">Players</h4>
       <div className="space-y-1">
         {players.map((player) => {
@@ -29,7 +31,7 @@ export function PresenceIndicator({
             >
               <span
                 className={`w-2 h-2 rounded-full ${
-                  isActive ? "bg-green-500" : "bg-gray-400"
+                  isActive ? "bg-btn-success" : "bg-inactive-bg"
                 }`}
               />
               <span>
@@ -44,5 +46,3 @@ export function PresenceIndicator({
     </div>
   );
 }
-
-

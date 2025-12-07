@@ -16,7 +16,9 @@ export function BuildPiles({
 }: BuildPilesProps) {
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-3xl font-bold text-center brutal-border px-4 py-2 bg-white inline-block mx-auto">Build Piles</h2>
+      <h2 className="text-3xl font-bold text-center brutal-border px-4 py-2 bg-card inline-block mx-auto">
+        Build Piles
+      </h2>
       <div className="flex gap-4 flex-wrap justify-center">
         {buildPiles.map((pile) => {
           const topCard = pile.cards[0];
@@ -29,14 +31,14 @@ export function BuildPiles({
               className="flex flex-col items-center gap-2"
               onClick={onPileClick ? () => onPileClick(pile.id) : undefined}
             >
-              <div className="text-sm font-bold brutal-border px-2 py-1 bg-white">
+              <div className="text-sm font-bold brutal-border px-2 py-1 bg-card">
                 {pile.id} {nextRank ? `→ ${nextRank}` : "(Complete)"}
               </div>
               <div
                 className={`
                   min-w-20 min-h-28
-                  brutal-border ${isPlayable ? "border-blue-500" : ""}
-                  bg-gray-100
+                  brutal-border ${isPlayable ? "border-btn-primary" : ""}
+                  bg-surface
                   p-2
                   flex flex-col gap-1
                   brutal-shadow-sm
@@ -54,13 +56,13 @@ export function BuildPiles({
                       />
                     )}
                     {pile.cards.length > 1 && (
-                      <div className="text-xs font-bold text-gray-700 text-center">
+                      <div className="text-xs font-bold text-text-primary text-center">
                         +{pile.cards.length - 1} more
                       </div>
                     )}
                   </>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs font-bold">
+                  <div className="w-full h-full flex items-center justify-center text-text-subtle text-xs font-bold">
                     Empty
                   </div>
                 )}
@@ -72,4 +74,3 @@ export function BuildPiles({
     </div>
   );
 }
-

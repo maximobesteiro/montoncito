@@ -170,7 +170,7 @@ export default function GamePage() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-4 p-2 sm:p-4 min-h-screen bg-gray-50">
+    <div className="flex flex-col lg:flex-row gap-4 p-2 sm:p-4 min-h-screen bg-muted">
       <div className="flex-1">
         <GameBoard
           gameState={gameState}
@@ -185,7 +185,7 @@ export default function GamePage() {
           playableBuildPiles={playableBuildPiles}
         />
         {selectedSource && (
-          <div className="mt-4 p-4 brutal-border bg-yellow-100 brutal-shadow">
+          <div className="mt-4 p-4 brutal-border bg-warning-bg brutal-shadow">
             <p className="font-bold">
               Selected:{" "}
               {selectedSource.type === "hand"
@@ -199,7 +199,7 @@ export default function GamePage() {
             </p>
             <button
               onClick={() => setSelectedSource(null)}
-              className="mt-2 brutal-button bg-gray-500 text-white hover:bg-gray-600"
+              className="mt-2 brutal-button bg-btn-neutral text-text-on-dark hover:bg-btn-neutral-hover"
             >
               Cancel
             </button>

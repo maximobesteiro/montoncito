@@ -30,12 +30,12 @@ export function PlayerArea({
     <div
       className={`
         p-4 brutal-border
-        ${isCurrentPlayer ? "bg-blue-50" : "bg-gray-50"}
+        ${isCurrentPlayer ? "bg-highlight-bg" : "bg-muted"}
         flex flex-col gap-4
         brutal-shadow
       `}
     >
-      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-white inline-block">
+      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-card inline-block">
         {player.name || player.id}
         {isCurrentPlayer && " (You)"}
       </h3>
@@ -71,4 +71,3 @@ export function PlayerArea({
     </div>
   );
 }
-

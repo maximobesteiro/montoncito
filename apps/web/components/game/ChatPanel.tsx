@@ -59,19 +59,19 @@ export function ChatPanel() {
   return (
     <div className="fixed bottom-4 right-4 z-50">
       {isOpen ? (
-        <div className="brutal-border bg-white brutal-shadow w-80 h-96 flex flex-col">
-          <div className="p-3 brutal-border-b bg-gray-100 flex justify-between items-center">
+        <div className="brutal-border bg-card brutal-shadow w-80 h-96 flex flex-col">
+          <div className="p-3 brutal-border-b bg-surface flex justify-between items-center">
             <h3 className="font-bold text-lg">Chat</h3>
             <button
               onClick={() => setIsOpen(false)}
-              className="brutal-border px-2 py-1 bg-white hover:bg-gray-100 font-bold"
+              className="brutal-border px-2 py-1 bg-card hover:bg-surface font-bold"
             >
               ×
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {messages.length === 0 ? (
-              <p className="text-gray-500 text-sm">No messages yet</p>
+              <p className="text-text-muted text-sm">No messages yet</p>
             ) : (
               messages.map((msg) => (
                 <div key={msg.id} className="text-sm">
@@ -89,11 +89,11 @@ export function ChatPanel() {
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={(e) => e.key === "Enter" && handleSend()}
               placeholder="Type a message..."
-              className="flex-1 brutal-border px-2 py-1"
+              className="flex-1 brutal-border px-2 py-1 bg-card"
             />
             <button
               onClick={handleSend}
-              className="brutal-button bg-blue-500 text-white hover:bg-blue-600"
+              className="brutal-button bg-btn-primary text-text-on-dark hover:bg-btn-primary-hover"
             >
               Send
             </button>
@@ -102,7 +102,7 @@ export function ChatPanel() {
       ) : (
         <button
           onClick={() => setIsOpen(true)}
-          className="brutal-button bg-blue-500 text-white hover:bg-blue-600"
+          className="brutal-button bg-btn-primary text-text-on-dark hover:bg-btn-primary-hover"
         >
           Chat
         </button>

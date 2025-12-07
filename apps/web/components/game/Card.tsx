@@ -41,19 +41,19 @@ export function Card({
     w-16 h-24
     flex flex-col items-center justify-center
     brutal-border
-    bg-white
-    text-black
+    bg-card
+    text-foreground
     font-bold text-xl
     brutal-shadow-sm
     ${onClick ? "cursor-pointer hover:scale-105" : ""}
-    ${isPlayable ? "ring-4 ring-blue-500 ring-offset-2" : ""}
+    ${isPlayable ? "ring-4 ring-btn-primary ring-offset-2" : ""}
     transition-all
   `;
 
   if (!faceUp) {
     return (
       <div
-        className={`${baseStyles} bg-gray-800 text-white ${className}`}
+        className={`${baseStyles} bg-card-back text-text-on-dark ${className}`}
         onClick={onClick}
       >
         <div className="text-2xl">🂠</div>
@@ -73,4 +73,3 @@ export function Card({
     </div>
   );
 }
-

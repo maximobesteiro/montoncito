@@ -26,6 +26,34 @@
   --color-card: #ffffff;
   --color-muted: #f9fafb;
 
+  /* Text colors */
+  --color-text-primary: #171717;
+  --color-text-muted: #6b7280;
+  --color-text-subtle: #9ca3af;
+  --color-text-on-dark: #ffffff;
+
+  /* Interactive/State colors */
+  --color-warning-bg: #fef9c3;
+  --color-success-bg: #dcfce7;
+  --color-highlight-bg: #eff6ff;
+  --color-active-bg: #bbf7d0;
+  --color-inactive-bg: #e5e7eb;
+
+  /* Button colors */
+  --color-btn-primary: #3b82f6;
+  --color-btn-primary-hover: #2563eb;
+  --color-btn-success: #22c55e;
+  --color-btn-success-hover: #16a34a;
+  --color-btn-neutral: #6b7280;
+  --color-btn-neutral-hover: #4b5563;
+  --color-btn-disabled: #9ca3af;
+
+  /* Overlay */
+  --color-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Card back (intentionally dark) */
+  --color-card-back: #1f2937;
+
   /* Shadows - Auto-generates utilities like shadow-brutal, shadow-brutal-sm, etc. */
   --shadow-brutal: 8px 8px 0 0 var(--color-brutal-shadow);
   --shadow-brutal-sm: 4px 4px 0 0 var(--color-brutal-shadow);
@@ -44,7 +72,7 @@
 }
 
 /* Dark mode theme overrides - activated by .dark class on root element */
-@theme dark {
+.dark {
   --color-background: #0a0a0a;
   --color-foreground: #ededed;
 
@@ -56,6 +84,34 @@
   --color-surface: #1a1a1a;
   --color-card: #141414;
   --color-muted: #1f1f1f;
+
+  /* Text colors */
+  --color-text-primary: #ededed;
+  --color-text-muted: #a1a1aa;
+  --color-text-subtle: #71717a;
+  --color-text-on-dark: #ffffff;
+
+  /* Interactive/State colors */
+  --color-warning-bg: #422006;
+  --color-success-bg: #052e16;
+  --color-highlight-bg: #172554;
+  --color-active-bg: #14532d;
+  --color-inactive-bg: #27272a;
+
+  /* Button colors (slightly brighter for dark mode) */
+  --color-btn-primary: #60a5fa;
+  --color-btn-primary-hover: #3b82f6;
+  --color-btn-success: #4ade80;
+  --color-btn-success-hover: #22c55e;
+  --color-btn-neutral: #a1a1aa;
+  --color-btn-neutral-hover: #d4d4d8;
+  --color-btn-disabled: #52525b;
+
+  /* Overlay */
+  --color-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Card back */
+  --color-card-back: #374151;
 }
 
 :root {

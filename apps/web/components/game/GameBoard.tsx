@@ -38,7 +38,7 @@ export function GameBoard({
     .filter(Boolean);
 
   return (
-    <div className="flex flex-col gap-4 p-2 sm:p-4 min-h-screen bg-gray-50">
+    <div className="flex flex-col gap-4 p-2 sm:p-4 min-h-screen bg-muted">
       <TurnIndicator gameState={gameState} currentPlayerId={currentPlayerId} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 auto-rows-min">
@@ -77,4 +77,3 @@ export function GameBoard({
     </div>
   );
 }
-

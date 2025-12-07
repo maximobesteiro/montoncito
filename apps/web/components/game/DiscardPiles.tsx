@@ -21,7 +21,9 @@ export function DiscardPiles({
         const topCard = pile[pile.length - 1];
         return (
           <div key={index} className="flex flex-col items-center gap-1">
-            <div className="text-xs font-bold brutal-border px-1 py-0.5 bg-white">Discard {index + 1}</div>
+            <div className="text-xs font-bold brutal-border px-1 py-0.5 bg-card">
+              Discard {index + 1}
+            </div>
             {topCard ? (
               <Card
                 card={topCard}
@@ -30,12 +32,14 @@ export function DiscardPiles({
                 isPlayable={playablePiles.has(index)}
               />
             ) : (
-              <div className="w-16 h-24 brutal-border border-dashed bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+              <div className="w-16 h-24 brutal-border border-dashed bg-surface flex items-center justify-center text-text-subtle text-xs">
                 Empty
               </div>
             )}
             {pile.length > 1 && (
-              <div className="text-xs font-bold text-gray-600">+{pile.length - 1}</div>
+              <div className="text-xs font-bold text-text-muted">
+                +{pile.length - 1}
+              </div>
             )}
           </div>
         );
@@ -43,4 +47,3 @@ export function DiscardPiles({
     </div>
   );
 }
-

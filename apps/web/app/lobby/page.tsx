@@ -78,25 +78,25 @@ export default function LobbyPage() {
   const displayLobbies = lobbies.length > 0 ? lobbies : mockLobbies;
 
   return (
-    <div className="min-h-screen p-4 sm:p-8 bg-gray-50">
+    <div className="min-h-screen p-4 sm:p-8 bg-muted">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-5xl font-bold mb-8 brutal-border px-6 py-3 bg-white inline-block brutal-shadow">
+        <h1 className="text-5xl font-bold mb-8 brutal-border px-6 py-3 bg-card inline-block brutal-shadow">
           Montoncito Lobby
         </h1>
 
-        <div className="brutal-border p-6 mb-6 bg-white brutal-shadow">
+        <div className="brutal-border p-6 mb-6 bg-card brutal-shadow">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-3xl font-bold">Public Lobbies</h2>
             <button
               onClick={() => setShowCreateForm(!showCreateForm)}
-              className="brutal-button bg-green-500 text-white hover:bg-green-600"
+              className="brutal-button bg-btn-success text-text-on-dark hover:bg-btn-success-hover"
             >
               {showCreateForm ? "Cancel" : "Create Game"}
             </button>
           </div>
 
           {showCreateForm && (
-            <div className="mb-4 p-4 brutal-border bg-yellow-50">
+            <div className="mb-4 p-4 brutal-border bg-warning-bg">
               <h3 className="font-bold mb-2">Create New Lobby</h3>
               <div className="flex gap-2">
                 <input
@@ -104,11 +104,11 @@ export default function LobbyPage() {
                   value={newLobbyName}
                   onChange={(e) => setNewLobbyName(e.target.value)}
                   placeholder="Lobby name (optional)"
-                  className="flex-1 brutal-border px-3 py-2"
+                  className="flex-1 brutal-border px-3 py-2 bg-card"
                 />
                 <button
                   onClick={handleCreateLobby}
-                  className="brutal-button bg-blue-500 text-white hover:bg-blue-600"
+                  className="brutal-button bg-btn-primary text-text-on-dark hover:bg-btn-primary-hover"
                 >
                   Create
                 </button>
@@ -117,17 +117,19 @@ export default function LobbyPage() {
           )}
 
           {displayLobbies.length === 0 ? (
-            <p className="text-gray-600 font-semibold">No lobbies available</p>
+            <p className="text-text-muted font-semibold">
+              No lobbies available
+            </p>
           ) : (
             <div className="space-y-3">
               {displayLobbies.map((lobby) => (
                 <div
                   key={lobby.id}
-                  className="brutal-border p-4 bg-gray-50 flex justify-between items-center"
+                  className="brutal-border p-4 bg-muted flex justify-between items-center"
                 >
                   <div>
                     <h3 className="font-bold text-lg">{lobby.name}</h3>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-text-muted">
                       Host: {lobby.host} | Players: {lobby.players}/
                       {lobby.maxPlayers} | Status: {lobby.status}
                     </p>
@@ -135,7 +137,7 @@ export default function LobbyPage() {
                   <button
                     onClick={() => handleJoinLobby(lobby.id)}
                     disabled={lobby.players >= lobby.maxPlayers}
-                    className="brutal-button bg-blue-500 text-white hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="brutal-button bg-btn-primary text-text-on-dark hover:bg-btn-primary-hover disabled:bg-btn-disabled disabled:cursor-not-allowed"
                   >
                     {lobby.players >= lobby.maxPlayers ? "Full" : "Join"}
                   </button>
@@ -148,7 +150,7 @@ export default function LobbyPage() {
         <div className="mt-6">
           <Link
             href="/game"
-            className="brutal-button bg-blue-500 text-white hover:bg-blue-600 inline-block"
+            className="brutal-button bg-btn-primary text-text-on-dark hover:bg-btn-primary-hover inline-block"
           >
             Go to Game (Mock - No Backend)
           </Link>

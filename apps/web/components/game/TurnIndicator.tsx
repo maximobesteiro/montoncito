@@ -18,7 +18,7 @@ export function TurnIndicator({
     <div
       className={`
         p-4 brutal-border
-        ${isMyTurn ? "bg-green-200" : "bg-gray-200"}
+        ${isMyTurn ? "bg-active-bg" : "bg-inactive-bg"}
         text-center
         brutal-shadow
       `}
@@ -32,7 +32,8 @@ export function TurnIndicator({
         {gameState.phase === "gameover" ? (
           gameState.winner ? (
             <span>
-              Winner: {gameState.byId[gameState.winner]?.name || gameState.winner}
+              Winner:{" "}
+              {gameState.byId[gameState.winner]?.name || gameState.winner}
             </span>
           ) : (
             <span>No winner</span>
@@ -47,4 +48,3 @@ export function TurnIndicator({
     </div>
   );
 }
-

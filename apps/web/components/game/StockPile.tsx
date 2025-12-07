@@ -20,7 +20,9 @@ export function StockPile({
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <div className="text-sm font-bold brutal-border px-2 py-1 bg-white">Stock ({remainingCount})</div>
+      <div className="text-sm font-bold brutal-border px-2 py-1 bg-card">
+        Stock ({remainingCount})
+      </div>
       {topCard ? (
         <Card
           card={topCard}
@@ -29,16 +31,15 @@ export function StockPile({
           isPlayable={isPlayable}
         />
       ) : (
-        <div className="w-16 h-24 brutal-border border-dashed bg-gray-100 flex items-center justify-center text-gray-400 text-xs">
+        <div className="w-16 h-24 brutal-border border-dashed bg-surface flex items-center justify-center text-text-subtle text-xs">
           Empty
         </div>
       )}
       {remainingCount > 1 && (
-        <div className="w-16 h-24 brutal-border bg-gray-700 flex items-center justify-center text-white text-xs brutal-shadow-sm">
+        <div className="w-16 h-24 brutal-border bg-card-back flex items-center justify-center text-text-on-dark text-xs brutal-shadow-sm">
           {remainingCount - 1}
         </div>
       )}
     </div>
   );
 }
-
