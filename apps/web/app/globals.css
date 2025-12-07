@@ -1,30 +1,40 @@
 @import "tailwindcss";
 
+@theme {
+  /* Neo-Brutalist Colors - Auto-generates utilities like bg-brutal-primary, text-brutal-accent, etc. */
+  --color-brutal-primary: #3b82f6;
+  --color-brutal-secondary: #10b981;
+  --color-brutal-accent: #f59e0b;
+  --color-brutal-neutral: #f3f4f6;
+  --color-brutal-dark: #1f2937;
+  --color-brutal-black: #000000;
+  --color-brutal-white: #ffffff;
+
+  /* Shadows - Auto-generates utilities like shadow-brutal, shadow-brutal-sm, etc. */
+  --shadow-brutal: 8px 8px 0 0 #000000;
+  --shadow-brutal-sm: 4px 4px 0 0 #000000;
+  --shadow-brutal-hover: 6px 6px 0 0 #000000;
+  --shadow-brutal-active: 2px 2px 0 0 #000000;
+
+  /* Border Width - Auto-generates utilities like border-brutal */
+  --width-brutal: 4px;
+
+  /* Spacing - Auto-generates utilities like p-brutal-md, gap-brutal-lg, etc. */
+  --spacing-brutal-xs: 0.5rem;
+  --spacing-brutal-sm: 1rem;
+  --spacing-brutal-md: 1.5rem;
+  --spacing-brutal-lg: 2rem;
+  --spacing-brutal-xl: 3rem;
+}
+
 :root {
+  /* Theme colors that change with dark mode */
   --background: #ffffff;
   --foreground: #171717;
 
-  /* Neo-Brutalist Design Tokens */
-  --brutal-border-width: 4px;
-  --brutal-shadow-offset: 8px;
-  --brutal-primary: #3b82f6; /* Blue */
-  --brutal-secondary: #10b981; /* Green */
-  --brutal-accent: #f59e0b; /* Orange */
-  --brutal-neutral: #f3f4f6; /* Light gray */
-  --brutal-dark: #1f2937; /* Dark gray */
-  --brutal-black: #000000;
-  --brutal-white: #ffffff;
-
-  /* Typography */
+  /* Typography - Using CSS variables for font families */
   --brutal-font-heading: var(--font-geist-sans);
   --brutal-font-body: var(--font-geist-mono);
-
-  /* Spacing rhythm */
-  --brutal-spacing-xs: 0.5rem;
-  --brutal-spacing-sm: 1rem;
-  --brutal-spacing-md: 1.5rem;
-  --brutal-spacing-lg: 2rem;
-  --brutal-spacing-xl: 3rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -37,21 +47,20 @@
 /* Neo-Brutalist Utility Classes */
 @layer utilities {
   .brutal-border {
-    border: var(--brutal-border-width) solid var(--brutal-black);
+    border: var(--width-brutal) solid var(--color-brutal-black);
   }
 
   .brutal-shadow {
-    box-shadow: var(--brutal-shadow-offset) var(--brutal-shadow-offset) 0 0
-      var(--brutal-black);
+    box-shadow: 8px 8px 0 0 var(--color-brutal-black);
   }
 
   .brutal-shadow-sm {
-    box-shadow: 4px 4px 0 0 var(--brutal-black);
+    box-shadow: 4px 4px 0 0 var(--color-brutal-black);
   }
 
   .brutal-button {
-    border: var(--brutal-border-width) solid var(--brutal-black);
-    box-shadow: 4px 4px 0 0 var(--brutal-black);
+    border: var(--width-brutal) solid var(--color-brutal-black);
+    box-shadow: 4px 4px 0 0 var(--color-brutal-black);
     padding-left: 1.5rem;
     padding-right: 1.5rem;
     padding-top: 0.75rem;
@@ -64,12 +73,12 @@
 
   .brutal-button:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 0 var(--brutal-black);
+    box-shadow: 6px 6px 0 0 var(--color-brutal-black);
   }
 
   .brutal-button:active {
     transform: translate(2px, 2px);
-    box-shadow: 2px 2px 0 0 var(--brutal-black);
+    box-shadow: 2px 2px 0 0 var(--color-brutal-black);
   }
 }
 
