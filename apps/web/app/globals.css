@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode with .dark class on root element */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
+  /* Base theme colors - generates utilities like bg-background, text-foreground */
+  --color-background: #ffffff;
+  --color-foreground: #171717;
+
   /* Neo-Brutalist Colors - Auto-generates utilities like bg-brutal-primary, text-brutal-accent, etc. */
   --color-brutal-primary: #3b82f6;
   --color-brutal-secondary: #10b981;
@@ -10,11 +17,20 @@
   --color-brutal-black: #000000;
   --color-brutal-white: #ffffff;
 
+  /* Shadow and border color - switches in dark mode */
+  --color-brutal-shadow: #000000;
+  --color-brutal-border: #000000;
+
+  /* Surface colors for cards and containers */
+  --color-surface: #f3f4f6;
+  --color-card: #ffffff;
+  --color-muted: #f9fafb;
+
   /* Shadows - Auto-generates utilities like shadow-brutal, shadow-brutal-sm, etc. */
-  --shadow-brutal: 8px 8px 0 0 #000000;
-  --shadow-brutal-sm: 4px 4px 0 0 #000000;
-  --shadow-brutal-hover: 6px 6px 0 0 #000000;
-  --shadow-brutal-active: 2px 2px 0 0 #000000;
+  --shadow-brutal: 8px 8px 0 0 var(--color-brutal-shadow);
+  --shadow-brutal-sm: 4px 4px 0 0 var(--color-brutal-shadow);
+  --shadow-brutal-hover: 6px 6px 0 0 var(--color-brutal-shadow);
+  --shadow-brutal-active: 2px 2px 0 0 var(--color-brutal-shadow);
 
   /* Border Width - Auto-generates utilities like border-brutal */
   --width-brutal: 4px;
@@ -27,40 +43,49 @@
   --spacing-brutal-xl: 3rem;
 }
 
-:root {
-  /* Theme colors that change with dark mode */
-  --background: #ffffff;
-  --foreground: #171717;
+/* Dark mode theme overrides - activated by .dark class on root element */
+@theme dark {
+  --color-background: #0a0a0a;
+  --color-foreground: #ededed;
 
+  /* Inverted shadow and border for dark mode contrast */
+  --color-brutal-shadow: #ffffff;
+  --color-brutal-border: #ededed;
+
+  /* Dark surface colors */
+  --color-surface: #1a1a1a;
+  --color-card: #141414;
+  --color-muted: #1f1f1f;
+}
+
+:root {
   /* Typography - Using CSS variables for font families */
   --brutal-font-heading: var(--font-geist-sans);
   --brutal-font-body: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Dark mode: set color-scheme for native elements (scrollbars, form controls) */
+.dark {
+  color-scheme: dark;
 }
 
 /* Neo-Brutalist Utility Classes */
 @layer utilities {
   .brutal-border {
-    border: var(--width-brutal) solid var(--color-brutal-black);
+    border: var(--width-brutal) solid var(--color-brutal-border);
   }
 
   .brutal-shadow {
-    box-shadow: 8px 8px 0 0 var(--color-brutal-black);
+    box-shadow: 8px 8px 0 0 var(--color-brutal-shadow);
   }
 
   .brutal-shadow-sm {
-    box-shadow: 4px 4px 0 0 var(--color-brutal-black);
+    box-shadow: 4px 4px 0 0 var(--color-brutal-shadow);
   }
 
   .brutal-button {
-    border: var(--width-brutal) solid var(--color-brutal-black);
-    box-shadow: 4px 4px 0 0 var(--color-brutal-black);
+    border: var(--width-brutal) solid var(--color-brutal-border);
+    box-shadow: 4px 4px 0 0 var(--color-brutal-shadow);
     padding-left: 1.5rem;
     padding-right: 1.5rem;
     padding-top: 0.75rem;
@@ -73,12 +98,12 @@
 
   .brutal-button:hover {
     transform: translate(-2px, -2px);
-    box-shadow: 6px 6px 0 0 var(--color-brutal-black);
+    box-shadow: 6px 6px 0 0 var(--color-brutal-shadow);
   }
 
   .brutal-button:active {
     transform: translate(2px, 2px);
-    box-shadow: 2px 2px 0 0 var(--color-brutal-black);
+    box-shadow: 2px 2px 0 0 var(--color-brutal-shadow);
   }
 }
 
@@ -86,28 +111,11 @@ html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
-  color: var(--foreground);
-  background: var(--background);
+  color: var(--color-foreground);
+  background: var(--color-background);
 }
 
 a {
   color: inherit;
   text-decoration: none;
-}
-
-.imgDark {
-  display: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-
-  .imgLight {
-    display: none;
-  }
-  .imgDark {
-    display: unset;
-  }
 }
