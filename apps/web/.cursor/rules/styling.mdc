@@ -1,0 +1,14 @@
+---
+description: When engaging in UI affairs (working on markup, styles)
+alwaysApply: false
+---
+
+## 🎨 Design Philosophy
+
+- The visual style follows **Neo-Brutalism** — bold, geometric, functional, and expressive.
+  - Embrace solid color blocks, thick outlines, minimal gradients.
+  - Avoid photorealism or excessive skeuomorphism.
+  - Use deliberate spacing, flat shadows, strong hierarchy, and subtle motion.
+- The tone is **playful yet minimal**, balancing a sense of handcrafted imperfection with crisp readability.
+- The focus is on **clarity**, **speed**, and **player presence** rather than heavy animation.
+- We are using Tailwind v4. We prefer the v4 way of doing things when it comes to Tailwind.
