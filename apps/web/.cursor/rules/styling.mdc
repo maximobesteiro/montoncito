@@ -12,3 +12,11 @@ alwaysApply: false
 - The tone is **playful yet minimal**, balancing a sense of handcrafted imperfection with crisp readability.
 - The focus is on **clarity**, **speed**, and **player presence** rather than heavy animation.
 - We are using Tailwind v4. We prefer the v4 way of doing things when it comes to Tailwind.
+
+---
+
+## Working with colors
+
+- Let's try to use colors defined globals.css so that we manage light / dark variations through these variables and not by means of tailwinds' "dark:" directive.
+- If a new color needs to be introduced and looks like something we'll be using in other components, then define the color in globals.css with a proper variable including it's corresponding dark variation.
+- In specific cases (one-offs), it's fine to avoid abstraction by just using tailwind colors and "dark:" directive
