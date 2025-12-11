@@ -77,7 +77,7 @@ export function Modal({
         {showCloseIcon && (
           <button
             onClick={onCancel}
-            className="absolute top-4 right-4 brutal-border w-8 h-8 flex items-center justify-center bg-card hover:bg-surface font-bold text-lg"
+            className="absolute top-4 right-4 brutal-border w-8 h-8 flex items-center justify-center bg-card hover:bg-surface font-bold text-l cursor-pointer"
             aria-label="Close"
           >
             ×
