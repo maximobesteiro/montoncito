@@ -6,8 +6,9 @@ import { ActionPanel } from "@/components/game/ActionPanel";
 import { ChatPanel } from "@/components/game/ChatPanel";
 import { PresenceIndicator } from "@/components/game/PresenceIndicator";
 import { EndGameScreen } from "@/components/game/EndGameScreen";
+import { HowToPlayModal } from "@/components/HowToPlayModal";
 import { createMockGameState } from "@/lib/mock-game-state";
-import type { GameState, Move } from "@mont/core-game";
+import type { GameState } from "@mont/core-game";
 import {
   getPlayableHandCards,
   getPlayableDiscardPiles,
@@ -36,7 +37,6 @@ export default function GamePage() {
   const {
     setGameState,
     setCurrentPlayerId,
-    setRoomId,
     addPendingAction,
     removePendingAction,
   } = useGameStore();
@@ -72,6 +72,7 @@ export default function GamePage() {
   });
 
   const [selectedSource, setSelectedSource] = useState<SelectedSource>(null);
+  const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
 
   const playableHandCards = getPlayableHandCards(gameState, currentPlayerId);
   const playableDiscardPiles = getPlayableDiscardPiles(
@@ -146,29 +147,6 @@ export default function GamePage() {
     }
   };
 
-  const handleDiscardCard = (cardId: string, pileIndex: number) => {
-    if (!isMyTurn) return;
-    const move = createMove(gameState, currentPlayerId, {
-      type: "discard",
-      cardId,
-      pileIndex,
-    });
-    if (move && isValidMove(gameState, move)) {
-      // Optimistic update
-      const result = applyMove(gameState, move);
-      setGameState(result.state);
-      setSelectedSource(null);
-
-      // Send to server via WebSocket (if connected)
-      if (roomId && sendAction) {
-        const actionId = `action-${Date.now()}-${Math.random()}`;
-        addPendingAction(move);
-        sendAction(move, actionId);
-        setTimeout(() => removePendingAction(move), 1000);
-      }
-    }
-  };
-
   return (
     <div className="flex flex-col lg:flex-row gap-4 p-2 sm:p-4 min-h-screen bg-muted">
       <div className="flex-1">
@@ -207,6 +185,12 @@ export default function GamePage() {
         )}
       </div>
       <div className="lg:w-80 space-y-4">
+        <button
+          onClick={() => setIsHowToPlayOpen(true)}
+          className="brutal-button bg-btn-neutral text-text-on-dark hover:bg-btn-neutral-hover w-full"
+        >
+          How to play
+        </button>
         <ActionPanel gameState={gameState} currentPlayerId={currentPlayerId} />
         <PresenceIndicator
           gameState={gameState}
@@ -216,6 +200,11 @@ export default function GamePage() {
 
       <ChatPanel />
       <EndGameScreen gameState={gameState} currentPlayerId={currentPlayerId} />
+
+      <HowToPlayModal
+        isOpen={isHowToPlayOpen}
+        onClose={() => setIsHowToPlayOpen(false)}
+      />
     </div>
   );
 }

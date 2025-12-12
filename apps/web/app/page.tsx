@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { MenuButton } from "../components/MenuButton";
 import { Modal } from "../components/Modal";
+import { HowToPlayModal } from "../components/HowToPlayModal";
 
 export default function Home() {
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
+  const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
   const [gameId, setGameId] = useState("");
 
   const handleJoinGame = () => {
@@ -39,9 +41,14 @@ export default function Home() {
         <MenuButton
           title="How to Play"
           subtitle="Learn the rules and mechanics"
-          onClick={() => {}}
+          onClick={() => setIsHowToPlayOpen(true)}
         />
       </main>
+
+      <HowToPlayModal
+        isOpen={isHowToPlayOpen}
+        onClose={() => setIsHowToPlayOpen(false)}
+      />
 
       <Modal
         isOpen={isJoinModalOpen}
