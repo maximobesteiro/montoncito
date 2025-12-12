@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { ThemeProvider } from "../components/ThemeProvider";
+import { Header } from "../components/header/Header";
+import { Footer } from "../components/footer/Footer";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -20,14 +23,21 @@ export const metadata: Metadata = {
 // This runs before React hydrates to prevent flash of wrong theme
 const themeScript = `
   (function() {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    if (prefersDark) {
+    const stored = localStorage.getItem('theme-preference');
+    let shouldBeDark = false;
+    
+    if (stored === 'dark') {
+      shouldBeDark = true;
+    } else if (stored === 'light') {
+      shouldBeDark = false;
+    } else {
+      // system or no preference
+      shouldBeDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    
+    if (shouldBeDark) {
       document.documentElement.classList.add('dark');
     }
-    // Listen for system preference changes
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-      document.documentElement.classList.toggle('dark', e.matches);
-    });
   })();
 `;
 
@@ -42,7 +52,13 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        {children}
+        <ThemeProvider>
+          <div className="min-h-screen flex flex-col">
+            <Header />
+            <main className="flex-1 flex flex-col">{children}</main>
+            <Footer />
+          </div>
+        </ThemeProvider>
       </body>
     </html>
   );

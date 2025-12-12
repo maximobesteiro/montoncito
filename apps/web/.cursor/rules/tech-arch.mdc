@@ -1,0 +1,11 @@
+---
+alwaysApply: true
+---
+
+## 🔌 Technical Architecture (Frontend)
+
+- Built with **Next.js (React)**, TypeScript, and TailwindCSS v4.
+- **Server Components** for static/lobby pages; **Client Components** for live game view.
+- **Zustand** to manage transient UI state.
+- WebSocket client encapsulated as a singleton service (hook-based API).
+- Shared **core-game** logic imported from local package for deterministic replay and validation.
