@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -25,6 +25,8 @@ export function Modal({
   cancelText = "Cancel",
   showCloseIcon = true,
 }: ModalProps) {
+  const modalContentRef = useRef<HTMLDivElement>(null);
+
   // Handle Escape key press
   useEffect(() => {
     if (!isOpen || !dismissible) return;
@@ -51,6 +53,19 @@ export function Modal({
     };
   }, [isOpen]);
 
+  // Auto-focus first form field when modal opens
+  useEffect(() => {
+    if (isOpen && modalContentRef.current) {
+      // Small delay to ensure modal is fully rendered
+      setTimeout(() => {
+        const firstInput = modalContentRef.current?.querySelector(
+          'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])'
+        ) as HTMLElement | null;
+        firstInput?.focus();
+      }, 100);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleBackdropClick = () => {
@@ -70,6 +85,7 @@ export function Modal({
       onClick={handleBackdropClick}
     >
       <div
+        ref={modalContentRef}
         className="brutal-border bg-card brutal-shadow p-6 max-w-lg w-full mx-4 relative"
         onClick={handleModalClick}
       >
