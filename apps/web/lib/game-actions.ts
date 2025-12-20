@@ -21,6 +21,7 @@ function matchesRequired(
 ): boolean {
   if (required === null) return false; // pile just completed
   if (isWild(card, rules)) return true;
+  if (card.kind !== "standard") return false;
   return card.rank === required;
 }
 

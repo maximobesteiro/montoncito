@@ -201,7 +201,8 @@ export class RoomsService {
       throw new ConflictException('Room is not open for joining');
     }
     if (this.hasPlayer(room, params.clientId)) {
-      throw new ConflictException('Player already in room');
+      // Idempotent join: allow re-join to refresh wsJoinToken / support deep links.
+      return room;
     }
     if (room.players.length >= room.maxPlayers) {
       throw new ConflictException('Room is full');

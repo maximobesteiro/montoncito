@@ -35,7 +35,16 @@ export class RoomsController {
   public create(@Headers('x-client-id') clientId: string | undefined) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
     const room = this.rooms.create({ clientId });
-    return this.rooms.toView(room);
+
+    const claims: WsJoinClaims = { roomId: room.id, playerId: clientId };
+    const wsSecret = this.configService.get<string>('WS_SECRET');
+    if (!wsSecret) throw new Error('WS_SECRET not configured');
+
+    const wsJoinToken = jwt.sign(claims, wsSecret, {
+      expiresIn: '10m',
+    });
+
+    return { ...this.rooms.toView(room), wsJoinToken };
   }
 
   @Get()
