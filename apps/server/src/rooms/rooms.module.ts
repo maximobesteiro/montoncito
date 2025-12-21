@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
@@ -8,7 +8,12 @@ import { GameModule } from '../game/game.module';
 import { WsModule } from '../ws/ws.module';
 
 @Module({
-  imports: [ConfigModule, ProfilesModule, GameModule, WsModule], // ConfigModule is global already, but import is harmless
+  imports: [
+    ConfigModule,
+    ProfilesModule,
+    GameModule,
+    forwardRef(() => WsModule),
+  ], // ConfigModule is global already, but import is harmless
   controllers: [RoomsController],
   providers: [
     RoomsService,

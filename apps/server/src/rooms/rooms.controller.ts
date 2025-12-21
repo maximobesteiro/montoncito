@@ -54,8 +54,13 @@ export class RoomsController {
   }
 
   @Get('by-slug/:slug')
-  public getBySlug(@Param('slug') slug: string) {
-    const room = this.rooms.getBySlug(slug);
+  public getBySlug(
+    @Param('slug') slug: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    const cid = clientId;
+    if (!cid) throw new Error('Missing X-Client-Id header');
+    const room = this.rooms.getOrCreateBySlug({ slug, clientId: cid });
     return this.rooms.toView(room);
   }
 
@@ -77,10 +82,10 @@ export class RoomsController {
       },
     });
     const roomView = this.rooms.toView(room);
-    
+
     // Broadcast room update to all connected clients in this room
     this.ws.emitRoomUpdated(roomId, roomView);
-    
+
     return roomView;
   }
 
@@ -90,6 +95,11 @@ export class RoomsController {
     @Headers('x-client-id') clientId: string | undefined,
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
+    // Avoid broadcasting if this is an idempotent re-join.
+    const alreadyMember = this.rooms
+      .getById(roomId)
+      .players.some((p) => p.id === clientId);
+
     const room = this.rooms.join({ roomId, clientId });
 
     const claims: WsJoinClaims = { roomId, playerId: clientId };
@@ -100,7 +110,14 @@ export class RoomsController {
       expiresIn: '10m',
     });
 
-    return { ...this.rooms.toView(room), wsJoinToken };
+    const roomView = this.rooms.toView(room);
+
+    // Broadcast updated room to all connected clients (for real-time player list updates)
+    // Note: The joining player won't receive this yet as they haven't connected to WS,
+    // but they already have the updated room from this REST response
+    if (!alreadyMember) this.ws.emitRoomUpdated(roomId, roomView);
+
+    return { ...roomView, wsJoinToken };
   }
 
   @Post(':id/leave')
@@ -110,6 +127,14 @@ export class RoomsController {
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
     const result = this.rooms.leave({ roomId, clientId });
+
+    // Broadcast room update before disconnecting WebSocket
+    if (!result.deleted && result.room) {
+      const roomView = this.rooms.toView(result.room);
+      this.ws.emitRoomUpdated(roomId, roomView);
+    }
+
+    // Disconnect player's WebSocket connections
     this.ws.disconnectPlayer(roomId, clientId);
 
     if (result.deleted) {

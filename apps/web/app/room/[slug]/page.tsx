@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient } from "@/lib/socket-client";
+import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
 import { useGameStore } from "@/stores/game-store";
 import type { GameState } from "@mont/core-game";
 
@@ -24,6 +25,7 @@ export default function WaitingRoomPage() {
   const router = useRouter();
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
+  const sanitizedSlug = useMemo(() => slug.slice(0, 15).toLowerCase(), [slug]);
 
   const { setRoomId, setCurrentPlayerId, setGameState } = useGameStore();
 
@@ -44,11 +46,18 @@ export default function WaitingRoomPage() {
   const isHost = Boolean(room && clientId && room.ownerId === clientId);
   const canStart = Boolean(room && isHost && room.players.length >= 2);
 
-  const roomTitle = `Room #${slug.slice(-4)}`;
+  const roomTitle = `Room #${(room?.slug ?? sanitizedSlug).slice(-4)}`;
+
+  // Canonicalize overlong slugs: truncate to accepted length.
+  useEffect(() => {
+    if (slug !== sanitizedSlug) {
+      router.replace(`/room/${sanitizedSlug}`);
+    }
+  }, [router, sanitizedSlug, slug]);
 
   const refetchRoom = useCallback(async () => {
     if (!clientId) return;
-    const view = await apiFetch<RoomView>(`/rooms/by-slug/${slug}`, {
+    const view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
       method: "GET",
       clientId,
     });
@@ -56,7 +65,7 @@ export default function WaitingRoomPage() {
     setRoomId(view.id);
     setCurrentPlayerId(clientId);
     return view;
-  }, [clientId, setCurrentPlayerId, setRoomId, slug]);
+  }, [clientId, sanitizedSlug, setCurrentPlayerId, setRoomId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +77,7 @@ export default function WaitingRoomPage() {
 
       try {
         // 1) Resolve room by slug (for deep-link support)
-        const view = await apiFetch<RoomView>(`/rooms/by-slug/${slug}`, {
+        let view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
           method: "GET",
           clientId,
         });
@@ -78,22 +87,45 @@ export default function WaitingRoomPage() {
         setRoomId(view.id);
         setCurrentPlayerId(clientId);
 
+        // 1b) If we're the host, re-apply locally saved settings (best-effort).
+        // This mitigates room recreation/reset after everyone leaves.
+        const saved = getRoomSettings(sanitizedSlug);
+        if (saved && view.ownerId === clientId && view.status === "open") {
+          try {
+            view = await apiFetch<RoomView>(`/rooms/${view.id}`, {
+              method: "PATCH",
+              clientId,
+              body: JSON.stringify({
+                visibility: saved.visibility,
+                maxPlayers: saved.maxPlayers,
+                gameConfig: { discardPiles: saved.discardPiles },
+              }),
+            });
+            if (cancelled) return;
+            setRoom(view);
+          } catch {
+            // no-op; keep server defaults if patch fails
+          }
+        }
+
         // 2) Ensure membership + get ws token (idempotent join)
-        const joinRes = await apiFetch<{ wsJoinToken: string }>(
+        // Note: response includes updated room view (including *you* in players list).
+        const joinRes = await apiFetch<RoomView & { wsJoinToken: string }>(
           `/rooms/${view.id}/join`,
           { method: "POST", clientId }
         );
         if (cancelled) return;
 
+        // Update local room immediately so the joining player sees themselves
+        const { wsJoinToken, ...joinedRoom } = joinRes;
+        setRoom(joinedRoom);
+
         // 3) Connect to Socket.IO to receive presence + GAME_STARTED
         const sock = getSocketClient();
-        sock.connect(joinRes.wsJoinToken);
+        sock.connect(wsJoinToken);
         unsub = sock.on((ev) => {
-          if (ev.type === "PLAYER_JOINED" || ev.type === "PLAYER_LEFT") {
-            void refetchRoom().catch(() => {});
-          }
           if (ev.type === "ROOM_UPDATED") {
-            // Update room settings in real-time
+            // Update room state (including player list) in real-time
             setRoom(ev.room as RoomView);
           }
           if (ev.type === "GAME_STARTED") {
@@ -105,6 +137,8 @@ export default function WaitingRoomPage() {
             // Keep store up to date if you ever render game state here
             setGameState(ev.state as GameState);
           }
+          // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
+          // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
         });
       } catch (e) {
         if (cancelled) return;
@@ -118,7 +152,8 @@ export default function WaitingRoomPage() {
     return () => {
       cancelled = true;
       unsub?.();
-      // Do not disconnect globally; keep connection reusable.
+      // Disconnect so server can treat this as leaving (refresh/navigation/tab close).
+      getSocketClient().disconnect();
     };
   }, [
     clientId,
@@ -127,7 +162,7 @@ export default function WaitingRoomPage() {
     setCurrentPlayerId,
     setGameState,
     setRoomId,
-    slug,
+    sanitizedSlug,
   ]);
 
   useEffect(() => {
@@ -152,6 +187,16 @@ export default function WaitingRoomPage() {
         body: JSON.stringify(patch),
       });
       setRoom(updated);
+
+      const canPersist =
+        updated.status === "open" && updated.ownerId === clientId;
+      if (canPersist) {
+        saveRoomSettings(sanitizedSlug, {
+          visibility: updated.visibility,
+          maxPlayers: updated.maxPlayers,
+          discardPiles: updated.gameConfig.discardPiles,
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
     } finally {
@@ -193,7 +238,8 @@ export default function WaitingRoomPage() {
             <div>
               <h1 className="text-4xl font-bold">{roomTitle}</h1>
               <p className="text-text-muted font-semibold">
-                Invite code: <span className="font-mono">{slug}</span>
+                Invite code:{" "}
+                <span className="font-mono">{room?.slug ?? sanitizedSlug}</span>
               </p>
             </div>
             <button

@@ -51,6 +51,17 @@ export class RoomsService {
     private readonly games: GameService,
   ) {}
 
+  private sanitizeSlug(rawSlug: string): string {
+    // Accept user-provided slugs, but constrain them:
+    // - lowercase
+    // - only [a-z0-9-]
+    // - max length 15 (truncate)
+    return rawSlug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 15);
+  }
+
   public create(params: { clientId: string }): Room {
     const id = randomUUID();
     const slug = this.generateUniqueSlug(this.defaults.slugLength);
@@ -73,6 +84,40 @@ export class RoomsService {
 
     this.roomsById.set(id, room);
     this.roomIdBySlug.set(slug, id);
+    return room;
+  }
+
+  public getOrCreateBySlug(params: { slug: string; clientId: string }): Room {
+    const sanitized = this.sanitizeSlug(params.slug);
+    if (!sanitized) {
+      throw new BadRequestException('Invalid room slug');
+    }
+
+    const existingId = this.roomIdBySlug.get(sanitized);
+    if (existingId) {
+      return this.getById(existingId);
+    }
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    // Ensure the profile exists (auto-provision temporary displayName if new)
+    this.profiles.getOrCreate(params.clientId);
+
+    const room: Room = {
+      id,
+      slug: sanitized,
+      visibility: this.defaults.defaultVisibility,
+      status: 'open',
+      maxPlayers: this.defaults.defaultMaxPlayers,
+      ownerId: params.clientId,
+      players: [{ id: params.clientId, isOwner: true }],
+      createdAt: now,
+      gameConfig: { discardPiles: 1 },
+    };
+
+    this.roomsById.set(id, room);
+    this.roomIdBySlug.set(sanitized, id);
     return room;
   }
 
