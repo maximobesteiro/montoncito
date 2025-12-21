@@ -45,6 +45,7 @@ export default function WaitingRoomPage() {
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [kickingPlayerId, setKickingPlayerId] = useState<string | null>(null);
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
 
   const { showToast } = useToast();
   const isHost = Boolean(room && clientId && room.ownerId === clientId);
@@ -258,11 +259,46 @@ export default function WaitingRoomPage() {
     }
   };
 
+  const leaveRoom = async () => {
+    if (!clientId || !room) return;
+    try {
+      await apiFetch(`/rooms/${room.id}/leave`, {
+        method: "POST",
+        clientId,
+      });
+      router.push("/");
+    } catch (e) {
+      showToast(
+        e instanceof Error ? e.message : "Failed to leave room",
+        "error"
+      );
+    } finally {
+      setIsLeaveModalOpen(false);
+    }
+  };
+
+  const handleExitClick = () => {
+    if (room && room.players.length > 1) {
+      // Other players are waiting - show confirmation
+      setIsLeaveModalOpen(true);
+    } else {
+      // Alone in the room - leave immediately
+      void leaveRoom();
+    }
+  };
+
   return (
     <div className="min-h-screen p-4 sm:p-8 bg-muted">
       <div className="max-w-4xl mx-auto space-y-4">
-        <div className="brutal-border p-6 bg-card brutal-shadow">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="brutal-border p-6 bg-card brutal-shadow relative">
+          <button
+            onClick={handleExitClick}
+            className="absolute top-2 right-2 brutal-border w-8 h-8 flex items-center justify-center bg-card hover:bg-warning-bg transition-colors font-bold text-lg cursor-pointer"
+            title="Exit room"
+          >
+            ×
+          </button>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pr-10">
             <div>
               <h1 className="text-4xl font-bold">{roomTitle}</h1>
               <p className="text-text-muted font-semibold">
@@ -348,6 +384,15 @@ export default function WaitingRoomPage() {
               onCancel={() => setKickingPlayerId(null)}
             />
           )}
+
+          <ConfirmationModal
+            isOpen={isLeaveModalOpen}
+            title="Leave Room"
+            message="Other players are waiting. Are you sure you want to leave?"
+            confirmText="Leave"
+            onConfirm={() => void leaveRoom()}
+            onCancel={() => setIsLeaveModalOpen(false)}
+          />
 
           <div className="brutal-border p-6 bg-card brutal-shadow space-y-4">
             <h2 className="text-2xl font-bold">Game settings</h2>
