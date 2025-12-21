@@ -162,7 +162,9 @@ describe('RoomsController', () => {
         clientId: 'client-1',
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(mockRoom);
-      expect(result).toEqual(mockRoomView);
+      expect(result).toMatchObject(mockRoomView);
+      expect(result).toHaveProperty('wsJoinToken');
+      expect(typeof (result as any).wsJoinToken).toBe('string');
     });
 
     it('should throw error when clientId is missing', () => {

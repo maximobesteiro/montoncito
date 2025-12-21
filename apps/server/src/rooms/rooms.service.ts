@@ -11,6 +11,7 @@ import type { RoomDefaults } from './rooms.config';
 import { ProfilesService } from '../profiles/profiles.service';
 import { GameService } from '../game/game.service';
 import { RoomView } from './rooms.dto';
+import { generateReadableRoomSlug } from '../utils/names';
 
 export type Visibility = 'public' | 'private';
 export type RoomStatus = 'open' | 'in_progress' | 'finished';
@@ -287,20 +288,24 @@ export class RoomsService {
   }
 
   private generateUniqueSlug(length: number): string {
-    // Simple, collision-resistant enough for phase 1:
-    // use UUID (32 hex chars) without dashes and slice.
-    for (let i = 0; i < 5; i += 1) {
+    // Human-readable slug: "{noun}-{4digits}", bounded by ROOM_SLUG_LENGTH.
+    // Still collision-safe via retry against the in-memory index.
+    for (let i = 0; i < 25; i += 1) {
+      const candidate = generateReadableRoomSlug({ maxLength: length });
+      if (!this.roomIdBySlug.has(candidate)) return candidate;
+    }
+
+    // Extremely unlikely fallback: prior behavior (UUID slice).
+    for (let i = 0; i < 10; i += 1) {
       const candidate = randomUUID()
         .replace(/-/g, '')
         .slice(0, length)
         .toLowerCase();
       if (!this.roomIdBySlug.has(candidate)) return candidate;
     }
-    // Extremely unlikely fallback: append a short suffix
-    const base = randomUUID().replace(/-/g, '').toLowerCase();
-    return (
-      base.slice(0, length - 3) + base.slice(length, length + 3)
-    ).toLowerCase();
+
+    // If something is very wrong, return a best-effort slug.
+    return randomUUID().replace(/-/g, '').slice(0, length).toLowerCase();
   }
 
   private isOwner(room: Room, clientId: string): boolean {

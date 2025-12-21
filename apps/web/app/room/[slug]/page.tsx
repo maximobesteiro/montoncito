@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient } from "@/lib/socket-client";
 import { useGameStore } from "@/stores/game-store";
+import type { GameState } from "@mont/core-game";
 
 type RoomView = {
   id: string;
@@ -18,8 +19,6 @@ type RoomView = {
   gameId?: string;
   gameConfig: { discardPiles: number };
 };
-
-type RoomViewWithToken = RoomView & { wsJoinToken?: string };
 
 export default function WaitingRoomPage() {
   const router = useRouter();
@@ -47,7 +46,7 @@ export default function WaitingRoomPage() {
 
   const roomTitle = `Room #${slug.slice(-4)}`;
 
-  const refetchRoom = async () => {
+  const refetchRoom = useCallback(async () => {
     if (!clientId) return;
     const view = await apiFetch<RoomView>(`/rooms/by-slug/${slug}`, {
       method: "GET",
@@ -57,10 +56,11 @@ export default function WaitingRoomPage() {
     setRoomId(view.id);
     setCurrentPlayerId(clientId);
     return view;
-  };
+  }, [clientId, setCurrentPlayerId, setRoomId, slug]);
 
   useEffect(() => {
     let cancelled = false;
+    let unsub: null | (() => void) = null;
     const boot = async () => {
       if (!clientId) return;
       setLoading(true);
@@ -88,26 +88,20 @@ export default function WaitingRoomPage() {
         // 3) Connect to Socket.IO to receive presence + GAME_STARTED
         const sock = getSocketClient();
         sock.connect(joinRes.wsJoinToken);
-        const unsub = sock.on((ev) => {
+        unsub = sock.on((ev) => {
           if (ev.type === "PLAYER_JOINED" || ev.type === "PLAYER_LEFT") {
             void refetchRoom().catch(() => {});
           }
           if (ev.type === "GAME_STARTED") {
             // Seed store so /game can render immediately (optional)
-            setGameState(ev.state as any);
+            setGameState(ev.state as GameState);
             router.push(`/game?room=${view.id}`);
           }
           if (ev.type === "STATE_UPDATE") {
             // Keep store up to date if you ever render game state here
-            setGameState(ev.state as any);
+            setGameState(ev.state as GameState);
           }
         });
-
-        // Cleanup
-        return () => {
-          unsub();
-          // Do not disconnect globally; keep connection reusable.
-        };
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load room");
@@ -119,8 +113,18 @@ export default function WaitingRoomPage() {
     void boot();
     return () => {
       cancelled = true;
+      unsub?.();
+      // Do not disconnect globally; keep connection reusable.
     };
-  }, [clientId, router, setCurrentPlayerId, setGameState, setRoomId, slug]);
+  }, [
+    clientId,
+    refetchRoom,
+    router,
+    setCurrentPlayerId,
+    setGameState,
+    setRoomId,
+    slug,
+  ]);
 
   useEffect(() => {
     if (!room) return;
@@ -129,9 +133,11 @@ export default function WaitingRoomPage() {
     }
   }, [room, router]);
 
-  const patchRoom = async (patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
-    gameConfig?: Partial<RoomView["gameConfig"]>;
-  }) => {
+  const patchRoom = async (
+    patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
+      gameConfig?: Partial<RoomView["gameConfig"]>;
+    }
+  ) => {
     if (!clientId || !room) return;
     setSaving(true);
     setError(null);
@@ -329,5 +335,3 @@ export default function WaitingRoomPage() {
     </div>
   );
 }
-
-
