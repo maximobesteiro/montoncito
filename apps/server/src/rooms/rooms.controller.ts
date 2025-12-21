@@ -76,7 +76,12 @@ export class RoomsController {
         gameConfig: dto.gameConfig,
       },
     });
-    return this.rooms.toView(room);
+    const roomView = this.rooms.toView(room);
+    
+    // Broadcast room update to all connected clients in this room
+    this.ws.emitRoomUpdated(roomId, roomView);
+    
+    return roomView;
   }
 
   @Post(':id/join')

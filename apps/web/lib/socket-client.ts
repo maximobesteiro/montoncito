@@ -6,6 +6,7 @@ export type ServerEvent =
   | { type: "PLAYER_LEFT"; playerId: string }
   | { type: "STATE_UPDATE"; meta?: unknown; state: unknown }
   | { type: "GAME_STARTED"; meta: unknown; state: unknown }
+  | { type: "ROOM_UPDATED"; room: unknown }
   | { type: "PONG"; ts: number };
 
 export type ServerEventHandler = (event: ServerEvent) => void;
@@ -22,13 +23,16 @@ class SocketClient {
     });
 
     this.socket.on("connect_error", (err) => {
-      // eslint-disable-next-line no-console
       console.error("Socket.IO connect_error:", err);
     });
 
     this.socket.on("event", (payload: unknown) => {
       // Trust server contract; runtime validation can be added later.
-      if (typeof payload === "object" && payload !== null && "type" in payload) {
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        "type" in payload
+      ) {
         this.emit(payload as ServerEvent);
       }
     });
@@ -54,7 +58,6 @@ class SocketClient {
       try {
         h(ev);
       } catch (e) {
-        // eslint-disable-next-line no-console
         console.error("Error in ServerEventHandler:", e);
       }
     }
@@ -67,5 +70,3 @@ export function getSocketClient(): SocketClient {
   if (!instance) instance = new SocketClient();
   return instance;
 }
-
-

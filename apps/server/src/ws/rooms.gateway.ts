@@ -92,6 +92,13 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(roomId).emit('event', ev);
   }
 
+  /** Broadcast room settings update to all players in the room */
+  public emitRoomUpdated(roomId: string, room: unknown) {
+    const ev = { type: 'ROOM_UPDATED', room } as const;
+    assertServerEvent(ev);
+    this.server.to(roomId).emit('event', ev);
+  }
+
   /** If you want to kick a player’s sockets after REST /leave */
   public disconnectPlayer(roomId: string, playerId: string) {
     const k = key(roomId, playerId);

@@ -92,6 +92,10 @@ export default function WaitingRoomPage() {
           if (ev.type === "PLAYER_JOINED" || ev.type === "PLAYER_LEFT") {
             void refetchRoom().catch(() => {});
           }
+          if (ev.type === "ROOM_UPDATED") {
+            // Update room settings in real-time
+            setRoom(ev.room as RoomView);
+          }
           if (ev.type === "GAME_STARTED") {
             // Seed store so /game can render immediately (optional)
             setGameState(ev.state as GameState);

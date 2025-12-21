@@ -29,6 +29,11 @@ export const GameStarted = z.object({
   state: GameState,
 });
 
+export const RoomUpdated = z.object({
+  type: z.literal('ROOM_UPDATED'),
+  room: RoomView,
+});
+
 /** Optional utility events */
 export const Pong = z.object({
   type: z.literal('PONG'),
@@ -40,6 +45,7 @@ export const ServerEventSchema = z.discriminatedUnion('type', [
   PlayerLeft,
   StateUpdate,
   GameStarted,
+  RoomUpdated,
   Pong,
 ]);
 
