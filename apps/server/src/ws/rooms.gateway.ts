@@ -122,6 +122,20 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(roomId).emit('event', ev);
   }
 
+  /** Notify a player that they have been kicked */
+  public emitKicked(roomId: string, playerId: string) {
+    const k = key(roomId, playerId);
+    const set = this.byPlayer.get(k);
+    if (!set) return;
+
+    const ev = { type: 'KICKED' } as const;
+    assertServerEvent(ev);
+
+    for (const sid of set) {
+      this.server.to(sid).emit('event', ev);
+    }
+  }
+
   /** If you want to kick a player's sockets after REST /leave */
   public disconnectPlayer(roomId: string, playerId: string) {
     const k = key(roomId, playerId);

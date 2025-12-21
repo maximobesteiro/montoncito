@@ -6,6 +6,8 @@ import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient } from "@/lib/socket-client";
 import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
 import { useGameStore } from "@/stores/game-store";
+import { useToast } from "@/components/ToastProvider";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import type { GameState } from "@mont/core-game";
 
 type RoomView = {
@@ -42,7 +44,9 @@ export default function WaitingRoomPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [kickingPlayerId, setKickingPlayerId] = useState<string | null>(null);
 
+  const { showToast } = useToast();
   const isHost = Boolean(room && clientId && room.ownerId === clientId);
   const canStart = Boolean(room && isHost && room.players.length >= 2);
 
@@ -133,6 +137,10 @@ export default function WaitingRoomPage() {
             setGameState(ev.state as GameState);
             router.push(`/game?room=${view.id}`);
           }
+          if (ev.type === "KICKED") {
+            showToast("You have been kicked from the room", "warning");
+            router.push("/");
+          }
           if (ev.type === "STATE_UPDATE") {
             // Keep store up to date if you ever render game state here
             setGameState(ev.state as GameState);
@@ -163,6 +171,7 @@ export default function WaitingRoomPage() {
     setGameState,
     setRoomId,
     sanitizedSlug,
+    showToast,
   ]);
 
   useEffect(() => {
@@ -219,6 +228,25 @@ export default function WaitingRoomPage() {
       setError(e instanceof Error ? e.message : "Failed to start");
     } finally {
       setStarting(false);
+    }
+  };
+
+  const kickPlayer = async (targetId: string) => {
+    if (!clientId || !room) return;
+    try {
+      await apiFetch(`/rooms/${room.id}/kick/${targetId}`, {
+        method: "POST",
+        clientId,
+      });
+      showToast("Player kicked successfully", "success");
+      await refetchRoom();
+    } catch (e) {
+      showToast(
+        e instanceof Error ? e.message : "Failed to kick player",
+        "error"
+      );
+    } finally {
+      setKickingPlayerId(null);
     }
   };
 
@@ -291,12 +319,35 @@ export default function WaitingRoomPage() {
                           Host
                         </span>
                       )}
+                      {!p.isOwner && isHost && (
+                        <button
+                          onClick={() => setKickingPlayerId(p.id)}
+                          className="brutal-border w-8 h-8 flex items-center justify-center bg-card hover:bg-warning-bg transition-colors font-bold text-lg cursor-pointer ml-2"
+                          title="Kick player"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
               </>
             )}
           </div>
+
+          {kickingPlayerId && (
+            <ConfirmationModal
+              isOpen={true}
+              title="Kick Player"
+              message={`Are you sure you want to kick ${
+                room?.players.find((p) => p.id === kickingPlayerId)
+                  ?.displayName ?? "this player"
+              } from the room?`}
+              confirmText="Kick"
+              onConfirm={() => kickPlayer(kickingPlayerId)}
+              onCancel={() => setKickingPlayerId(null)}
+            />
+          )}
 
           <div className="brutal-border p-6 bg-card brutal-shadow space-y-4">
             <h2 className="text-2xl font-bold">Game settings</h2>

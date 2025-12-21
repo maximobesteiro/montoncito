@@ -144,6 +144,34 @@ export class RoomsController {
     return this.rooms.toView(result.room!);
   }
 
+  @Post(':id/kick/:playerId')
+  public kick(
+    @Param('id') roomId: string,
+    @Param('playerId') targetId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new Error('Missing X-Client-Id header');
+
+    const room = this.rooms.kick({
+      roomId,
+      requesterId: clientId,
+      targetId,
+    });
+
+    const roomView = this.rooms.toView(room);
+
+    // 1. Notify the kicked player first
+    this.ws.emitKicked(roomId, targetId);
+
+    // 2. Broadcast room update to remaining players
+    this.ws.emitRoomUpdated(roomId, roomView);
+
+    // 3. Force disconnect the kicked player's sockets
+    this.ws.disconnectPlayer(roomId, targetId);
+
+    return roomView;
+  }
+
   @Post(':id/start')
   public start(
     @Param('id') roomId: string,

@@ -301,6 +301,38 @@ export class RoomsService {
     return { id: room.id, room };
   }
 
+  public kick(params: {
+    roomId: string;
+    requesterId: string;
+    targetId: string;
+  }): Room {
+    const room = this.roomsById.get(params.roomId);
+    if (!room) throw new NotFoundException('Room not found');
+
+    if (!this.isOwner(room, params.requesterId)) {
+      throw new ForbiddenException('Only the owner can kick players');
+    }
+
+    if (room.status !== 'open') {
+      throw new ConflictException('Players can only be kicked from open rooms');
+    }
+
+    if (params.targetId === params.requesterId) {
+      throw new BadRequestException('You cannot kick yourself');
+    }
+
+    const idx = room.players.findIndex((p) => p.id === params.targetId);
+    if (idx === -1) {
+      throw new NotFoundException('Target player is not in this room');
+    }
+
+    // Remove the player
+    room.players.splice(idx, 1);
+
+    this.roomsById.set(room.id, room);
+    return room;
+  }
+
   public start(params: { roomId: string; requesterId: string }): Room {
     const room = this.roomsById.get(params.roomId);
     if (!room) throw new NotFoundException('Room not found');

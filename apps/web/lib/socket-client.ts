@@ -7,6 +7,7 @@ export type ServerEvent =
   | { type: "STATE_UPDATE"; meta?: unknown; state: unknown }
   | { type: "GAME_STARTED"; meta: unknown; state: unknown }
   | { type: "ROOM_UPDATED"; room: unknown }
+  | { type: "KICKED" }
   | { type: "PONG"; ts: number };
 
 export type ServerEventHandler = (event: ServerEvent) => void;

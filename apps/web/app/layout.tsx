@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "../components/ThemeProvider";
+import { ToastProvider } from "../components/ToastProvider";
 import { Header } from "../components/header/Header";
 import { Footer } from "../components/footer/Footer";
 
@@ -53,11 +54,13 @@ export default function RootLayout({
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <ThemeProvider>
-          <div className="min-h-screen flex flex-col">
-            <Header />
-            <main className="flex-1 flex flex-col">{children}</main>
-            <Footer />
-          </div>
+          <ToastProvider>
+            <div className="min-h-screen flex flex-col">
+              <Header />
+              <main className="flex-1 flex flex-col">{children}</main>
+              <Footer />
+            </div>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>
