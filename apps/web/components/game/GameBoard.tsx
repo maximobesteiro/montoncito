@@ -35,7 +35,7 @@ export function GameBoard({
   const opponents = gameState.players
     .filter((id) => id !== currentPlayerId)
     .map((id) => gameState.byId[id])
-    .filter(Boolean);
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
   return (
     <div className="flex flex-col gap-4 p-2 sm:p-4 min-h-screen bg-muted">

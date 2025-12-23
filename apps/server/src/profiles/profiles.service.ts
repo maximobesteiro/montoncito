@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { generateTemporaryHumanName } from '../utils/names';
 
 export type Profile = {
   clientId: string;
@@ -52,7 +52,6 @@ export class ProfilesService {
   }
 
   private generateTemporaryName(): string {
-    // Simple, readable temp name, e.g. "Player-7f3a"
-    return `Player-${randomUUID().replace(/-/g, '').slice(0, 4).toLowerCase()}`;
+    return generateTemporaryHumanName({ maxLength: 32 });
   }
 }

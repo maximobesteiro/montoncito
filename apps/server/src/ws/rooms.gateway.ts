@@ -4,11 +4,13 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
+import { Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { WsJoinClaims } from './auth';
 import { assertServerEvent } from './events';
+import { RoomsService } from '../rooms/rooms.service';
 
 type Conn = WsJoinClaims; // { roomId, playerId }
 
@@ -26,7 +28,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private conns = new Map<string, Conn>(); // socket.id -> claims
   private byPlayer = new Map<string, Set<string>>(); // "roomId::playerId" -> Set<socket.id>
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    @Inject(forwardRef(() => RoomsService))
+    private readonly rooms: RoomsService,
+  ) {}
 
   public handleConnection(client: Socket) {
     try {
@@ -46,7 +52,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       if (!this.byPlayer.has(k)) this.byPlayer.set(k, new Set());
       this.byPlayer.get(k)!.add(client.id);
 
-      // Presence broadcast
+      // Presence broadcast - indicates player is online
       const ev = { type: 'PLAYER_JOINED', playerId: claims.playerId } as const;
       assertServerEvent(ev);
       this.server.to(claims.roomId).emit('event', ev);
@@ -64,12 +70,29 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const set = this.byPlayer.get(k);
     if (set) {
       set.delete(client.id);
-      if (set.size === 0) this.byPlayer.delete(k);
+      if (set.size === 0) {
+        // Last socket disconnected - treat as leaving the room (refresh/navigation/tab close)
+        this.byPlayer.delete(k);
+
+        try {
+          const result = this.rooms.leave({
+            roomId: claims.roomId,
+            clientId: claims.playerId,
+          });
+
+          if (!result.deleted && result.room) {
+            const roomView = this.rooms.toView(result.room);
+            this.emitRoomUpdated(claims.roomId, roomView);
+          }
+        } catch {
+          // Room might be in_progress/finished or already removed; ignore.
+        }
+        return;
+      }
     }
 
-    const ev = { type: 'PLAYER_LEFT', playerId: claims.playerId } as const;
-    assertServerEvent(ev);
-    this.server.to(claims.roomId).emit('event', ev);
+    // Player still has other sockets connected, just close this one
+    // No need to broadcast anything
   }
 
   /** Broadcast fresh view (state/meta) to everyone in the room */
@@ -92,11 +115,35 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(roomId).emit('event', ev);
   }
 
-  /** If you want to kick a player’s sockets after REST /leave */
+  /** Broadcast room settings update to all players in the room */
+  public emitRoomUpdated(roomId: string, room: unknown) {
+    const ev = { type: 'ROOM_UPDATED', room } as const;
+    assertServerEvent(ev);
+    this.server.to(roomId).emit('event', ev);
+  }
+
+  /** Notify a player that they have been kicked */
+  public emitKicked(roomId: string, playerId: string) {
+    const k = key(roomId, playerId);
+    const set = this.byPlayer.get(k);
+    if (!set) return;
+
+    const ev = { type: 'KICKED' } as const;
+    assertServerEvent(ev);
+
+    for (const sid of set) {
+      this.server.to(sid).emit('event', ev);
+    }
+  }
+
+  /** If you want to kick a player's sockets after REST /leave */
   public disconnectPlayer(roomId: string, playerId: string) {
     const k = key(roomId, playerId);
     const set = this.byPlayer.get(k);
     if (!set) return;
+
+    // Safety check: ensure WebSocket server is initialized
+    if (!this.server?.sockets?.sockets) return;
 
     for (const sid of set) {
       const sock = this.server.sockets.sockets.get(sid);

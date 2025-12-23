@@ -52,7 +52,7 @@ export function createMockGameState(): GameState {
     createCard("p1-stock-2", 2, "Hearts"),
     createCard("p1-stock-3", 10, "Clubs"),
     ...Array.from({ length: 17 }, (_, i) =>
-      createCard(`p1-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4])
+      createCard(`p1-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4]!)
     ),
   ];
 
@@ -61,7 +61,7 @@ export function createMockGameState(): GameState {
     createCard("p2-stock-2", 8, "Spades"),
     createCard("p2-stock-3", 1, "Clubs"),
     ...Array.from({ length: 17 }, (_, i) =>
-      createCard(`p2-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4])
+      createCard(`p2-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4]!)
     ),
   ];
 

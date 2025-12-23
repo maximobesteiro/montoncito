@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { GameBoard } from "@/components/game/GameBoard";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { ChatPanel } from "@/components/game/ChatPanel";
@@ -20,6 +21,7 @@ import {
 import { applyMove } from "@mont/core-game";
 import { useGameStore } from "@/stores/game-store";
 import { useWebSocket } from "@/lib/use-websocket";
+import { apiFetch, getOrCreateClientId } from "@/lib/api";
 
 type SelectedSource =
   | { type: "hand"; cardId: string }
@@ -28,6 +30,9 @@ type SelectedSource =
   | null;
 
 export default function GamePage() {
+  const searchParams = useSearchParams();
+  const roomFromUrl = searchParams.get("room");
+
   // Get state from store with selectors to prevent unnecessary re-renders
   const storeGameState = useGameStore((state) => state.gameState);
   const storePlayerId = useGameStore((state) => state.currentPlayerId);
@@ -37,6 +42,7 @@ export default function GamePage() {
   const {
     setGameState,
     setCurrentPlayerId,
+    setRoomId,
     addPendingAction,
     removePendingAction,
   } = useGameStore();
@@ -48,18 +54,55 @@ export default function GamePage() {
 
   // Initialize store with mock data if needed
   useEffect(() => {
-    if (!storeGameState) {
-      setGameState(mockState);
+    // Seed roomId from URL if present
+    if (roomFromUrl && roomFromUrl !== roomId) {
+      setRoomId(roomFromUrl);
     }
+
+    // Seed player id from persisted client id
     if (!storePlayerId) {
-      setCurrentPlayerId("P1");
+      try {
+        setCurrentPlayerId(getOrCreateClientId() as any);
+      } catch {
+        setCurrentPlayerId("P1");
+      }
     }
+
+    // If a real room is provided, prefer REST seed over mock
+    if (roomFromUrl) {
+      const clientId = (() => {
+        try {
+          return getOrCreateClientId();
+        } catch {
+          return null;
+        }
+      })();
+
+      if (clientId) {
+        void apiFetch<{ state: GameState }>(`/rooms/${roomFromUrl}/game`, {
+          method: "GET",
+          clientId,
+        })
+          .then((data) => setGameState(data.state))
+          .catch(() => {
+            // Fallback to mock if game not started or fetch fails
+            if (!storeGameState) setGameState(mockState);
+          });
+        return;
+      }
+    }
+
+    // Otherwise use mock data
+    if (!storeGameState) setGameState(mockState);
   }, [
     storeGameState,
     storePlayerId,
     mockState,
     setGameState,
     setCurrentPlayerId,
+    setRoomId,
+    roomFromUrl,
+    roomId,
   ]);
 
   // WebSocket connection (will be used when backend is ready)

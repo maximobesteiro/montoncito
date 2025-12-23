@@ -1,20 +1,34 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { MenuButton } from "../components/MenuButton";
 import { Modal } from "../components/Modal";
 import { HowToPlayModal } from "../components/HowToPlayModal";
+import { apiFetch, getOrCreateClientId } from "@/lib/api";
 
 export default function Home() {
+  const router = useRouter();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
   const [gameId, setGameId] = useState("");
 
   const handleJoinGame = () => {
-    // TODO: Implement join game logic
-    console.log("Joining game:", gameId);
+    const slug = gameId.trim();
+    if (!slug) return;
     setIsJoinModalOpen(false);
     setGameId("");
+    router.push(`/room/${slug}`);
+  };
+
+  const handleCreateGame = async () => {
+    const clientId = getOrCreateClientId();
+    const created = await apiFetch<{ slug: string }>(`/rooms`, {
+      method: "POST",
+      clientId,
+      body: JSON.stringify({}),
+    });
+    router.push(`/room/${created.slug}`);
   };
 
   return (
@@ -35,7 +49,7 @@ export default function Home() {
         <MenuButton
           title="Create a Game"
           subtitle="Start your own public or private game"
-          onClick={() => {}}
+          onClick={() => void handleCreateGame()}
         />
 
         <MenuButton

@@ -13,7 +13,7 @@ export function PresenceIndicator({
 }: PresenceIndicatorProps) {
   const players = gameState.players
     .map((id) => gameState.byId[id])
-    .filter(Boolean);
+    .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
   return (
     <div className="brutal-border p-3 bg-card brutal-shadow">

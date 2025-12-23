@@ -35,7 +35,7 @@ export function EndGameScreen({
         ),
       };
     })
-    .filter(Boolean);
+    .filter((s): s is NonNullable<typeof s> => s !== null);
 
   return (
     <div className="fixed inset-0 bg-overlay flex items-center justify-center z-50">

@@ -7,5 +7,5 @@ alwaysApply: true
 - Built with **Next.js (React)**, TypeScript, and TailwindCSS v4.
 - **Server Components** for static/lobby pages; **Client Components** for live game view.
 - **Zustand** to manage transient UI state.
-- WebSocket client encapsulated as a singleton service (hook-based API).
+- Real-time updates are powered by **Socket.IO**. Connection logic is managed by a module-level singleton, while components interact via a custom React hook.
 - Shared **core-game** logic imported from local package for deterministic replay and validation.

@@ -11,6 +11,7 @@ import type { RoomDefaults } from './rooms.config';
 import { ProfilesService } from '../profiles/profiles.service';
 import { GameService } from '../game/game.service';
 import { RoomView } from './rooms.dto';
+import { generateReadableRoomSlug } from '../utils/names';
 
 export type Visibility = 'public' | 'private';
 export type RoomStatus = 'open' | 'in_progress' | 'finished';
@@ -18,6 +19,7 @@ export type RoomStatus = 'open' | 'in_progress' | 'finished';
 export type PlayerRef = {
   id: string; // clientId
   isOwner: boolean;
+  ready: boolean;
 };
 
 export type GameConfig = {
@@ -50,6 +52,17 @@ export class RoomsService {
     private readonly games: GameService,
   ) {}
 
+  private sanitizeSlug(rawSlug: string): string {
+    // Accept user-provided slugs, but constrain them:
+    // - lowercase
+    // - only [a-z0-9-]
+    // - max length 15 (truncate)
+    return rawSlug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '')
+      .slice(0, 15);
+  }
+
   public create(params: { clientId: string }): Room {
     const id = randomUUID();
     const slug = this.generateUniqueSlug(this.defaults.slugLength);
@@ -65,13 +78,47 @@ export class RoomsService {
       status: 'open',
       maxPlayers: this.defaults.defaultMaxPlayers,
       ownerId: params.clientId,
-      players: [{ id: params.clientId, isOwner: true }],
+      players: [{ id: params.clientId, isOwner: true, ready: false }],
       createdAt: now,
       gameConfig: { discardPiles: 1 },
     };
 
     this.roomsById.set(id, room);
     this.roomIdBySlug.set(slug, id);
+    return room;
+  }
+
+  public getOrCreateBySlug(params: { slug: string; clientId: string }): Room {
+    const sanitized = this.sanitizeSlug(params.slug);
+    if (!sanitized) {
+      throw new BadRequestException('Invalid room slug');
+    }
+
+    const existingId = this.roomIdBySlug.get(sanitized);
+    if (existingId) {
+      return this.getById(existingId);
+    }
+
+    const id = randomUUID();
+    const now = new Date().toISOString();
+
+    // Ensure the profile exists (auto-provision temporary displayName if new)
+    this.profiles.getOrCreate(params.clientId);
+
+    const room: Room = {
+      id,
+      slug: sanitized,
+      visibility: this.defaults.defaultVisibility,
+      status: 'open',
+      maxPlayers: this.defaults.defaultMaxPlayers,
+      ownerId: params.clientId,
+      players: [{ id: params.clientId, isOwner: true, ready: false }],
+      createdAt: now,
+      gameConfig: { discardPiles: 1 },
+    };
+
+    this.roomsById.set(id, room);
+    this.roomIdBySlug.set(sanitized, id);
     return room;
   }
 
@@ -146,6 +193,9 @@ export class RoomsService {
       // add more fields as needed in the future
     }
 
+    // Reset all players' ready state when settings change
+    this.resetReady(room);
+
     // persist back (map holds reference; this is mainly semantic)
     this.roomsById.set(room.id, room);
     return room;
@@ -185,7 +235,12 @@ export class RoomsService {
       ownerId: room.ownerId,
       players: room.players.map((p) => {
         const prof = this.profiles.get(p.id) ?? this.profiles.getOrCreate(p.id);
-        return { id: p.id, displayName: prof.displayName, isOwner: p.isOwner };
+        return {
+          id: p.id,
+          displayName: prof.displayName,
+          isOwner: p.isOwner,
+          isReady: p.ready,
+        };
       }),
       createdAt: room.createdAt,
       gameId: room.gameId,
@@ -201,7 +256,8 @@ export class RoomsService {
       throw new ConflictException('Room is not open for joining');
     }
     if (this.hasPlayer(room, params.clientId)) {
-      throw new ConflictException('Player already in room');
+      // Idempotent join: allow re-join to refresh wsJoinToken / support deep links.
+      return room;
     }
     if (room.players.length >= room.maxPlayers) {
       throw new ConflictException('Room is full');
@@ -210,7 +266,11 @@ export class RoomsService {
     // Ensure the profile exists (auto-provision a temporary displayName if missing)
     this.profiles.getOrCreate(params.clientId);
 
-    room.players.push({ id: params.clientId, isOwner: false });
+    room.players.push({ id: params.clientId, isOwner: false, ready: false });
+
+    // Reset all players' ready state when roster changes
+    this.resetReady(room);
+
     this.roomsById.set(room.id, room);
     return room;
   }
@@ -250,8 +310,68 @@ export class RoomsService {
       room.players = room.players.map((p, i) => ({ ...p, isOwner: i === 0 }));
     }
 
+    // Reset all remaining players' ready state when roster changes
+    this.resetReady(room);
+
     this.roomsById.set(room.id, room);
     return { id: room.id, room };
+  }
+
+  public kick(params: {
+    roomId: string;
+    requesterId: string;
+    targetId: string;
+  }): Room {
+    const room = this.roomsById.get(params.roomId);
+    if (!room) throw new NotFoundException('Room not found');
+
+    if (!this.isOwner(room, params.requesterId)) {
+      throw new ForbiddenException('Only the owner can kick players');
+    }
+
+    if (room.status !== 'open') {
+      throw new ConflictException('Players can only be kicked from open rooms');
+    }
+
+    if (params.targetId === params.requesterId) {
+      throw new BadRequestException('You cannot kick yourself');
+    }
+
+    const idx = room.players.findIndex((p) => p.id === params.targetId);
+    if (idx === -1) {
+      throw new NotFoundException('Target player is not in this room');
+    }
+
+    // Remove the player
+    room.players.splice(idx, 1);
+
+    // Reset all remaining players' ready state when roster changes
+    this.resetReady(room);
+
+    this.roomsById.set(room.id, room);
+    return room;
+  }
+
+  public setReady(params: {
+    roomId: string;
+    clientId: string;
+    ready: boolean;
+  }): Room {
+    const room = this.roomsById.get(params.roomId);
+    if (!room) throw new NotFoundException('Room not found');
+
+    if (room.status !== 'open') {
+      throw new ConflictException('Room is not open');
+    }
+
+    const player = room.players.find((p) => p.id === params.clientId);
+    if (!player) {
+      throw new ForbiddenException('You are not a member of this room');
+    }
+
+    player.ready = params.ready;
+    this.roomsById.set(room.id, room);
+    return room;
   }
 
   public start(params: { roomId: string; requesterId: string }): Room {
@@ -262,6 +382,15 @@ export class RoomsService {
     if (room.status !== 'open') throw new ConflictException('Room is not open');
     if (room.players.length < 2)
       throw new ConflictException('At least two players are required to start');
+
+    // Check that all non-owner players are ready
+    const nonOwnerPlayers = room.players.filter((p) => !p.isOwner);
+    const allReady = nonOwnerPlayers.every((p) => p.ready);
+    if (!allReady) {
+      throw new ConflictException(
+        'All players must be ready before starting the game',
+      );
+    }
 
     const playersOrdered = room.players.map((p) => p.id);
     const config = {
@@ -286,23 +415,34 @@ export class RoomsService {
   }
 
   private generateUniqueSlug(length: number): string {
-    // Simple, collision-resistant enough for phase 1:
-    // use UUID (32 hex chars) without dashes and slice.
-    for (let i = 0; i < 5; i += 1) {
+    // Human-readable slug: "{noun}-{4digits}", bounded by ROOM_SLUG_LENGTH.
+    // Still collision-safe via retry against the in-memory index.
+    for (let i = 0; i < 25; i += 1) {
+      const candidate = generateReadableRoomSlug({ maxLength: length });
+      if (!this.roomIdBySlug.has(candidate)) return candidate;
+    }
+
+    // Extremely unlikely fallback: prior behavior (UUID slice).
+    for (let i = 0; i < 10; i += 1) {
       const candidate = randomUUID()
         .replace(/-/g, '')
         .slice(0, length)
         .toLowerCase();
       if (!this.roomIdBySlug.has(candidate)) return candidate;
     }
-    // Extremely unlikely fallback: append a short suffix
-    const base = randomUUID().replace(/-/g, '').toLowerCase();
-    return (
-      base.slice(0, length - 3) + base.slice(length, length + 3)
-    ).toLowerCase();
+
+    // If something is very wrong, return a best-effort slug.
+    return randomUUID().replace(/-/g, '').slice(0, length).toLowerCase();
   }
 
   private isOwner(room: Room, clientId: string): boolean {
     return room.ownerId === clientId;
+  }
+
+  /** Reset all players' ready state to false */
+  private resetReady(room: Room): void {
+    for (const p of room.players) {
+      p.ready = false;
+    }
   }
 }

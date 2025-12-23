@@ -26,6 +26,12 @@ export const MoveSchema = z
   })
   .strict();
 
+export const SetReadySchema = z
+  .object({
+    ready: z.boolean(),
+  })
+  .strict();
+
 export const RoomViewSchema = z.object({
   id: z.string().min(1),
   slug: z.string().min(1),
@@ -38,6 +44,7 @@ export const RoomViewSchema = z.object({
       id: z.string().min(1),
       displayName: z.string().min(1),
       isOwner: z.boolean(),
+      isReady: z.boolean(),
     }),
   ),
   createdAt: z.string().min(1),
@@ -50,4 +57,5 @@ export const RoomViewSchema = z.object({
 export type ListRoomsQuery = z.infer<typeof ListRoomsQuerySchema>;
 export type UpdateRoomDto = z.infer<typeof UpdateRoomSchema>;
 export type MoveDto = z.infer<typeof MoveSchema>;
+export type SetReadyDto = z.infer<typeof SetReadySchema>;
 export type RoomView = z.infer<typeof RoomViewSchema>;

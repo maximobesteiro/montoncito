@@ -10,6 +10,7 @@ import { ProfilesService } from '../profiles/profiles.service';
 let wsGateway: {
   emitStateUpdate: jest.Mock;
   emitGameStarted: jest.Mock;
+  emitRoomUpdated: jest.Mock;
   disconnectPlayer: jest.Mock;
 };
 
@@ -103,6 +104,7 @@ describe('RoomsController', () => {
     wsGateway = {
       emitStateUpdate: jest.fn(),
       emitGameStarted: jest.fn(),
+      emitRoomUpdated: jest.fn(),
       disconnectPlayer: jest.fn(),
     };
 
@@ -110,6 +112,7 @@ describe('RoomsController', () => {
       create: jest.fn(),
       getById: jest.fn(),
       getBySlug: jest.fn(),
+      getOrCreateBySlug: jest.fn(),
       update: jest.fn(),
       listPublicOpen: jest.fn(),
       toView: jest.fn(),
@@ -162,7 +165,11 @@ describe('RoomsController', () => {
         clientId: 'client-1',
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(mockRoom);
-      expect(result).toEqual(mockRoomView);
+      expect(result).toMatchObject(mockRoomView);
+      expect(result).toHaveProperty('wsJoinToken');
+      expect(typeof (result as { wsJoinToken: string }).wsJoinToken).toBe(
+        'string',
+      );
     });
 
     it('should throw error when clientId is missing', () => {
@@ -215,14 +222,24 @@ describe('RoomsController', () => {
 
   describe('getBySlug', () => {
     it('should get room by slug successfully', () => {
-      roomsService.getBySlug.mockReturnValue(mockRoom);
+      roomsService.getOrCreateBySlug.mockReturnValue(mockRoom);
       roomsService.toView.mockReturnValue(mockRoomView);
 
-      const result = controller.getBySlug('test-room');
+      const result = controller.getBySlug('test-room', 'client-1');
 
-      expect(mockRoomsService.getBySlug).toHaveBeenCalledWith('test-room');
+      expect(mockRoomsService.getOrCreateBySlug).toHaveBeenCalledWith({
+        slug: 'test-room',
+        clientId: 'client-1',
+      });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(mockRoom);
       expect(result).toEqual(mockRoomView);
+    });
+
+    it('should throw error when clientId is missing', () => {
+      expect(() => controller.getBySlug('test-room', undefined)).toThrow(
+        'Missing X-Client-Id header',
+      );
+      expect(mockRoomsService.getOrCreateBySlug).not.toHaveBeenCalled();
     });
   });
 
@@ -255,6 +272,10 @@ describe('RoomsController', () => {
         },
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(updatedRoom);
+      expect(wsGateway.emitRoomUpdated).toHaveBeenCalledWith(
+        'room-123',
+        updatedRoomView,
+      );
       expect(result).toEqual(updatedRoomView);
     });
 
@@ -280,6 +301,10 @@ describe('RoomsController', () => {
           gameConfig: { discardPiles: 2 },
         },
       });
+      expect(wsGateway.emitRoomUpdated).toHaveBeenCalledWith(
+        'room-123',
+        updatedRoomView,
+      );
       expect(result).toEqual(updatedRoomView);
     });
 
@@ -305,6 +330,7 @@ describe('RoomsController', () => {
         ],
       };
 
+      roomsService.getById.mockReturnValue(mockRoom as any);
       roomsService.join.mockReturnValue(joinedRoom);
       roomsService.toView.mockReturnValue(joinedRoomView);
 
@@ -315,6 +341,10 @@ describe('RoomsController', () => {
         clientId: 'client-2',
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(joinedRoom);
+      expect(wsGateway.emitRoomUpdated).toHaveBeenCalledWith(
+        'room-123',
+        joinedRoomView,
+      );
 
       // NEW: expect a token and the same view fields
       expect(result).toMatchObject(joinedRoomView);
@@ -347,6 +377,14 @@ describe('RoomsController', () => {
         clientId: 'client-1',
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(remainingRoom);
+      expect(wsGateway.emitRoomUpdated).toHaveBeenCalledWith(
+        'room-123',
+        remainingRoomView,
+      );
+      expect(wsGateway.disconnectPlayer).toHaveBeenCalledWith(
+        'room-123',
+        'client-1',
+      );
       expect(result).toEqual(remainingRoomView);
     });
 
@@ -360,6 +398,11 @@ describe('RoomsController', () => {
         clientId: 'client-1',
       });
       expect(mockRoomsService.toView).not.toHaveBeenCalled();
+      expect(wsGateway.emitRoomUpdated).not.toHaveBeenCalled();
+      expect(wsGateway.disconnectPlayer).toHaveBeenCalledWith(
+        'room-123',
+        'client-1',
+      );
       expect(result).toEqual({ id: 'room-123', deleted: true });
     });
 
