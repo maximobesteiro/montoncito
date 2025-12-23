@@ -19,6 +19,7 @@ export type RoomStatus = 'open' | 'in_progress' | 'finished';
 export type PlayerRef = {
   id: string; // clientId
   isOwner: boolean;
+  ready: boolean;
 };
 
 export type GameConfig = {
@@ -77,7 +78,7 @@ export class RoomsService {
       status: 'open',
       maxPlayers: this.defaults.defaultMaxPlayers,
       ownerId: params.clientId,
-      players: [{ id: params.clientId, isOwner: true }],
+      players: [{ id: params.clientId, isOwner: true, ready: false }],
       createdAt: now,
       gameConfig: { discardPiles: 1 },
     };
@@ -111,7 +112,7 @@ export class RoomsService {
       status: 'open',
       maxPlayers: this.defaults.defaultMaxPlayers,
       ownerId: params.clientId,
-      players: [{ id: params.clientId, isOwner: true }],
+      players: [{ id: params.clientId, isOwner: true, ready: false }],
       createdAt: now,
       gameConfig: { discardPiles: 1 },
     };
@@ -192,6 +193,9 @@ export class RoomsService {
       // add more fields as needed in the future
     }
 
+    // Reset all players' ready state when settings change
+    this.resetReady(room);
+
     // persist back (map holds reference; this is mainly semantic)
     this.roomsById.set(room.id, room);
     return room;
@@ -231,7 +235,12 @@ export class RoomsService {
       ownerId: room.ownerId,
       players: room.players.map((p) => {
         const prof = this.profiles.get(p.id) ?? this.profiles.getOrCreate(p.id);
-        return { id: p.id, displayName: prof.displayName, isOwner: p.isOwner };
+        return {
+          id: p.id,
+          displayName: prof.displayName,
+          isOwner: p.isOwner,
+          isReady: p.ready,
+        };
       }),
       createdAt: room.createdAt,
       gameId: room.gameId,
@@ -257,7 +266,11 @@ export class RoomsService {
     // Ensure the profile exists (auto-provision a temporary displayName if missing)
     this.profiles.getOrCreate(params.clientId);
 
-    room.players.push({ id: params.clientId, isOwner: false });
+    room.players.push({ id: params.clientId, isOwner: false, ready: false });
+
+    // Reset all players' ready state when roster changes
+    this.resetReady(room);
+
     this.roomsById.set(room.id, room);
     return room;
   }
@@ -297,6 +310,9 @@ export class RoomsService {
       room.players = room.players.map((p, i) => ({ ...p, isOwner: i === 0 }));
     }
 
+    // Reset all remaining players' ready state when roster changes
+    this.resetReady(room);
+
     this.roomsById.set(room.id, room);
     return { id: room.id, room };
   }
@@ -329,6 +345,31 @@ export class RoomsService {
     // Remove the player
     room.players.splice(idx, 1);
 
+    // Reset all remaining players' ready state when roster changes
+    this.resetReady(room);
+
+    this.roomsById.set(room.id, room);
+    return room;
+  }
+
+  public setReady(params: {
+    roomId: string;
+    clientId: string;
+    ready: boolean;
+  }): Room {
+    const room = this.roomsById.get(params.roomId);
+    if (!room) throw new NotFoundException('Room not found');
+
+    if (room.status !== 'open') {
+      throw new ConflictException('Room is not open');
+    }
+
+    const player = room.players.find((p) => p.id === params.clientId);
+    if (!player) {
+      throw new ForbiddenException('You are not a member of this room');
+    }
+
+    player.ready = params.ready;
     this.roomsById.set(room.id, room);
     return room;
   }
@@ -341,6 +382,15 @@ export class RoomsService {
     if (room.status !== 'open') throw new ConflictException('Room is not open');
     if (room.players.length < 2)
       throw new ConflictException('At least two players are required to start');
+
+    // Check that all non-owner players are ready
+    const nonOwnerPlayers = room.players.filter((p) => !p.isOwner);
+    const allReady = nonOwnerPlayers.every((p) => p.ready);
+    if (!allReady) {
+      throw new ConflictException(
+        'All players must be ready before starting the game',
+      );
+    }
 
     const playersOrdered = room.players.map((p) => p.id);
     const config = {
@@ -387,5 +437,12 @@ export class RoomsService {
 
   private isOwner(room: Room, clientId: string): boolean {
     return room.ownerId === clientId;
+  }
+
+  /** Reset all players' ready state to false */
+  private resetReady(room: Room): void {
+    for (const p of room.players) {
+      p.ready = false;
+    }
   }
 }

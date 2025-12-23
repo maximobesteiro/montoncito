@@ -16,6 +16,7 @@ import {
   UpdateRoomSchema,
   ListRoomsQuerySchema,
   MoveSchema,
+  SetReadySchema,
 } from './rooms.dto';
 import { GameService } from '../game/game.service';
 import { RoomsGateway } from '../ws/rooms.gateway';
@@ -168,6 +169,28 @@ export class RoomsController {
 
     // 3. Force disconnect the kicked player's sockets
     this.ws.disconnectPlayer(roomId, targetId);
+
+    return roomView;
+  }
+
+  @Post(':id/ready')
+  public setReady(
+    @Param('id') roomId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+    @Body() body: unknown,
+  ) {
+    if (!clientId) throw new Error('Missing X-Client-Id header');
+    const dto = SetReadySchema.parse(body ?? {});
+    const room = this.rooms.setReady({
+      roomId,
+      clientId,
+      ready: dto.ready,
+    });
+
+    const roomView = this.rooms.toView(room);
+
+    // Broadcast room update so all players see readiness change
+    this.ws.emitRoomUpdated(roomId, roomView);
 
     return roomView;
   }

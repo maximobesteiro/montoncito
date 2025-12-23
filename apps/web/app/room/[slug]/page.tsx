@@ -17,7 +17,12 @@ type RoomView = {
   status: "open" | "in_progress" | "finished";
   maxPlayers: number;
   ownerId: string;
-  players: Array<{ id: string; displayName: string; isOwner: boolean }>;
+  players: Array<{
+    id: string;
+    displayName: string;
+    isOwner: boolean;
+    isReady: boolean;
+  }>;
   createdAt: string;
   gameId?: string;
   gameConfig: { discardPiles: number };
@@ -49,7 +54,25 @@ export default function WaitingRoomPage() {
 
   const { showToast } = useToast();
   const isHost = Boolean(room && clientId && room.ownerId === clientId);
-  const canStart = Boolean(room && isHost && room.players.length >= 2);
+
+  // Check if all non-host players are ready
+  const allNonHostReady = useMemo(() => {
+    if (!room) return false;
+    const nonHostPlayers = room.players.filter((p) => !p.isOwner);
+    if (nonHostPlayers.length === 0) return false; // Need at least one non-host
+    return nonHostPlayers.every((p) => p.isReady);
+  }, [room]);
+
+  // Get current player's ready state
+  const myReadyState = useMemo(() => {
+    if (!room || !clientId) return false;
+    const me = room.players.find((p) => p.id === clientId);
+    return me?.isReady ?? false;
+  }, [room, clientId]);
+
+  const canStart = Boolean(
+    room && isHost && room.players.length >= 2 && allNonHostReady
+  );
 
   const roomTitle = `Room #${(room?.slug ?? sanitizedSlug).slice(-4)}`;
 
@@ -214,8 +237,35 @@ export default function WaitingRoomPage() {
     }
   };
 
+  const toggleReady = async (ready: boolean) => {
+    if (!clientId || !room) return;
+    try {
+      const updated = await apiFetch<RoomView>(`/rooms/${room.id}/ready`, {
+        method: "POST",
+        clientId,
+        body: JSON.stringify({ ready }),
+      });
+      setRoom(updated);
+    } catch (e) {
+      showToast(
+        e instanceof Error ? e.message : "Failed to update ready state",
+        "error"
+      );
+    }
+  };
+
   const startGame = async () => {
     if (!clientId || !room) return;
+
+    // Client-side gate: check if all non-host players are ready
+    if (!allNonHostReady) {
+      showToast(
+        "All players must be ready before starting the game",
+        "warning"
+      );
+      return;
+    }
+
     setStarting(true);
     setError(null);
     try {
@@ -226,7 +276,10 @@ export default function WaitingRoomPage() {
       // GAME_STARTED should arrive via socket; fallback via refetch:
       await refetchRoom();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to start");
+      // Handle server-side rejection (safety net)
+      const message = e instanceof Error ? e.message : "Failed to start";
+      showToast(message, "error");
+      setError(message);
     } finally {
       setStarting(false);
     }
@@ -341,29 +394,46 @@ export default function WaitingRoomPage() {
                       key={p.id}
                       className="brutal-border p-3 bg-muted flex items-center justify-between"
                     >
-                      <div className="min-w-0">
-                        <p className="font-bold truncate">
-                          {p.displayName}
-                          {p.id === clientId ? " (you)" : ""}
-                        </p>
-                        <p className="text-xs text-text-muted font-mono truncate">
-                          {p.id}
-                        </p>
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Ready checkmark for non-owners */}
+                        {!p.isOwner && (
+                          <div
+                            className={`w-6 h-6 brutal-border flex items-center justify-center text-sm font-bold shrink-0 ${
+                              p.isReady
+                                ? "bg-btn-success text-text-on-dark"
+                                : "bg-card"
+                            }`}
+                            title={p.isReady ? "Ready" : "Not ready"}
+                          >
+                            {p.isReady ? "✓" : ""}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <p className="font-bold truncate">
+                            {p.displayName}
+                            {p.id === clientId ? " (you)" : ""}
+                          </p>
+                          <p className="text-xs text-text-muted font-mono truncate">
+                            {p.id}
+                          </p>
+                        </div>
                       </div>
-                      {p.isOwner && (
-                        <span className="brutal-border px-2 py-1 bg-warning-bg font-bold text-sm">
-                          Host
-                        </span>
-                      )}
-                      {!p.isOwner && isHost && (
-                        <button
-                          onClick={() => setKickingPlayerId(p.id)}
-                          className="brutal-border w-8 h-8 flex items-center justify-center bg-card hover:bg-warning-bg transition-colors font-bold text-lg cursor-pointer ml-2"
-                          title="Kick player"
-                        >
-                          ×
-                        </button>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.isOwner && (
+                          <span className="brutal-border px-2 py-1 bg-warning-bg font-bold text-sm">
+                            Host
+                          </span>
+                        )}
+                        {!p.isOwner && isHost && (
+                          <button
+                            onClick={() => setKickingPlayerId(p.id)}
+                            className="brutal-border w-8 h-8 flex items-center justify-center bg-card hover:bg-warning-bg transition-colors font-bold text-lg cursor-pointer"
+                            title="Kick player"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -455,22 +525,52 @@ export default function WaitingRoomPage() {
                 </div>
 
                 <div className="pt-2">
-                  <button
-                    onClick={startGame}
-                    disabled={!canStart || starting}
-                    className="brutal-button w-full bg-btn-success text-text-on-dark hover:bg-btn-success-hover disabled:bg-btn-disabled disabled:cursor-not-allowed"
-                  >
-                    {starting ? "Starting…" : "Start game"}
-                  </button>
+                  {/* Non-host: Ready banner */}
                   {!isHost && (
-                    <p className="text-xs text-text-muted font-semibold mt-2">
-                      Only the host can start the game.
-                    </p>
+                    <div className="brutal-border bg-btn-neutral p-4 text-center">
+                      <label className="flex items-center justify-center gap-3 cursor-pointer">
+                        <span className="text-xl font-bold text-text-on-dark">
+                          I&apos;m Ready
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={myReadyState}
+                          onChange={(e) => void toggleReady(e.target.checked)}
+                          className="w-7 h-7 brutal-border bg-card cursor-pointer accent-btn-success"
+                        />
+                      </label>
+                      <p className="text-sm text-text-on-dark/80 mt-2">
+                        All players need to be ready for the host to start the
+                        game.
+                      </p>
+                    </div>
                   )}
-                  {isHost && room.players.length < 2 && (
-                    <p className="text-xs text-text-muted font-semibold mt-2">
-                      Need at least 2 players to start.
-                    </p>
+
+                  {/* Host: Start button */}
+                  {isHost && (
+                    <>
+                      <button
+                        onClick={startGame}
+                        disabled={starting}
+                        className={`brutal-button w-full text-text-on-dark ${
+                          canStart
+                            ? "bg-btn-success hover:bg-btn-success-hover"
+                            : "bg-btn-disabled cursor-not-allowed"
+                        }`}
+                      >
+                        {starting ? "Starting…" : "Start game"}
+                      </button>
+                      {room.players.length < 2 && (
+                        <p className="text-xs text-text-muted font-semibold mt-2">
+                          Need at least 2 players to start.
+                        </p>
+                      )}
+                      {room.players.length >= 2 && !allNonHostReady && (
+                        <p className="text-xs text-text-muted font-semibold mt-2">
+                          Waiting for all players to be ready…
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
               </>
