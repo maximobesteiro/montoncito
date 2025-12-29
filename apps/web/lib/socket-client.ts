@@ -1,6 +1,14 @@
 import { io, Socket } from "socket.io-client";
 import { getServerUrl } from "./api";
 
+export type ChatMessage = {
+  id: string;
+  playerId: string;
+  playerName: string;
+  text: string;
+  timestamp: number;
+};
+
 export type ServerEvent =
   | { type: "PLAYER_JOINED"; playerId: string }
   | { type: "PLAYER_LEFT"; playerId: string }
@@ -8,6 +16,7 @@ export type ServerEvent =
   | { type: "GAME_STARTED"; meta: unknown; state: unknown }
   | { type: "ROOM_UPDATED"; room: unknown }
   | { type: "KICKED" }
+  | { type: "CHAT_MESSAGE" } & ChatMessage
   | { type: "PONG"; ts: number };
 
 export type ServerEventHandler = (event: ServerEvent) => void;
@@ -52,6 +61,14 @@ class SocketClient {
 
   get isConnected(): boolean {
     return Boolean(this.socket?.connected);
+  }
+
+  sendChat(text: string) {
+    if (!this.socket?.connected) {
+      console.error("Cannot send chat: socket not connected");
+      return;
+    }
+    this.socket.emit("chat", { text });
   }
 
   private emit(ev: ServerEvent) {

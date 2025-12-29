@@ -38,6 +38,15 @@ export const Kicked = z.object({
   type: z.literal('KICKED'),
 });
 
+export const ChatMessage = z.object({
+  type: z.literal('CHAT_MESSAGE'),
+  id: z.string().min(1),
+  playerId: z.string().min(1),
+  playerName: z.string().min(1),
+  text: z.string().min(1).max(500),
+  timestamp: z.number().int().nonnegative(),
+});
+
 /** Optional utility events */
 export const Pong = z.object({
   type: z.literal('PONG'),
@@ -51,6 +60,7 @@ export const ServerEventSchema = z.discriminatedUnion('type', [
   GameStarted,
   RoomUpdated,
   Kicked,
+  ChatMessage,
   Pong,
 ]);
 

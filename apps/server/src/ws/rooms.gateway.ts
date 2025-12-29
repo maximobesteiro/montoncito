@@ -3,6 +3,9 @@ import {
   WebSocketServer,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  MessageBody,
+  ConnectedSocket,
 } from '@nestjs/websockets';
 import { Inject, forwardRef } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
@@ -11,6 +14,8 @@ import { ConfigService } from '@nestjs/config';
 import { WsJoinClaims } from './auth';
 import { assertServerEvent } from './events';
 import { RoomsService } from '../rooms/rooms.service';
+import { ProfilesService } from '../profiles/profiles.service';
+import { randomUUID } from 'crypto';
 
 type Conn = WsJoinClaims; // { roomId, playerId }
 
@@ -32,6 +37,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly configService: ConfigService,
     @Inject(forwardRef(() => RoomsService))
     private readonly rooms: RoomsService,
+    private readonly profiles: ProfilesService,
   ) {}
 
   public handleConnection(client: Socket) {
@@ -158,5 +164,48 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   public emitMoveRejectedToPlayer(/* playerId: string, */ _reason: string) {
     // Parameter intentionally unused for future implementation
     // no-op for now
+  }
+
+  /** Handle incoming chat messages from clients */
+  @SubscribeMessage('chat')
+  public handleChat(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { text: string },
+  ) {
+    const claims = this.conns.get(client.id);
+    if (!claims) return;
+
+    // Validate message
+    const text = data?.text?.trim();
+    if (!text || text.length === 0 || text.length > 500) return;
+
+    // Get player name from profile
+    const profile = this.profiles.get(claims.playerId);
+    const playerName = profile?.displayName ?? 'Unknown';
+
+    // Broadcast chat message to all players in the room
+    this.emitChatMessage(claims.roomId, {
+      id: randomUUID(),
+      playerId: claims.playerId,
+      playerName,
+      text,
+      timestamp: Date.now(),
+    });
+  }
+
+  /** Broadcast a chat message to everyone in the room */
+  public emitChatMessage(
+    roomId: string,
+    payload: {
+      id: string;
+      playerId: string;
+      playerName: string;
+      text: string;
+      timestamp: number;
+    },
+  ) {
+    const ev = { type: 'CHAT_MESSAGE', ...payload } as const;
+    assertServerEvent(ev);
+    this.server.to(roomId).emit('event', ev);
   }
 }
