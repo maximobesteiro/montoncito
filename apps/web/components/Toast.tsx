@@ -38,7 +38,7 @@ export function Toast({
   return (
     <div
       className={`
-        fixed bottom-8 right-8 z-[100]
+        fixed bottom-8 right-8 z-100
         brutal-border p-4 min-w-[300px] brutal-shadow
         ${bgClass} text-text-on-dark font-bold
         transition-all duration-300
@@ -60,4 +60,3 @@ export function Toast({
     </div>
   );
 }
-

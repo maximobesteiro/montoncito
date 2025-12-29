@@ -385,8 +385,8 @@ export default function WaitingRoomPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          <div className="lg:col-span-2 xl:col-span-2 brutal-border p-6 bg-card brutal-shadow">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-10 gap-4">
+          <div className="xl:col-span-3 brutal-border p-6 bg-card brutal-shadow">
             <h2 className="text-2xl font-bold mb-3">Players</h2>
 
             {loading && (
@@ -474,7 +474,7 @@ export default function WaitingRoomPage() {
             onCancel={() => setIsLeaveModalOpen(false)}
           />
 
-          <div className="brutal-border p-6 bg-card brutal-shadow space-y-4">
+          <div className="xl:col-span-4 brutal-border p-6 bg-card brutal-shadow space-y-4">
             <h2 className="text-2xl font-bold">Game settings</h2>
 
             {!room && !loading && (
@@ -591,6 +591,7 @@ export default function WaitingRoomPage() {
             messages={chatMessages}
             currentPlayerId={clientId}
             onSendMessage={sendChatMessage}
+            className="lg:col-span-2 xl:col-span-3"
           />
         </div>
       </div>

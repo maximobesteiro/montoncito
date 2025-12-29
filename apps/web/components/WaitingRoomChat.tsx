@@ -7,12 +7,14 @@ interface WaitingRoomChatProps {
   messages: ChatMessage[];
   currentPlayerId: string | null;
   onSendMessage: (text: string) => void;
+  className?: string;
 }
 
 export function WaitingRoomChat({
   messages,
   currentPlayerId,
   onSendMessage,
+  className = "",
 }: WaitingRoomChatProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -42,7 +44,9 @@ export function WaitingRoomChat({
   };
 
   return (
-    <div className="brutal-border p-6 bg-card brutal-shadow flex flex-col h-full min-h-[300px]">
+    <div
+      className={`brutal-border p-6 bg-card brutal-shadow flex flex-col h-full min-h-[300px] ${className}`}
+    >
       <h2 className="text-2xl font-bold mb-3">Chat</h2>
 
       <div
