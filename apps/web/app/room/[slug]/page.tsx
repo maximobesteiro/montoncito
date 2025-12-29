@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
-import { getSocketClient } from "@/lib/socket-client";
+import { getSocketClient, type ChatMessage } from "@/lib/socket-client";
 import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
+import { WaitingRoomChat } from "@/components/WaitingRoomChat";
 import { useGameStore } from "@/stores/game-store";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
@@ -51,6 +52,7 @@ export default function WaitingRoomPage() {
   const [starting, setStarting] = useState(false);
   const [kickingPlayerId, setKickingPlayerId] = useState<string | null>(null);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const { showToast } = useToast();
   const isHost = Boolean(room && clientId && room.ownerId === clientId);
@@ -168,6 +170,9 @@ export default function WaitingRoomPage() {
           if (ev.type === "STATE_UPDATE") {
             // Keep store up to date if you ever render game state here
             setGameState(ev.state as GameState);
+          }
+          if (ev.type === "CHAT_MESSAGE") {
+            setChatMessages((prev) => [...prev, ev]);
           }
           // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
           // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
@@ -340,9 +345,14 @@ export default function WaitingRoomPage() {
     }
   };
 
+  const sendChatMessage = useCallback((text: string) => {
+    const sock = getSocketClient();
+    sock.sendChat(text);
+  }, []);
+
   return (
     <div className="min-h-screen p-4 sm:p-8 bg-muted">
-      <div className="max-w-4xl mx-auto space-y-4">
+      <div className="max-w-6xl mx-auto space-y-4">
         <div className="brutal-border p-6 bg-card brutal-shadow relative">
           <button
             onClick={handleExitClick}
@@ -375,8 +385,8 @@ export default function WaitingRoomPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 brutal-border p-6 bg-card brutal-shadow">
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-10 gap-4">
+          <div className="xl:col-span-3 brutal-border p-6 bg-card brutal-shadow">
             <h2 className="text-2xl font-bold mb-3">Players</h2>
 
             {loading && (
@@ -464,7 +474,7 @@ export default function WaitingRoomPage() {
             onCancel={() => setIsLeaveModalOpen(false)}
           />
 
-          <div className="brutal-border p-6 bg-card brutal-shadow space-y-4">
+          <div className="xl:col-span-4 brutal-border p-6 bg-card brutal-shadow space-y-4">
             <h2 className="text-2xl font-bold">Game settings</h2>
 
             {!room && !loading && (
@@ -576,6 +586,13 @@ export default function WaitingRoomPage() {
               </>
             )}
           </div>
+
+          <WaitingRoomChat
+            messages={chatMessages}
+            currentPlayerId={clientId}
+            onSendMessage={sendChatMessage}
+            className="lg:col-span-2 xl:col-span-3"
+          />
         </div>
       </div>
     </div>
