@@ -1,6 +1,7 @@
 "use client";
 
 import type { PlayerState } from "@mont/core-game";
+import { Card } from "@/components/game/Card";
 
 interface PlayerRowProps {
   player: PlayerState;
@@ -33,11 +34,7 @@ export function PlayerRow({ player, isActive }: PlayerRowProps) {
         <div className="flex flex-col items-center">
           <span className="text-xs font-semibold mb-1">Stock</span>
           {topStockCard ? (
-            <div className="w-10 h-14 brutal-border bg-card flex items-center justify-center text-xs font-bold">
-              {topStockCard.kind === "joker"
-                ? "🃏"
-                : `${topStockCard.rank}${topStockCard.suit[0]}`}
-            </div>
+            <Card card={topStockCard} faceUp={true} size="sm" />
           ) : (
             <div className="w-10 h-14 brutal-border border-dashed bg-surface flex items-center justify-center text-xs text-text-muted">
               —
@@ -58,19 +55,18 @@ export function PlayerRow({ player, isActive }: PlayerRowProps) {
                 return (
                   <div key={idx} className="relative" style={{ width: 36 }}>
                     {pile.slice(-3).map((card, cardIdx) => (
-                      <div
+                      <Card
                         key={card.id}
-                        className="w-8 h-11 brutal-border bg-card flex items-center justify-center text-[10px] font-bold absolute"
+                        card={card}
+                        faceUp={true}
+                        size="xs"
+                        className="absolute"
                         style={{
                           top: cardIdx * 4,
                           left: 0,
                           zIndex: cardIdx,
                         }}
-                      >
-                        {card.kind === "joker"
-                          ? "🃏"
-                          : `${card.rank}${card.suit[0]}`}
-                      </div>
+                      />
                     ))}
                     {pile.length === 0 && (
                       <div className="w-8 h-11 brutal-border border-dashed bg-surface flex items-center justify-center text-[10px] text-text-muted">
@@ -88,16 +84,16 @@ export function PlayerRow({ player, isActive }: PlayerRowProps) {
               }
 
               // Collapsed: show only top card thumbnail
+              if (topCard) {
+                return <Card key={idx} card={topCard} faceUp={true} size="xs" />;
+              }
+
               return (
                 <div
                   key={idx}
-                  className="w-8 h-11 brutal-border bg-card flex items-center justify-center text-[10px] font-bold"
+                  className="w-8 h-11 brutal-border border-dashed bg-surface flex items-center justify-center text-[10px] text-text-muted"
                 >
-                  {topCard
-                    ? topCard.kind === "joker"
-                      ? "🃏"
-                      : `${topCard.rank}${topCard.suit[0]}`
-                    : "—"}
+                  —
                 </div>
               );
             })}

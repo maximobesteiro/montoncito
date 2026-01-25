@@ -1,9 +1,10 @@
 "use client";
 
-import type { Card } from "@mont/core-game";
+import type { Card as GameCard } from "@mont/core-game";
+import { Card } from "./Card";
 
 interface FannedDiscardPileProps {
-  pile: Card[];
+  pile: GameCard[];
   pileIndex: number;
 }
 
@@ -33,17 +34,17 @@ export function FannedDiscardPile({ pile, pileIndex }: FannedDiscardPileProps) {
         style={{ width: 64, height: 96 + (visibleCards.length - 1) * 12 }}
       >
         {visibleCards.map((card, idx) => (
-          <div
+          <Card
             key={card.id}
-            className="w-16 h-24 brutal-border bg-card flex items-center justify-center text-sm font-bold absolute brutal-shadow-sm"
+            card={card}
+            faceUp={true}
+            className="absolute"
             style={{
               top: idx * 12,
               left: 0,
               zIndex: idx,
             }}
-          >
-            {card.kind === "joker" ? "🃏" : `${card.rank} ${card.suit[0]}`}
-          </div>
+          />
         ))}
       </div>
     </div>
