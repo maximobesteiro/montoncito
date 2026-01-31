@@ -4,7 +4,7 @@ function createCard(
   id: string,
   rank: Rank,
   suit: Suit,
-  baseWild?: boolean
+  baseWild?: boolean,
 ): Card {
   return { kind: "standard", id, rank, suit, baseWild };
 }
@@ -51,9 +51,6 @@ export function createMockGameState(): GameState {
     createCard("p1-stock-1", 6, "Spades"),
     createCard("p1-stock-2", 2, "Hearts"),
     createCard("p1-stock-3", 10, "Clubs"),
-    ...Array.from({ length: 17 }, (_, i) =>
-      createCard(`p1-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4]!)
-    ),
   ];
 
   const player2Stock: Card[] = [
@@ -61,22 +58,47 @@ export function createMockGameState(): GameState {
     createCard("p2-stock-2", 8, "Spades"),
     createCard("p2-stock-3", 1, "Clubs"),
     ...Array.from({ length: 17 }, (_, i) =>
-      createCard(`p2-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4]!)
+      createCard(`p2-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4]!),
     ),
   ];
 
   // Create discard piles
   const player1Discards: Card[][] = [
-    [createCard("p1-discard-1-1", 7, "Diamonds")],
+    [
+      createCard("p1-discard-1-3", 9, "Spades"),
+      createCard("p1-discard-1-2", 8, "Hearts"),
+      createCard("p1-discard-1-1", 7, "Diamonds"),
+    ],
     [createCard("p1-discard-2-1", 11, "Spades")],
     [],
-    [],
+    [
+      createCard("p1-discard-4-6", 12, "Hearts"),
+      createCard("p1-discard-4-5", 8, "Clubs"),
+      createCard("p1-discard-4-4", 5, "Diamonds"),
+      createCard("p1-discard-4-3", 5, "Spades"),
+      createCard("p1-discard-4-2", 4, "Hearts"),
+      createCard("p1-discard-4-1", 3, "Clubs"),
+    ],
   ];
 
   const player2Discards: Card[][] = [
-    [createCard("p2-discard-1-1", 3, "Clubs")],
+    [
+      createCard("p2-discard-1-9", 11, "Hearts"),
+      createCard("p2-discard-1-8", 10, "Diamonds"),
+      createCard("p2-discard-1-7", 9, "Clubs"),
+      createCard("p2-discard-1-6", 8, "Spades"),
+      createCard("p2-discard-1-5", 7, "Hearts"),
+      createCard("p2-discard-1-4", 6, "Diamonds"),
+      createCard("p2-discard-1-3", 5, "Clubs"),
+      createCard("p2-discard-1-2", 4, "Spades"),
+      createCard("p2-discard-1-1", 3, "Clubs"),
+    ],
     [],
-    [createCard("p2-discard-3-1", 9, "Hearts")],
+    [
+      createCard("p2-discard-3-3", 11, "Diamonds"),
+      createCard("p2-discard-3-2", 10, "Spades"),
+      createCard("p2-discard-3-1", 9, "Hearts"),
+    ],
     [],
   ];
 
@@ -152,7 +174,7 @@ export function createMockGameState(): GameState {
           !player2Stock.includes(c) &&
           !buildPiles.some((bp) => bp.cards.includes(c)) &&
           !player1Discards.flat().includes(c) &&
-          !player2Discards.flat().includes(c)
+          !player2Discards.flat().includes(c),
       ),
       discard: [],
     },
@@ -175,5 +197,3 @@ export function createMockGameState(): GameState {
     data: {},
   };
 }
-
-

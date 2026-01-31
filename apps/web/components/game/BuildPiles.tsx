@@ -21,7 +21,7 @@ export function BuildPiles({
       </h2>
       <div className="flex gap-4 flex-wrap justify-center">
         {buildPiles.map((pile) => {
-          const topCard = pile.cards[0];
+          const topCard = pile.cards[pile.cards.length - 1];
           const isPlayable = playablePiles.has(pile.id);
           const nextRank = pile.nextRank;
 
@@ -46,21 +46,8 @@ export function BuildPiles({
                   transition-transform
                 `}
               >
-                {pile.cards.length > 0 ? (
-                  <>
-                    {topCard && (
-                      <Card
-                        card={topCard}
-                        faceUp={true}
-                        isPlayable={isPlayable}
-                      />
-                    )}
-                    {pile.cards.length > 1 && (
-                      <div className="text-xs font-bold text-text-primary text-center">
-                        +{pile.cards.length - 1} more
-                      </div>
-                    )}
-                  </>
+                {topCard ? (
+                  <Card card={topCard} faceUp={true} isPlayable={isPlayable} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-text-subtle text-xs font-bold">
                     Empty

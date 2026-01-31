@@ -14,7 +14,10 @@ interface CardProps {
   size?: CardSize;
 }
 
-const sizeStyles: Record<CardSize, { container: string; value: string; suit: string; backIcon: string }> = {
+const sizeStyles: Record<
+  CardSize,
+  { container: string; value: string; suit: string; backIcon: string }
+> = {
   xs: {
     container: "w-8 h-11",
     value: "text-xs",
@@ -73,7 +76,6 @@ export function Card({
     bg-card
     text-foreground
     font-bold
-    brutal-shadow-sm
     ${onClick ? "cursor-pointer hover:scale-105" : ""}
     ${isPlayable ? "ring-4 ring-btn-primary ring-offset-2" : ""}
     transition-all

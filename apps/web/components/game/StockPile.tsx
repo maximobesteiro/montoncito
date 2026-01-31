@@ -35,11 +35,6 @@ export function StockPile({
           Empty
         </div>
       )}
-      {remainingCount > 1 && (
-        <div className="w-16 h-24 brutal-border bg-card-back flex items-center justify-center text-text-on-dark text-xs brutal-shadow-sm">
-          {remainingCount - 1}
-        </div>
-      )}
     </div>
   );
 }

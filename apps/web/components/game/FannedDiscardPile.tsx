@@ -41,7 +41,7 @@ export function FannedDiscardPile({ pile, pileIndex }: FannedDiscardPileProps) {
             className="absolute"
             style={{
               top: idx * 12,
-              left: 0,
+              left: idx * 8,
               zIndex: idx,
             }}
           />
