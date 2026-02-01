@@ -2,6 +2,7 @@
 
 import type { PlayerState } from "@mont/core-game";
 import { Card } from "@/components/game/Card";
+import { FannedDiscardPile } from "@/components/game/FannedDiscardPile";
 
 interface PlayerRowProps {
   player: PlayerState;
@@ -47,56 +48,15 @@ export function PlayerRow({ player, isActive }: PlayerRowProps) {
         <div className="flex-1">
           <span className="text-xs font-semibold mb-1 block">Discards</span>
           <div className="flex gap-1 flex-wrap">
-            {player.discards.map((pile, idx) => {
-              const topCard = pile[pile.length - 1];
-
-              if (isActive) {
-                // Expanded: show fanned/offset stack
-                return (
-                  <div key={idx} className="relative" style={{ width: 36 }}>
-                    {pile.slice(-3).map((card, cardIdx) => (
-                      <Card
-                        key={card.id}
-                        card={card}
-                        faceUp={true}
-                        size="xs"
-                        className="absolute"
-                        style={{
-                          top: cardIdx * 4,
-                          left: 0,
-                          zIndex: cardIdx,
-                        }}
-                      />
-                    ))}
-                    {pile.length === 0 && (
-                      <div className="w-8 h-11 brutal-border border-dashed bg-surface flex items-center justify-center text-[10px] text-text-muted">
-                        —
-                      </div>
-                    )}
-                    {/* Spacer for stacked cards */}
-                    <div
-                      style={{
-                        height: 11 + Math.min(pile.length - 1, 2) * 4 + 8,
-                      }}
-                    />
-                  </div>
-                );
-              }
-
-              // Collapsed: show only top card thumbnail
-              if (topCard) {
-                return <Card key={idx} card={topCard} faceUp={true} size="xs" />;
-              }
-
-              return (
-                <div
-                  key={idx}
-                  className="w-8 h-11 brutal-border border-dashed bg-surface flex items-center justify-center text-[10px] text-text-muted"
-                >
-                  —
-                </div>
-              );
-            })}
+            {player.discards.map((pile, idx) => (
+              <FannedDiscardPile
+                key={idx}
+                pile={pile}
+                pileIndex={idx}
+                size="xs"
+                showLabel={false}
+              />
+            ))}
           </div>
         </div>
       </div>
