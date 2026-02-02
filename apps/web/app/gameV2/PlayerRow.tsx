@@ -1,7 +1,7 @@
 "use client";
 
 import type { PlayerState } from "@mont/core-game";
-import { Card } from "@/components/game/Card";
+import { Pile } from "@/components/game/Pile";
 import { FannedDiscardPile } from "@/components/game/FannedDiscardPile";
 
 interface PlayerRowProps {
@@ -10,7 +10,6 @@ interface PlayerRowProps {
 }
 
 export function PlayerRow({ player, isActive }: PlayerRowProps) {
-  const topStockCard = player.stock.faceDown[player.stock.faceDown.length - 1];
   const stockCount = player.stock.faceDown.length;
 
   return (
@@ -32,17 +31,11 @@ export function PlayerRow({ player, isActive }: PlayerRowProps) {
 
       {/* Stock: top card + count */}
       <div className="flex items-start gap-3">
-        <div className="flex flex-col items-center">
-          <span className="text-xs font-semibold mb-1">Stock</span>
-          {topStockCard ? (
-            <Card card={topStockCard} faceUp={true} size="sm" />
-          ) : (
-            <div className="w-10 h-14 brutal-border border-dashed bg-surface flex items-center justify-center text-xs text-text-muted">
-              —
-            </div>
-          )}
-          <span className="text-xs mt-1 font-bold">{stockCount}</span>
-        </div>
+        <Pile
+          cards={player.stock.faceDown}
+          size="sm"
+          label={`Stock (${stockCount})`}
+        />
 
         {/* Discard piles */}
         <div className="flex-1">

@@ -1,16 +1,19 @@
 "use client";
 
 import type { BuildPile } from "@mont/core-game";
-import { Card } from "./Card";
+import type { CardSize } from "./Card";
+import { Pile } from "./Pile";
 
 interface BuildPilesProps {
   buildPiles: BuildPile[];
+  size?: CardSize;
   onPileClick?: (buildId: string) => void;
   playablePiles?: Set<string>;
 }
 
 export function BuildPiles({
   buildPiles,
+  size = "md",
   onPileClick,
   playablePiles = new Set(),
 }: BuildPilesProps) {
@@ -21,39 +24,30 @@ export function BuildPiles({
       </h2>
       <div className="flex gap-4 flex-wrap justify-center">
         {buildPiles.map((pile) => {
-          const topCard = pile.cards[pile.cards.length - 1];
           const isPlayable = playablePiles.has(pile.id);
           const nextRank = pile.nextRank;
+          const label = `${pile.id} ${nextRank ? `→ ${nextRank}` : "(Complete)"}`;
 
           return (
             <div
               key={pile.id}
-              className="flex flex-col items-center gap-2"
+              className={`
+                brutal-border
+                ${isPlayable ? "border-btn-primary" : ""}
+                bg-surface
+                p-2
+                brutal-shadow-sm
+                ${onPileClick ? "cursor-pointer hover:scale-105" : ""}
+                transition-transform
+              `}
               onClick={onPileClick ? () => onPileClick(pile.id) : undefined}
             >
-              <div className="text-sm font-bold brutal-border px-2 py-1 bg-card">
-                {pile.id} {nextRank ? `→ ${nextRank}` : "(Complete)"}
-              </div>
-              <div
-                className={`
-                  min-w-20 min-h-28
-                  brutal-border ${isPlayable ? "border-btn-primary" : ""}
-                  bg-surface
-                  p-2
-                  flex flex-col gap-1
-                  brutal-shadow-sm
-                  ${onPileClick ? "cursor-pointer hover:scale-105" : ""}
-                  transition-transform
-                `}
-              >
-                {topCard ? (
-                  <Card card={topCard} faceUp={true} isPlayable={isPlayable} />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-text-subtle text-xs font-bold">
-                    Empty
-                  </div>
-                )}
-              </div>
+              <Pile
+                cards={pile.cards}
+                size={size}
+                label={label}
+                isPlayable={isPlayable}
+              />
             </div>
           );
         })}
