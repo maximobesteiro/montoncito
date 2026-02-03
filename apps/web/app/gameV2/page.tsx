@@ -23,9 +23,9 @@ export default function GameV2Page() {
   const activePlayerId = gameState.turn.activePlayer;
 
   return (
-    <div className="min-h-screen bg-muted p-4 flex flex-col lg:flex-row gap-4">
-      {/* ========== MAIN GAME AREA (left, ~70-75%) ========== */}
-      <div className="flex-1 flex flex-col gap-4 min-w-0">
+    <div className="bg-muted p-4 flex flex-col lg:flex-row gap-4">
+      {/* ========== MAIN GAME AREA (left, ~60-65%) ========== */}
+      <div className="flex-3 flex flex-col gap-4 min-w-0">
         {/* A) Build Piles (top, centered) */}
         <section className="brutal-border bg-surface p-4 brutal-shadow">
           <BuildPiles buildPiles={gameState.center.buildPiles} />
@@ -57,15 +57,15 @@ export default function GameV2Page() {
           </div>
 
           {/* B3) Player Hand (at the very bottom) */}
-          <div className="mt-auto">
+          <div className="mt-2">
             <h4 className="text-sm font-semibold mb-2">Hand</h4>
             {currentPlayer && <Hand hand={currentPlayer.hand} />}
           </div>
         </section>
       </div>
 
-      {/* ========== SIDE PANEL (right, ~25-30% / fixed width) ========== */}
-      <aside className="w-full lg:w-80 flex flex-col gap-4 lg:shrink-0">
+      {/* ========== SIDE PANEL (right, ~35-40%) ========== */}
+      <aside className="w-full lg:flex-2 flex flex-col gap-4">
         {/* C) Chat Panel (top of side panel) */}
         <GameChatPanel />
 

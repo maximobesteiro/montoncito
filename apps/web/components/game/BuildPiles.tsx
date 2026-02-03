@@ -19,9 +19,6 @@ export function BuildPiles({
 }: BuildPilesProps) {
   return (
     <div className="flex flex-col gap-4">
-      <h2 className="text-3xl font-bold text-center brutal-border px-4 py-2 bg-card inline-block mx-auto">
-        Build Piles
-      </h2>
       <div className="flex gap-4 flex-wrap justify-center">
         {buildPiles.map((pile) => {
           const isPlayable = playablePiles.has(pile.id);
