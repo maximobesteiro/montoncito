@@ -9,9 +9,9 @@ export const pileSizeConfig: Record<
   CardSize,
   { width: number; height: number; offsetY: number; offsetX: number }
 > = {
-  xs: { width: 32, height: 44, offsetY: 4, offsetX: 3 },
-  sm: { width: 40, height: 56, offsetY: 6, offsetX: 4 },
-  md: { width: 64, height: 96, offsetY: 12, offsetX: 8 },
+  xs: { width: 48, height: 64, offsetY: 18, offsetX: 0 },
+  sm: { width: 56, height: 80, offsetY: 18, offsetX: 0 },
+  md: { width: 72, height: 104, offsetY: 20, offsetX: 0 },
 };
 
 interface CardProps {
@@ -26,24 +26,33 @@ interface CardProps {
 
 const sizeStyles: Record<
   CardSize,
-  { container: string; value: string; suit: string; backIcon: string }
+  {
+    container: string;
+    value: string;
+    suit: string;
+    cornerValue: string;
+    backIcon: string;
+  }
 > = {
   xs: {
-    container: "w-8 h-11",
+    container: "w-12 h-16",
     value: "text-xs",
     suit: "text-[10px]",
+    cornerValue: "text-[9px]",
     backIcon: "text-sm",
   },
   sm: {
-    container: "w-10 h-14",
+    container: "w-14 h-20",
     value: "text-sm",
     suit: "text-xs",
+    cornerValue: "text-[10px]",
     backIcon: "text-base",
   },
   md: {
-    container: "w-16 h-24",
+    container: "w-18 h-26",
     value: "text-2xl",
     suit: "text-xl",
+    cornerValue: "text-xs",
     backIcon: "text-2xl",
   },
 };
@@ -61,7 +70,13 @@ export function Card({
     if (card.kind === "joker") {
       return "J";
     }
-    return card.rank.toString();
+    const rankLabels: Record<number, string> = {
+      1: "A",
+      11: "J",
+      12: "Q",
+      13: "K",
+    };
+    return rankLabels[card.rank] ?? card.rank.toString();
   };
 
   const displaySuit = () => {
@@ -81,7 +96,7 @@ export function Card({
 
   const baseStyles = `
     ${sizes.container}
-    flex flex-col items-center justify-center
+    relative flex flex-col items-center justify-center
     brutal-border
     bg-card
     text-foreground
@@ -111,8 +126,25 @@ export function Card({
       tabIndex={onClick ? 0 : undefined}
       style={style}
     >
-      <div className={sizes.value}>{displayValue()}</div>
-      <div className={sizes.suit}>{displaySuit()}</div>
+      <div
+        className={`absolute left-1 top-1 leading-none text-center ${sizes.cornerValue}`}
+      >
+        {displayValue()}
+        <br />
+        {displaySuit()}
+      </div>
+      <div
+        className={`absolute bottom-1 right-1 leading-none text-center rotate-180 ${sizes.cornerValue}`}
+      >
+        {displayValue()}
+        <br />
+        {displaySuit()}
+      </div>
+      <div className={`${sizes.value} text-center leading-none`}>
+        {displayValue()}
+        <br />
+        {displaySuit()}
+      </div>
     </div>
   );
 }

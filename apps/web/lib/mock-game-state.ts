@@ -4,7 +4,7 @@ function createCard(
   id: string,
   rank: Rank,
   suit: Suit,
-  baseWild?: boolean,
+  baseWild?: boolean
 ): Card {
   return { kind: "standard", id, rank, suit, baseWild };
 }
@@ -58,7 +58,7 @@ export function createMockGameState(): GameState {
     createCard("p2-stock-2", 8, "Spades"),
     createCard("p2-stock-3", 1, "Clubs"),
     ...Array.from({ length: 17 }, (_, i) =>
-      createCard(`p2-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4]!),
+      createCard(`p2-stock-${i + 4}`, ((i % 12) + 1) as Rank, suits[i % 4]!)
     ),
   ];
 
@@ -67,17 +67,17 @@ export function createMockGameState(): GameState {
     [
       createCard("p1-discard-1-3", 9, "Spades"),
       createCard("p1-discard-1-2", 8, "Hearts"),
-      createCard("p1-discard-1-1", 7, "Diamonds"),
+      createCard("p1-discard-1-1", 1, "Diamonds"),
     ],
     [createCard("p1-discard-2-1", 11, "Spades")],
     [],
     [
       createCard("p1-discard-4-6", 12, "Hearts"),
       createCard("p1-discard-4-5", 8, "Clubs"),
-      createCard("p1-discard-4-4", 5, "Diamonds"),
-      createCard("p1-discard-4-3", 5, "Spades"),
-      createCard("p1-discard-4-2", 4, "Hearts"),
-      createCard("p1-discard-4-1", 3, "Clubs"),
+      createCard("p1-discard-4-4", 10, "Diamonds"),
+      createCard("p1-discard-4-3", 11, "Spades"),
+      createCard("p1-discard-4-2", 12, "Hearts"),
+      createCard("p1-discard-4-1", 13, "Clubs"),
     ],
   ];
 
@@ -174,7 +174,7 @@ export function createMockGameState(): GameState {
           !player2Stock.includes(c) &&
           !buildPiles.some((bp) => bp.cards.includes(c)) &&
           !player1Discards.flat().includes(c) &&
-          !player2Discards.flat().includes(c),
+          !player2Discards.flat().includes(c)
       ),
       discard: [],
     },

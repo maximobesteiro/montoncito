@@ -38,23 +38,22 @@ export function FannedPile({
       <div
         className="relative"
         style={{
-          width: config.width + (visibleCards.length - 1) * config.offsetX,
+          width: config.width,
           height: config.height + (visibleCards.length - 1) * config.offsetY,
         }}
       >
         {visibleCards.map((card, idx) => (
-          <Card
+          <div
             key={card.id}
-            card={card}
-            faceUp={faceUp}
-            size={size}
             className="absolute"
             style={{
               top: idx * config.offsetY,
               left: idx * config.offsetX,
               zIndex: idx,
             }}
-          />
+          >
+            <Card card={card} faceUp={faceUp} size={size} />
+          </div>
         ))}
       </div>
     </Pile>
