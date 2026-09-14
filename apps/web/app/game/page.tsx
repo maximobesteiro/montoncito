@@ -57,7 +57,7 @@ export default function GamePage() {
           </div>
 
           {/* B3) Player Hand (at the very bottom) */}
-          <div className="mt-2">
+          <div className="mt-2 flex flex-col items-center">
             <h4 className="text-sm font-semibold mb-2">Hand</h4>
             {currentPlayer && <Hand hand={currentPlayer.hand} />}
           </div>
