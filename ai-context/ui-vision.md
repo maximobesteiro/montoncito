@@ -26,8 +26,8 @@
 ### 2. **Game Room / Board**
 - The heart of the UI — renders the current match state via **WebSocket** events.
 - Key zones:
-  - **Central Build Piles** – shared between players (1→12 sequences).
-  - **Player Area** – own stock, hand (5 cards), and 4 discard piles.
+  - **Central Build Piles** – a dynamic collection of shared 1→12 sequences.
+  - **Player Area** – own stock, Hand (5 cards), and 1–4 Discard piles.
   - **Opponent Area(s)** – compact visual of other players’ stock/discards.
 - Layout adapts fluidly between desktop and mobile; orientation awareness is required (e.g. vertical stack on mobile).
 - Core design goal: clarity of *whose turn it is* and *what moves are available*.
@@ -35,7 +35,7 @@
 ### 3. **Action Panel / Interaction Layer**
 - Displays available moves (playable cards, discard options) based on current reducer state.
 - Click-to-play (desktop) or drag-and-drop (mobile/desktop hybrid).
-- Uses optimistic UI only if latency allows safe rollback; otherwise waits for server confirmation.
+- Keeps the current Authoritative state while one Action is pending and waits for server confirmation.
 - Includes minimal **feedback cues** (pulse, color flash, outline) to show accepted/rejected moves.
 
 ### 4. **Chat & Presence**
@@ -54,8 +54,8 @@
 - Built with **Next.js (React)**, TypeScript, and TailwindCSS.
 - **Server Components** for static/lobby pages; **Client Components** for live game view.
 - **Zustand** (or similar lightweight store) to manage transient UI state.
-- WebSocket client encapsulated as a singleton service (hook-based API).
-- Shared **core-game** logic imported from local package for deterministic replay and validation.
+- The `useGameRoom(roomId)` interface hides connection, synchronization, retry, and Pending Action rules.
+- Shared **game-room** schemas and pure session transitions come from the local package; game rules remain in **core-game**.
 
 ---
 
@@ -64,9 +64,9 @@
 | Layer | Transport | Description |
 |-------|------------|--------------|
 | Lobby / Account | REST | Fetch lobbies, profiles, rulesets |
-| Game Room | WebSocket | Join room, receive `room.state` / `room.actions` events |
-| UI Actions | WebSocket | Send `action.play`, `discard`, `chat.post` |
-| Rehydration | WS reconnect or REST fallback | On refresh, load last known `room.state` |
+| Game Room | WebSocket | Sync a full Authoritative state snapshot through protocol v1 |
+| UI Actions | WebSocket | Submit one Action with `actionId` and `baseSeq` |
+| Rehydration | WebSocket | Receive a full snapshot, then retry the persisted Pending Action |
 
 ---
 

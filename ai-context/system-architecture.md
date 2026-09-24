@@ -4,13 +4,15 @@
 
 - **Domain:** turn-based multiplayer card game (_Spite & Malice_-like) with deterministic core logic.
 - **Authoritative server:** the backend is the single source of truth; clients are thin.
-- **Deterministic engine:** `core-game` package is pure/state-transition based (given `state + action -> newState`).
+- **Deterministic engine:** `core-game` package is pure/state-transition based (given `state + action -> newState`). Random operations consume versioned generator state retained in authoritative game state.
 - **Low-latency UX:** live play & spectating use WebSockets; everything else prefers simple, cacheable REST.
 
 ## 2) Apps & Packages
 
 - **`packages/core-game` (TS lib)**
   - Pure rules & reducers. No I/O. Used by server for validation/simulation and optionally by clients for local previews.
+- **`packages/game-room` (TS lib)**
+  - Protocol-v1 runtime schemas and pure Game room session transitions. Depends on `core-game` and contains no React, Socket.IO, NestJS, or storage code.
 - **`apps/server` (Node/NestJS)**
   - Exposes **REST** for auth, profiles, lobby/matchmaking, persistence, config.
   - Hosts **WebSocket gateway** for rooms, real-time actions, presence, and state fan-out.
@@ -47,11 +49,12 @@
 **Rooms (metadata)**
 
 - `GET /rooms/{id}` – summary (players, ruleset, createdAt, status).
+- `POST /rooms/{id}/socket-token` – renew a token for an existing member without changing membership.
 - `GET /rooms/{id}/history?cursor=…` – paginated action log / snapshots.
 
 **Config & Static**
 
-- `GET /rulesets` – server-supported presets (stock size, jokers, pile count).
+- `GET /rulesets` – server-supported rules, including the configurable Discard pile count.
 - `GET /health` / `GET /version` – readiness & deploy info.
 
 > **Guideline:** REST calls must **not** mutate live room state (except lobby→room promotion). All in-room gameplay goes through WS.
@@ -60,99 +63,98 @@
 
 **Connection**
 
-- `connect` with JWT (Bearer in query/header).
+- `connect` with a protocol-v1 JWT that identifies the Game room and player.
 - Server assigns **room shard** and enforces **sticky session** (LB affinity) if needed.
 
 **Inbound events (client → server)**
 
-- `room.join` `{ roomId }`
-- `room.leave` `{ roomId }`
-- `action.play` `{ roomId, actionId, actorId, payload }`
-  - `actionId` is a **monotonic client nonce**; server maps to a **server sequence**.
-- `chat.post` `{ roomId, text }`
-- `presence.ping` `{ roomId }` (lightweight keep-alive/AFK signal)
+- Game room sync request with protocol version only; room and player come from the authenticated socket.
+- Game Action `{ version: 1, actionId, baseSeq, action }`.
+  - `actionId` is a random UUID scoped to the authenticated player in that Game room.
+- `chat.post` `{ text }`; the Game room comes from the authenticated socket.
+- `presence.ping`; the Game room comes from the authenticated socket.
 
 **Outbound events (server → clients in room)**
 
-- `room.state` `{ seq, fullState | patch }` – authoritative snapshot or CRDT-friendly patch
-- `room.actions` `{ fromSeq, actions[] }` – ordered, validated action stream
+- Full synchronization snapshot `{ version: 1, seq, state }`, targeted to the joining player.
+- Accepted Action result `{ version: 1, actionId, seq, state }`, broadcast once to the Game room.
+- Rejected Action result `{ version: 1, actionId, code, seq, state }`, targeted to the submitting player.
+- Protocol error for malformed or unsupported frames; this is not a Rejected Action and does not advance `seq`.
 - `presence.update` `{ players[] }`
 - `chat.message` `{ message }`
-- `room.system` `{ type, message }` – start/clear pile, win, warnings, etc.
 
-> **Ordering & idempotency:** server assigns **`seq`** to each accepted action; replays are safe; duplicates are ignored by `(roomId, actorId, actionId)`.
+> **Ordering & idempotency:** the server serializes Actions per Game room. It assigns `seq` only to Accepted Actions and retains every outcome by `(roomId, playerId, actionId)` for the in-memory Game room lifetime. Duplicate lookup occurs before stale-sequence validation.
 
 ## 6) Room Lifecycle (Happy Path)
 
-1. Player hits REST `POST /lobbies/{id}/join`.
-2. Host triggers `POST /lobbies/{id}/start` → server allocates `roomId`.
-3. Client opens WS, sends `room.join { roomId }`.
-4. Server broadcasts initial `room.state`.
-5. Players send `action.play` events; server:
-   - Validates with `core-game` reducer.
-   - Mutates authoritative room state.
-   - Emits `room.actions` and updated `room.state`.
-6. On win condition, server emits `room.system { type: "gameEnded" }`, persists final snapshot.
+1. A player joins a Lobby through REST.
+2. The owner starts it through an idempotent REST operation. Deterministic setup commits before the Lobby becomes a Game room with Sequence number zero.
+3. The Lobby broadcasts the Game room ID. Clients navigate to `/game/[roomId]`.
+4. Each client obtains a Game room token, opens Socket.IO, and requests synchronization.
+5. The server verifies current membership and returns a full Authoritative state snapshot.
+6. A player submits an Action with a random Action ID and Base sequence number.
+7. The server checks membership, deduplication, staleness, and `core-game` validation, then atomically commits state, Sequence number, and outcome before delivery.
+8. A finished Game room remains connected and read-only.
 
 ## 7) State, Persistence & Scaling
 
 - **Ephemeral state (rooms):**
-  - Kept in memory of the owning **room worker** (process/pod).
-  - Optionally mirrored to **Redis** for cross-pod pub/sub (spectators, admin taps).
-- **Persistence:**
-  - Postgres (or similar) for accounts, lobby records, final results, action logs/snapshots.
-  - **Event-sourced** room log is favored (append-only actions + periodic snapshots).
+  - Authoritative state, Sequence number, and Action outcomes remain in one server process for the current implementation.
+  - A process restart loses active Game rooms. Durable recovery is future work.
 - **Sharding:**
   - Consistent hashing on `roomId` → worker partition.
   - **Sticky WS** via LB cookie/IP hash to keep flows on the owning worker.
 - **Backpressure & fan-out:**
-  - Bounded queues per room.
-  - Coalesce multiple quick actions into a single `room.state` patch if needed.
+  - One serialized Action queue per Game room.
+  - Every Accepted Action sends one full-state broadcast.
 
 ## 8) Security & Integrity
 
-- **JWT auth** on both REST and WS handshake; short TTL + refresh.
-- **Room ACLs**: only seated players can `action.play`; spectators are read-only.
+- **Signed guest identity** on REST and the WS handshake; short-lived Game room tokens support renewal.
+- **Room ACLs**: the server verifies current membership on every sync and Action.
 - **Action guards**:
   - Schema validation (Zod/DTOs).
   - Turn ownership check.
   - Deterministic reducer application; reject on invalid transition.
 - **Anti-replay / ordering**:
-  - `(roomId, actorId, actionId)` uniqueness; server assigns `seq`.
+  - `(roomId, playerId, actionId)` uniqueness; server assigns `seq`.
 - **Rate limits**:
   - REST: IP/user burst + sustained.
   - WS: per-room action rate; disconnect on abuse.
-- **Audit**: append-only action log with server time and `seq`.
+- **Audit**: structured logs include `seq`, room ID, player ID, Action ID, and outcome. Durable Action logs are future work.
 
 ## 9) Failure, Reconnect & Consistency
 
-- **Client reconnects** with last seen `seq` → server resends missing `room.actions` or a fresh `room.state` snapshot.
-- **At-least-once** delivery semantics on outgoing; **idempotent** reducer ensures no double-apply.
-- **Graceful owner failover**: if a worker dies, reload last snapshot + actions from durable store / Redis stream.
+- A reconnect always receives a full snapshot before resubmitting one Pending Action from same-tab session storage.
+- A matching duplicate returns its retained outcome with current Authoritative state and never applies twice.
+- Equal Sequence numbers with different Authoritative state are a protocol failure.
+- Temporary token-renewal failure retains the Pending Action and retries without changing Authoritative state.
 
 ## 10) Versioning & Compatibility
 
-- **Protocol version** carried in WS `room.join` and REST `Accept` header.
+- **Protocol version 1** is required by the shared Game room schemas.
 - Server advertises supported versions in `GET /version`.
-- Breaking changes gated by feature flags and dual codecs during rollout.
+- Unsupported protocol versions fail before Action processing.
 
 ## 11) Observability
 
 - **Metrics**: rooms active, messages/sec, action latency P50/P95, drop/reject rates, reconnects, DB/Redis latency.
-- **Logs**: structured per action with `seq`, `roomId`, `actorId`, reducer result.
+- **Logs**: structured per Action with `seq`, room ID, player ID, Action ID, and reducer result.
 - **Tracing**: REST spans + WS spans (join → action → broadcast).
 
 ## 12) Non-Goals (explicitly out for now)
 
 - P2P networking, offline turns, and client-side authority.
 - In-room REST mutations (all gameplay is WS).
+- Optimistic gameplay state and rollback.
+- Durable recovery after a server process restart.
 - Arbitrary card animations/state on server (presentation is client concern).
 
 ## 13) Minimal Contracts (for agents)
 
 - **REST:** stable resource paths; JSON; 200/4xx/5xx; ETags on GET where useful.
-- **WS:** newline-delimited or JSON frames; every accepted action yields an incremented `seq`; snapshots include `seq`.
-- **Core invariants:** single active turn owner; build piles ascend 1→12; completing 12 clears; winner = first empty stock.
+- **WS:** Socket.IO frames validated by protocol-v1 runtime schemas; every Accepted Action yields one incremented `seq` and full-state broadcast.
+- **Core invariants:** one active Turn owner; dynamic Build piles ascend 1→12; completing 12 recycles and removes the pile; Win condition follows the canonical domain context.
 
 ---
 
