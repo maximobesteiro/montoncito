@@ -1,5 +1,6 @@
 import { ApplyResult, GameEvent, GameState } from "../state/types";
 import { firstPlayerId } from "../state/selectors";
+import { drawToHandUpTo } from "./draw";
 
 function dealStockRoundRobin(s: GameState): GameState {
   const per = s.rules.stockSize;
@@ -27,30 +28,6 @@ function dealStockRoundRobin(s: GameState): GameState {
   }
 
   return { ...s, byId, deck: { ...s.deck, drawPile: deck } };
-}
-
-function drawToHandUpTo(
-  s: GameState,
-  pid: string,
-): { state: GameState; drew: number } {
-  const byId = { ...s.byId };
-  const ps = byId[pid];
-  if (!ps) return { state: s, drew: 0 };
-
-  let deck = s.deck.drawPile.slice();
-  const target = s.rules.handSize;
-  const hand = ps.hand.cards.slice();
-  let drew = 0;
-
-  while (hand.length < target) {
-    const c = deck.shift();
-    if (!c) break;
-    hand.push(c);
-    drew++;
-  }
-
-  byId[pid] = { ...ps, hand: { cards: hand } };
-  return { state: { ...s, byId, deck: { ...s.deck, drawPile: deck } }, drew };
 }
 
 export function startGame(state: GameState): ApplyResult {

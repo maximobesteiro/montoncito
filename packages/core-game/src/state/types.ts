@@ -16,6 +16,13 @@ export interface Deck {
   recyclePile: Card[];
 }
 
+/** Retained state for deterministic random operations. */
+export interface RandomGeneratorState {
+  algorithm: "mulberry32-v1";
+  seed: number;
+  cursor: number;
+}
+
 /** Shared Build piles ascend from 1 through 12. */
 export interface BuildPile {
   id: string;
@@ -93,7 +100,7 @@ export interface GameState {
   nextBuildPileId: number;
 
   winner?: PlayerId | null;
-  rngSeed: number;
+  rng: RandomGeneratorState;
   rules: RulesConfig;
 
   data?: Record<string, unknown>; // extension hook

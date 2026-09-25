@@ -88,7 +88,7 @@ describe('RoomsController', () => {
       center: { buildPiles: [] },
       nextBuildPileId: 1,
       winner: null,
-      rngSeed: 123456789,
+      rng: { algorithm: "mulberry32-v1", seed: 123456789, cursor: 0 },
       rules: {
         handSize: 5,
         stockSize: 20,

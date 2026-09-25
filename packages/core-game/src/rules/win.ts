@@ -105,8 +105,8 @@ export function checkGameOver(state: GameState): string | null {
     if (ps && ps.stock.faceDown.length === 0) return pid;
   }
 
-  // Rule 2: deck empty + no legal moves for anyone
-  if (state.deck.drawPile.length === 0) {
+  // Rule 2: no cards left to draw or recycle + no legal moves for anyone
+  if (state.deck.drawPile.length === 0 && state.deck.recyclePile.length === 0) {
     let anyCanPlay = false;
 
     for (let i = 0; i < state.players.length; i++) {

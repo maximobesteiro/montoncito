@@ -121,6 +121,70 @@ describe("explicit core outcomes", () => {
     ]);
   });
 
+  it("refills from the Draw pile without consuming random generator state", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [ace("held")];
+    state.deck.drawPile = [ace("draw-1"), ace("draw-2")];
+    state.deck.recyclePile = [ace("recycle")];
+    const before = structuredClone(state);
+    freeze(state);
+
+    const result = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.byId.P1!.hand.cards.map(({ id }) => id)).toEqual([
+      "held",
+      "draw-1",
+    ]);
+    expect(result.state.deck.drawPile.map(({ id }) => id)).toEqual(["draw-2"]);
+    expect(result.state.deck.recyclePile.map(({ id }) => id)).toEqual(["recycle"]);
+    expect(result.state.rng).toEqual(before.rng);
+    expect(state).toEqual(before);
+  });
+
+  it("reshuffles the Recycle pile deterministically when the Draw pile empties", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [
+      ace("recycle-1"),
+      ace("recycle-2"),
+      ace("recycle-3"),
+    ];
+    const before = structuredClone(state);
+    freeze(state);
+
+    const first = applyMove(state, { kind: "DRAW_TO_HAND" });
+    const second = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(first.accepted).toBe(true);
+    expect(first).toEqual(second);
+    expect(first.state.byId.P1!.hand.cards).toHaveLength(2);
+    expect(first.state.deck.drawPile).toHaveLength(1);
+    expect(first.state.deck.recyclePile).toEqual([]);
+    expect(first.state.rng).toMatchObject({ algorithm: "mulberry32-v1", cursor: 2 });
+    expect(state).toEqual(before);
+  });
+
+  it("ends the game only when both Draw and Recycle piles are empty", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [];
+    state.byId.P1!.stock.faceDown = [
+      { kind: "standard", id: "P1-stock", rank: 5, suit: "Hearts" },
+    ];
+    state.byId.P2!.stock.faceDown = [
+      { kind: "standard", id: "P2-stock", rank: 6, suit: "Hearts" },
+    ];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [];
+
+    const result = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.phase).toBe("gameover");
+    expect(result.state.winner).toBe("P1");
+  });
+
   it.each([
     ["hand", (state: GameState) => ({ kind: "PLAY_HAND_TO_BUILD" as const, cardId: "H1", target: "new" as const })],
     ["stock", (_state: GameState) => ({ kind: "PLAY_STOCK_TO_BUILD" as const, target: "new" as const })],

@@ -181,7 +181,7 @@ export function createMockGameState(): GameState {
     center: { buildPiles },
     nextBuildPileId: buildPiles.length + 1,
     winner: null,
-    rngSeed: 123456789,
+    rng: { algorithm: "mulberry32-v1", seed: 123456789, cursor: 0 },
     rules: {
       handSize: 5,
       stockSize: 20,

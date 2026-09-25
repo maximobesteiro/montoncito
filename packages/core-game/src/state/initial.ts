@@ -6,7 +6,6 @@ import {
   PlayerState,
   RulesConfig,
 } from "./types";
-import { makeRng } from "../utils/random";
 
 export function createInitialState(
   players: { id: PlayerId; name?: string }[],
@@ -24,10 +23,7 @@ export function createInitialState(
     enableCardWildFlag: opts?.enableCardWildFlag ?? true,
   };
 
-  const rngSeed = opts?.seed ?? 123456789;
-  // Note: we expect deck to already be shuffled by caller if desired.
-  // rng is here for future use if you later move shuffling inside.
-  makeRng(rngSeed);
+  const seed = opts?.seed ?? 123456789;
 
   const byId: Record<PlayerId, PlayerState> = {};
   for (const p of players) {
@@ -57,7 +53,7 @@ export function createInitialState(
     center: { buildPiles },
     nextBuildPileId: 1,
     winner: null,
-    rngSeed,
+    rng: { algorithm: "mulberry32-v1", seed, cursor: 0 },
     rules,
     data: {},
   };
