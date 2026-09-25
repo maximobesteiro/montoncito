@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import type { Card } from "@mont/core-game";
 import { useGameRoom } from "@/lib/use-game-room";
 
 export default function GameRoomPage() {
@@ -77,6 +78,11 @@ export default function GameRoomPage() {
                   <p className="text-sm">
                     Hand: {player?.hand.cards.length ?? 0} cards
                   </p>
+                  <p className="text-sm">
+                    Discards:{" "}
+                    {player?.discards.map(describeDiscard).join(" · ") ??
+                      "unavailable"}
+                  </p>
                 </li>
               );
             })}
@@ -88,4 +94,14 @@ export default function GameRoomPage() {
       </div>
     </main>
   );
+}
+
+function describeDiscard(pile: Card[], index: number): string {
+  const topCard = pile.at(-1);
+  const value = !topCard
+    ? "empty"
+    : topCard.kind === "joker"
+      ? "Joker"
+      : topCard.rank;
+  return `${index + 1}: ${value}`;
 }

@@ -116,11 +116,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       session.status === "failed" ? "failed" : connectionStatus,
     problem:
       session.status === "failed"
-        ? formatProtocolProblem(session.problem)
+        ? session.problem.message
         : connectionProblem,
   };
-}
-
-function formatProtocolProblem(problem: ProtocolFailure): string {
-  return problem.message;
 }

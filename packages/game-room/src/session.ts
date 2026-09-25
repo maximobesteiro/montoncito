@@ -28,11 +28,10 @@ export function receiveGameRoomSnapshot(
   if (session.status === "failed") return session;
   const result = SyncSnapshotSchema.safeParse(input);
   if (!result.success) {
-    return failGameRoomSession(session, {
-      version: 1,
-      code: "MALFORMED_MESSAGE",
-      message: "Received an invalid synchronization snapshot",
-    });
+    return failMalformedMessage(
+      session,
+      "Received an invalid synchronization snapshot",
+    );
   }
   return {
     status: "synchronized",
@@ -48,11 +47,10 @@ export function receiveGameRoomUpdate(
   if (session.status === "failed") return session;
   const result = RoomStateUpdateSchema.safeParse(input);
   if (!result.success) {
-    return failGameRoomSession(session, {
-      version: 1,
-      code: "MALFORMED_MESSAGE",
-      message: "Received an invalid Game room state update",
-    });
+    return failMalformedMessage(
+      session,
+      "Received an invalid Game room state update",
+    );
   }
   if (session.status === "synchronized" && result.data.seq <= session.seq) {
     return session;
@@ -69,4 +67,15 @@ export function failGameRoomSession(
   problem: ProtocolFailure,
 ): GameRoomSession {
   return { status: "failed", problem };
+}
+
+function failMalformedMessage(
+  session: GameRoomSession,
+  message: string,
+): GameRoomSession {
+  return failGameRoomSession(session, {
+    version: 1,
+    code: "MALFORMED_MESSAGE",
+    message,
+  });
 }
