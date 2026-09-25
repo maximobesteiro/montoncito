@@ -1,6 +1,6 @@
 import { ApplyResult, GameEvent, GameState } from "../state/types";
 import { firstPlayerId } from "../state/selectors";
-import { drawToHandUpTo } from "./draw";
+import { refillHand } from "./draw";
 
 function dealStockRoundRobin(s: GameState): GameState {
   const per = s.rules.stockSize;
@@ -45,15 +45,11 @@ export function startGame(state: GameState): ApplyResult {
   };
 
   // Draw initial hand for active player
-  const { state: s2, drew } = drawToHandUpTo(s, s.turn.activePlayer);
-  s = s2;
+  const refill = refillHand(s, s.turn.activePlayer);
+  s = refill.state;
 
   events.push({ type: "GameStarted" });
-  if (drew > 0)
-    events.push({
-      type: "DrewToHand",
-      payload: { player: s.turn.activePlayer, count: drew },
-    });
+  if (refill.drew > 0) events.push(refill.event);
 
   return { accepted: true, state: s, events };
 }

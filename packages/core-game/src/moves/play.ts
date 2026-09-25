@@ -2,7 +2,7 @@ import { ApplyResult, BuildPile, BuildPileTarget, Card, GameEvent, GameState, Ra
 import { getActivePlayer, getBuildPile, computeNextRankAfterPlace } from "../state/selectors";
 import { isWild } from "../utils/isWild";
 import { rejectMove } from "../state/reject";
-import { drawToHandUpTo } from "./draw";
+import { refillHand } from "./draw";
 import { must } from "../utils/guards";
 
 function newBuildId(state: GameState): string {
@@ -99,12 +99,9 @@ function playFrom(state: GameState, source: Source, target: BuildPileTarget, car
   let finalState = { ...placed.state, byId };
   const events: GameEvent[] = [{ type: "PlayedToBuild", payload: { player: active.id, from: source, cardId: card!.id, buildId: placed.buildId } }, ...placed.events];
   if (source === "hand" && finalState.byId[active.id]?.hand.cards.length === 0) {
-    const refill = drawToHandUpTo(finalState, active.id);
+    const refill = refillHand(finalState, active.id);
     finalState = refill.state;
-    events.push({
-      type: "DrewToHand",
-      payload: { player: active.id, count: refill.drew },
-    });
+    events.push(refill.event);
   }
   return { accepted: true, state: finalState, events };
 }
