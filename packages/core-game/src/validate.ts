@@ -37,7 +37,9 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const active = getActivePlayer(state);
       const card = active.hand.cards.find((c) => c.id === move.cardId);
       if (!card) return "Card not in hand";
-      const pile = getBuildPile(state, move.buildId);
+      const target = move.target;
+      if (target === "new") return card.kind === "standard" && card.rank === 1 || isWild(card, state.rules) ? null : "Card does not match build requirement";
+      const pile = getBuildPile(state, target);
       if (
         !matchesRequired(
           card,
@@ -56,7 +58,9 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const active = getActivePlayer(state);
       const top = active.stock.faceDown[active.stock.faceDown.length - 1];
       if (!top) return "No stock card to play";
-      const pile = getBuildPile(state, move.buildId);
+      const target = move.target;
+      if (target === "new") return top.kind === "standard" && top.rank === 1 || isWild(top, state.rules) ? null : "Stock card does not match build requirement";
+      const pile = getBuildPile(state, target);
       if (
         !matchesRequired(
           top,
@@ -82,7 +86,9 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const top = source[source.length - 1];
       if (!top) return "Discard pile is empty";
 
-      const pile = getBuildPile(state, move.buildId);
+      const target = move.target;
+      if (target === "new") return top.kind === "standard" && top.rank === 1 || isWild(top, state.rules) ? null : "Discard card does not match build requirement";
+      const pile = getBuildPile(state, target);
       if (
         !matchesRequired(
           top,

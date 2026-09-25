@@ -142,7 +142,7 @@ describe("play to build flow (hand, wild king, stock)", () => {
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: c1.id,
-      buildId: "B1",
+      target: "B1",
     });
     s = r.state;
     expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(2);
@@ -151,7 +151,7 @@ describe("play to build flow (hand, wild king, stock)", () => {
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: c2.id,
-      buildId: "B1",
+      target: "B1",
     });
     s = r.state;
     expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(3);
@@ -160,13 +160,13 @@ describe("play to build flow (hand, wild king, stock)", () => {
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: ck.id,
-      buildId: "B1",
+      target: "B1",
     });
     s = r.state;
     expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(4);
 
     // Now play from STOCK: P1 stock top is rank 4; should match nextRank=4
-    r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", buildId: "B1" });
+    r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", target: "B1" });
     s = r.state;
     expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(5);
 
