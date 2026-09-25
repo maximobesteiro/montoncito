@@ -76,13 +76,6 @@ export const SyncRequestSchema = z
   })
   .strict();
 
-export const SyncRequestMessageSchema = z
-  .object({
-    type: z.literal("room.sync.request"),
-    payload: z.unknown(),
-  })
-  .strict();
-
 const VersionedAuthoritativeStateSchema = z.object({
   version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
   seq: z.number().int().nonnegative(),
@@ -91,13 +84,6 @@ const VersionedAuthoritativeStateSchema = z.object({
 
 export const SyncSnapshotSchema = VersionedAuthoritativeStateSchema;
 export const RoomStateUpdateSchema = VersionedAuthoritativeStateSchema;
-
-export const SyncSnapshotMessageSchema = z
-  .object({
-    type: z.literal("room.sync.snapshot"),
-    payload: SyncSnapshotSchema,
-  })
-  .strict();
 
 export const ProtocolFailureCodeSchema = z.enum([
   "UNSUPPORTED_VERSION",
@@ -112,13 +98,6 @@ export const ProtocolFailureSchema = z
     version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
     code: ProtocolFailureCodeSchema,
     message: z.string().min(1),
-  })
-  .strict();
-
-export const ProtocolFailureMessageSchema = z
-  .object({
-    type: z.literal("protocol.error"),
-    payload: ProtocolFailureSchema,
   })
   .strict();
 
