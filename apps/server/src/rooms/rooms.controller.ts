@@ -121,6 +121,26 @@ export class RoomsController {
     return { ...roomView, wsJoinToken };
   }
 
+  @Post(':id/socket-token')
+  public createGameRoomSocketToken(
+    @Param('id') roomId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new Error('Missing X-Client-Id header');
+    const room = this.rooms.getById(roomId);
+    if (!room.players.some((player) => player.id === clientId)) {
+      throw new ForbiddenException('Only room members can connect to the game');
+    }
+    if (!room.gameId) throw new ConflictException('Game has not started');
+
+    const wsSecret = this.configService.get<string>('WS_SECRET');
+    if (!wsSecret) throw new Error('WS_SECRET not configured');
+    const wsJoinToken = jwt.sign({ roomId, playerId: clientId }, wsSecret, {
+      expiresIn: '10m',
+    });
+    return { wsJoinToken };
+  }
+
   @Post(':id/leave')
   public leave(
     @Param('id') roomId: string,

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@mont/core-game": "workspace:*",
+    "@mont/game-room": "workspace:*",
     "@mont/ui": "workspace:*",
     "next": "^16.0.3",
     "react": "^19.1.0",

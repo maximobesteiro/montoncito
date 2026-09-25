@@ -1,0 +1,10 @@
+{
+  "extends": "../../packages/typescript-config/react-library.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["vitest/globals"]
+  },
+  "include": ["src", "test"]
+}

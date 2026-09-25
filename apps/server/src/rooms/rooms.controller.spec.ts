@@ -6,6 +6,7 @@ import { RoomsService } from './rooms.service';
 import { RoomsGateway } from '../ws/rooms.gateway';
 import { GameService } from '../game/game.service';
 import { ProfilesService } from '../profiles/profiles.service';
+import jwt from 'jsonwebtoken';
 
 let wsGateway: {
   emitStateUpdate: jest.Mock;
@@ -543,6 +544,44 @@ describe('RoomsController', () => {
         'Missing X-Client-Id header',
       );
       expect(mockRoomsService.getById).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createGameRoomSocketToken', () => {
+    it('issues a reconnect token for an existing Game room member', () => {
+      roomsService.getById.mockReturnValue({
+        ...mockRoom,
+        status: 'in_progress',
+        gameId: 'game-123',
+        players: [
+          { id: 'client-1', isOwner: true, ready: false },
+          { id: 'client-2', isOwner: false, ready: true },
+        ],
+      });
+
+      const result = controller.createGameRoomSocketToken('room-123', 'client-2');
+      const claims = jwt.verify(result.wsJoinToken, 'test-secret') as {
+        roomId: string;
+        playerId: string;
+      };
+
+      expect(claims).toMatchObject({ roomId: 'room-123', playerId: 'client-2' });
+    });
+
+    it('rejects players who are no longer members', () => {
+      roomsService.getById.mockReturnValue(mockRoom);
+
+      expect(() =>
+        controller.createGameRoomSocketToken('room-123', 'client-2'),
+      ).toThrow(ForbiddenException);
+    });
+
+    it('requires the Game room to have started', () => {
+      roomsService.getById.mockReturnValue(mockRoom);
+
+      expect(() =>
+        controller.createGameRoomSocketToken('room-123', 'client-1'),
+      ).toThrow(ConflictException);
     });
   });
 
