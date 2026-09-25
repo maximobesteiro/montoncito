@@ -50,11 +50,11 @@ describe("game flow (start → draw → discard auto-ends turn)", () => {
 
     let s = createInitialState(players, deck, { ...rules, seed: 42 });
 
-    // Start game (deals stock, initializes build piles, draws to P1 hand)
+    // Start game (deals stock and draws P1's Hand; Build piles start empty)
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
-    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
     expect(s.phase).toBe("turn");
+    expect(s.center.buildPiles).toEqual([]);
     expect(s.turn.activePlayer).toBe("P1");
 
     // Ensure P1 can draw up to full hand (if not already)
@@ -113,14 +113,13 @@ describe("play to build flow (hand, wild king, stock)", () => {
     // Build initial state (deck already in the desired order; no shuffle here)
     let s = createInitialState(players, deck, { ...rules, seed: 42 });
 
-    // Start game: deals stock, creates build piles, draws to P1 hand
+    // Start game: deals stock and draws P1's Hand without pre-creating Build piles
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
-    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
 
     expect(s.phase).toBe("turn");
     expect(s.turn.activePlayer).toBe("P1");
-    expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(1);
+    expect(s.center.buildPiles).toEqual([]);
 
     // Sanity: P1 should have drawn (up to handSize) and stock should have exactly one card
     expect(s.byId["P1"].hand.cards.length).toBeGreaterThanOrEqual(3);
@@ -132,13 +131,14 @@ describe("play to build flow (hand, wild king, stock)", () => {
     const c2 = hand.find((c) => c.kind === "standard" && c.rank === 2)!;
     const ck = hand.find((c) => c.kind === "standard" && c.rank === 13)!; // King (wild)
 
-    // Play 1 -> B1
+    // Play 1 to start the first dynamic Build pile
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: c1.id,
-      target: "B1",
+      target: "new",
     });
     s = r.state;
+    expect(s.center.buildPiles[0]?.id).toBe("B1");
     expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(2);
 
     // Play 2 -> B1
