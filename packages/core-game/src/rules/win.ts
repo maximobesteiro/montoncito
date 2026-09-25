@@ -44,7 +44,6 @@ function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean {
   if (candidates.length === 0) return false;
 
   if (
-    state.center.buildPiles.length === 0 &&
     candidates.some(
       (card) =>
         (card.kind === "standard" && card.rank === 1) ||

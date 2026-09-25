@@ -190,6 +190,30 @@ describe("explicit core outcomes", () => {
     expect(result.state.winner).toBe("P1");
   });
 
+  it("does not end the game while a card can start another Build pile", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [ace("starter")];
+    state.byId.P1!.stock.faceDown = [
+      { kind: "standard", id: "P1-stock", rank: 5, suit: "Hearts" },
+    ];
+    state.byId.P2!.stock.faceDown = [
+      { kind: "standard", id: "P2-stock", rank: 6, suit: "Hearts" },
+    ];
+    state.center.buildPiles = [
+      {
+        id: "B1",
+        cards: [{ kind: "standard", id: "existing", rank: 1, suit: "Hearts" }],
+        nextRank: 2,
+      },
+    ];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [];
+
+    const result = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(result.state.phase).toBe("turn");
+  });
+
   it("breaks exhausted-pile ties by Hand, Discard pile, then player order", () => {
     const state = turn();
     state.byId.P1!.hand.cards = [
