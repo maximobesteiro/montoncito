@@ -1,5 +1,6 @@
 import { Card, GameState, PlayerId, Rank } from "../state/types";
 import { isWild } from "../utils/isWild";
+import { hasRefillSource } from "../state/selectors";
 
 /**
  * Returns true if `card` can satisfy the `required` rank for a build pile
@@ -128,7 +129,7 @@ export function checkGameOver(state: GameState): string | null {
   }
 
   // Rule 2: no cards left to draw or recycle + no legal moves for anyone
-  if (state.deck.drawPile.length === 0 && state.deck.recyclePile.length === 0) {
+  if (!hasRefillSource(state)) {
     let anyCanPlay = false;
 
     for (let i = 0; i < state.players.length; i++) {

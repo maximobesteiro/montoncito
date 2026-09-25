@@ -1,5 +1,9 @@
 import { Card, GameState, Move, Rank, RuleReason } from "./state/types";
-import { getActivePlayer, getBuildPile } from "./state/selectors";
+import {
+  getActivePlayer,
+  getBuildPile,
+  hasRefillSource,
+} from "./state/selectors";
 import { isWild } from "./utils/isWild";
 import { must } from "./utils/guards";
 import { playerHasAnyPlacement } from "./rules/win";
@@ -36,7 +40,7 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       if (state.phase !== "turn") return "Not your turn";
       const active = getActivePlayer(state);
       if (active.hand.cards.length > 0) return "Hand is not empty";
-      if (state.deck.drawPile.length > 0 || state.deck.recyclePile.length > 0)
+      if (hasRefillSource(state))
         return "Hand can still be refilled";
       if (playerHasAnyPlacement(state, active.id))
         return "A legal placement remains";

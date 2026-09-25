@@ -88,6 +88,29 @@ describe("END_TURN", () => {
     expect(result.reason).toBe("Hand can still be refilled");
   });
 
+  it("rejects ending when cards remain in the Recycle pile", () => {
+    const state = {
+      ...blockedState(),
+      deck: { drawPile: [], recyclePile: [card("recycle-1", 2)] },
+    };
+
+    const result = applyMove(state, { kind: "END_TURN" });
+
+    expect(result.accepted).toBe(false);
+    if (result.accepted) return;
+    expect(result.reason).toBe("Hand can still be refilled");
+  });
+
+  it("rejects ending outside the Turn phase", () => {
+    const state = { ...blockedState(), phase: "lobby" as const };
+
+    const result = applyMove(state, { kind: "END_TURN" });
+
+    expect(result.accepted).toBe(false);
+    if (result.accepted) return;
+    expect(result.reason).toBe("Not your turn");
+  });
+
   it("rejects ending when a legal placement remains", () => {
     const state = {
       ...blockedState(),
