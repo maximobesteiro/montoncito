@@ -60,6 +60,10 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       const decoded = jwt.verify(raw, wsSecret) as Record<string, unknown>; // will throw if expired/bad
       const claims = WsJoinClaims.parse(decoded);
+      const room = this.rooms.getById(claims.roomId);
+      if (!room.players.some((player) => player.id === claims.playerId)) {
+        throw new Error('Player is no longer a member of this room');
+      }
 
       void client.join(claims.roomId);
       this.conns.set(client.id, claims);

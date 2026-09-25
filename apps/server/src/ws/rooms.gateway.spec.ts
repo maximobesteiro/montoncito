@@ -79,16 +79,14 @@ describe('Game room synchronization over Socket.IO', () => {
     client.disconnect();
   });
 
-  it('rejects synchronization without returning state to a non-member', async () => {
+  it('rejects non-members before they join room broadcasts', async () => {
     const client = await connectAs('outsider');
-    const failure = waitForEvent(client, 'protocol.error');
-    client.emit('room.sync.request', { version: 1 });
+    if (client.connected) await waitForEvent(client, 'disconnect');
 
-    await expect(failure).resolves.toMatchObject({
-      version: 1,
-      code: 'NOT_A_MEMBER',
-    });
-    client.disconnect();
+    expect(client.connected).toBe(false);
+    expect(
+      socketServer.of('/ws').adapter.rooms.get('room-1')?.has(client.id) ?? false,
+    ).toBe(false);
   });
 
   it('returns protocol failures for unsupported and malformed requests', async () => {
@@ -111,11 +109,11 @@ describe('Game room synchronization over Socket.IO', () => {
       transports: ['websocket'],
       auth: { token },
     });
+    clients.push(client);
     await new Promise<void>((resolve, reject) => {
       client.once('connect', resolve);
       client.once('connect_error', reject);
     });
-    clients.push(client);
     return client;
   }
 
