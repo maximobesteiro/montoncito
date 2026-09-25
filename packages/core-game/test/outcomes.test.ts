@@ -144,6 +144,53 @@ describe("explicit core outcomes", () => {
     expect(state).toEqual(before);
   });
 
+  it("automatically refills an active Hand emptied by a play", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [ace("play")];
+    state.deck.drawPile = [ace("refill-1"), ace("refill-2")];
+
+    const result = applyMove(state, {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "play",
+      target: "B1",
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.turn.activePlayer).toBe("P1");
+    expect(result.state.byId.P1!.hand.cards.map(({ id }) => id)).toEqual([
+      "refill-1",
+      "refill-2",
+    ]);
+    expect(result.events).toContainEqual({
+      type: "DrewToHand",
+      payload: { player: "P1", count: 2 },
+    });
+  });
+
+  it("automatically refills the next player's Hand after a discard", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [ace("discard")];
+    state.byId.P2!.hand.cards = [ace("held")];
+    state.deck.drawPile = [ace("refill")];
+
+    const result = applyMove(state, {
+      kind: "DISCARD_FROM_HAND",
+      cardId: "discard",
+      pileIndex: 0,
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.turn.activePlayer).toBe("P2");
+    expect(result.state.byId.P2!.hand.cards.map(({ id }) => id)).toEqual([
+      "held",
+      "refill",
+    ]);
+    expect(result.events).toContainEqual({
+      type: "DrewToHand",
+      payload: { player: "P2", count: 1 },
+    });
+  });
+
   it("reshuffles the Recycle pile deterministically when the Draw pile empties", () => {
     const state = turn();
     state.byId.P1!.hand.cards = [];
@@ -324,6 +371,7 @@ describe("explicit core outcomes", () => {
               suit: "Hearts",
             },
     );
+    state.byId.P1!.hand.cards.push(ace("unused"));
     // Kings and Jokers each represent the next required rank.
     let result = applyMove(state, {
       kind: "PLAY_HAND_TO_BUILD",
