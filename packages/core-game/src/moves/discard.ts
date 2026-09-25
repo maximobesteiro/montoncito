@@ -2,6 +2,7 @@ import { ApplyResult, GameEvent, GameState } from "../state/types";
 import { getActivePlayer, nextPlayerId } from "../state/selectors";
 import { must } from "../utils/guards";
 import { rejectMove } from "../state/reject";
+import { refillHand } from "./draw";
 
 export function discardFromHand(
   state: GameState,
@@ -58,6 +59,10 @@ export function discardFromHand(
     },
     { type: "TurnEnded", payload: { turn: s.turn.number } },
   );
+
+  const refill = refillHand(s, nextId);
+  s = refill.state;
+  events.push(refill.event);
 
   return { accepted: true, state: s, events };
 }

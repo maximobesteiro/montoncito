@@ -2,6 +2,8 @@ import { ApplyResult, BuildPile, BuildPileTarget, Card, GameEvent, GameState, Ra
 import { getActivePlayer, getBuildPile, computeNextRankAfterPlace } from "../state/selectors";
 import { isWild } from "../utils/isWild";
 import { rejectMove } from "../state/reject";
+import { refillHand } from "./draw";
+import { must } from "../utils/guards";
 
 function newBuildId(state: GameState): string {
   return `B${state.nextBuildPileId}`;
@@ -88,11 +90,19 @@ function playFrom(state: GameState, source: Source, target: BuildPileTarget, car
     byId = { ...byId, [active.id]: { ...active, stock: { faceDown: active.stock.faceDown.slice(0, -1) } } };
   } else if (source === "discard") {
     const discards = active.discards.slice();
-    discards[pileIndex!] = discards[pileIndex!].slice(0, -1);
+    discards[pileIndex!] = must(
+      discards[pileIndex!],
+      "Discard pile missing",
+    ).slice(0, -1);
     byId = { ...byId, [active.id]: { ...active, discards } };
   }
-  const finalState = { ...placed.state, byId };
+  let finalState = { ...placed.state, byId };
   const events: GameEvent[] = [{ type: "PlayedToBuild", payload: { player: active.id, from: source, cardId: card!.id, buildId: placed.buildId } }, ...placed.events];
+  if (source === "hand" && finalState.byId[active.id]?.hand.cards.length === 0) {
+    const refill = refillHand(finalState, active.id);
+    finalState = refill.state;
+    events.push(refill.event);
+  }
   return { accepted: true, state: finalState, events };
 }
 
