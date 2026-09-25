@@ -16,8 +16,11 @@ export function createGameRoomSession(): GameRoomSession {
 }
 
 export function markGameRoomConnected(
-  _session: GameRoomSession,
+  session: GameRoomSession,
 ): GameRoomSession {
+  if (session.status === "synchronized" || session.status === "failed") {
+    return session;
+  }
   return { status: "awaiting_snapshot" };
 }
 
@@ -33,11 +36,7 @@ export function receiveGameRoomSnapshot(
       "Received an invalid synchronization snapshot",
     );
   }
-  return {
-    status: "synchronized",
-    seq: result.data.seq,
-    state: result.data.state,
-  };
+  return applyAuthoritativeState(session, result.data);
 }
 
 export function receiveGameRoomUpdate(
@@ -52,14 +51,7 @@ export function receiveGameRoomUpdate(
       "Received an invalid Game room state update",
     );
   }
-  if (session.status === "synchronized" && result.data.seq <= session.seq) {
-    return session;
-  }
-  return {
-    status: "synchronized",
-    seq: result.data.seq,
-    state: result.data.state,
-  };
+  return applyAuthoritativeState(session, result.data);
 }
 
 export function failGameRoomSession(
@@ -78,4 +70,50 @@ function failMalformedMessage(
     code: "MALFORMED_MESSAGE",
     message,
   });
+}
+
+function applyAuthoritativeState(
+  session: GameRoomSession,
+  update: SyncSnapshot,
+): GameRoomSession {
+  if (session.status === "synchronized") {
+    if (update.seq < session.seq) return session;
+    if (update.seq === session.seq) {
+      if (haveSameJsonValue(update.state, session.state)) return session;
+      return failGameRoomSession(session, {
+        version: 1,
+        code: "SEQUENCE_CONFLICT",
+        message: "Game room states conflict at the same sequence number",
+      });
+    }
+  }
+  return { status: "synchronized", seq: update.seq, state: update.state };
+}
+
+function haveSameJsonValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (typeof left !== "object" || left === null) return false;
+  if (typeof right !== "object" || right === null) return false;
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => haveSameJsonValue(value, right[index]))
+    );
+  }
+
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord);
+  const rightKeys = Object.keys(rightRecord);
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key) =>
+        Object.hasOwn(rightRecord, key) &&
+        haveSameJsonValue(leftRecord[key], rightRecord[key]),
+    )
+  );
 }

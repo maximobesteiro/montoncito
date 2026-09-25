@@ -60,4 +60,26 @@ describe("Game room session transitions", () => {
       receiveGameRoomUpdate(session, { version: 1, seq: 1, state: updatedState }),
     ).toEqual({ status: "synchronized", seq: 1, state: updatedState });
   });
+
+  it("fails when the same sequence number carries different state", () => {
+    const session = receiveGameRoomSnapshot(
+      markGameRoomConnected(createGameRoomSession()),
+      snapshot,
+    );
+    const conflictingState = {
+      ...snapshot.state,
+      turn: { ...snapshot.state.turn, number: 2 },
+    };
+
+    expect(
+      receiveGameRoomUpdate(session, {
+        version: 1,
+        seq: 0,
+        state: conflictingState,
+      }),
+    ).toMatchObject({
+      status: "failed",
+      problem: { code: "SEQUENCE_CONFLICT" },
+    });
+  });
 });

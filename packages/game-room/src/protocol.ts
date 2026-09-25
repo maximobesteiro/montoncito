@@ -104,6 +104,7 @@ export const ProtocolFailureCodeSchema = z.enum([
   "MALFORMED_MESSAGE",
   "NOT_A_MEMBER",
   "GAME_NOT_STARTED",
+  "SEQUENCE_CONFLICT",
 ]);
 
 export const ProtocolFailureSchema = z

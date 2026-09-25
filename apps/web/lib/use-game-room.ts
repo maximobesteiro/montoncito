@@ -25,6 +25,7 @@ export type GameRoomConnectionStatus =
 export type GameRoomView = {
   state: GameState | null;
   seq: number | null;
+  currentPlayerId: string | null;
   connectionStatus: GameRoomConnectionStatus;
   problem: string | null;
 };
@@ -36,6 +37,7 @@ export function useGameRoom(roomId: string): GameRoomView {
   const [connectionProblem, setConnectionProblem] = useState<string | null>(
     null,
   );
+  const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
 
   useEffect(() => {
     let disposed = false;
@@ -47,6 +49,7 @@ export function useGameRoom(roomId: string): GameRoomView {
     const connect = async () => {
       try {
         const clientId = getOrCreateClientId();
+        setCurrentPlayerId(clientId);
         const { wsJoinToken } = await apiFetch<{ wsJoinToken: string }>(
           `/rooms/${encodeURIComponent(roomId)}/socket-token`,
           { method: "POST", clientId },
@@ -112,6 +115,7 @@ export function useGameRoom(roomId: string): GameRoomView {
   return {
     state: session.status === "synchronized" ? session.state : null,
     seq: session.status === "synchronized" ? session.seq : null,
+    currentPlayerId,
     connectionStatus:
       session.status === "failed" ? "failed" : connectionStatus,
     problem:
