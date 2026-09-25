@@ -90,6 +90,7 @@ export interface GameState {
 
   deck: Deck; // remaining draw pile
   center: { buildPiles: BuildPile[] }; // shared piles
+  nextBuildPileId: number;
 
   winner?: PlayerId | null;
   rngSeed: number;

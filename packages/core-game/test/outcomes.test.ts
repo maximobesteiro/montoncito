@@ -28,6 +28,7 @@ function lobby(): GameState {
 function turn(): GameState {
   const state = applyMove(lobby(), { kind: "START_GAME" }).state;
   state.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
+  state.nextBuildPileId = 2;
   return state;
 }
 
@@ -151,6 +152,7 @@ describe("explicit core outcomes", () => {
   it("progresses through wild ranks, then recycles and removes a completed Build pile", () => {
     let state = turn();
     state.center.buildPiles = [];
+    state.nextBuildPileId = 1;
     state.rules.useJokers = true;
     state.byId.P1!.hand.cards = Array.from({ length: 12 }, (_, index) =>
       index === 4
@@ -173,6 +175,11 @@ describe("explicit core outcomes", () => {
     expect(state.deck.recyclePile.map(({ id }) => id)).toHaveLength(12);
     expect(result.events.map(({ type }) => type)).toContain("BuildCompleted");
     expect(result.events.map(({ type }) => type)).toContain("BuildCleared");
+
+    state.byId.P1!.hand.cards = [ace("next-build")];
+    result = applyMove(state, { kind: "PLAY_HAND_TO_BUILD", cardId: "next-build", target: "new" });
+    expect(result.accepted).toBe(true);
+    if (result.accepted) expect(result.state.center.buildPiles[0]?.id).toBe("B2");
   });
 
   it("rejects without evaluating a winner or mutating the input", () => {

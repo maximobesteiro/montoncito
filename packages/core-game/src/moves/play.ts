@@ -4,10 +4,7 @@ import { isWild } from "../utils/isWild";
 import { rejectMove } from "../state/reject";
 
 function newBuildId(state: GameState): string {
-  let suffix = state.center.buildPiles.length + 1;
-  const ids = new Set(state.center.buildPiles.map(({ id }) => id));
-  while (ids.has(`B${suffix}`)) suffix += 1;
-  return `B${suffix}`;
+  return `B${state.nextBuildPileId}`;
 }
 
 function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { state: GameState; events: GameEvent[]; buildId: string } | ApplyResult {
@@ -54,7 +51,15 @@ function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { 
   } else {
     nextPiles[index] = updated;
   }
-  return { state: { ...state, center: { buildPiles: nextPiles } }, events, buildId };
+  return {
+    state: {
+      ...state,
+      center: { buildPiles: nextPiles },
+      nextBuildPileId: created ? state.nextBuildPileId + 1 : state.nextBuildPileId,
+    },
+    events,
+    buildId,
+  };
 }
 
 type Source = "hand" | "stock" | "discard";

@@ -54,6 +54,7 @@ export function createInitialState(
     byId,
     deck: { drawPile: deck.slice(), recyclePile: [] },
     center: { buildPiles },
+    nextBuildPileId: 1,
     winner: null,
     rngSeed,
     rules,
