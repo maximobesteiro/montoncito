@@ -24,6 +24,8 @@ export interface BuildPile {
   nextRank: Rank | null;
 }
 
+export type BuildPileTarget = string | "new";
+
 // --- Player zones ------------------------------------------------------------
 /** Goal pile; top is last element for easy peek/pop. */
 export interface Stock {
@@ -104,9 +106,9 @@ export interface GameState {
 export type Move =
   | { kind: "START_GAME" }
   | { kind: "DRAW_TO_HAND" } // up to rules.handSize
-  | { kind: "PLAY_HAND_TO_BUILD"; cardId: string; buildId: string }
-  | { kind: "PLAY_STOCK_TO_BUILD"; buildId: string }
-  | { kind: "PLAY_DISCARD_TO_BUILD"; pileIndex: number; buildId: string }
+  | { kind: "PLAY_HAND_TO_BUILD"; cardId: string; target: BuildPileTarget }
+  | { kind: "PLAY_STOCK_TO_BUILD"; target: BuildPileTarget }
+  | { kind: "PLAY_DISCARD_TO_BUILD"; pileIndex: number; target: BuildPileTarget }
   | { kind: "DISCARD_FROM_HAND"; cardId: string; pileIndex: number }; // ends turn
 
 export type MoveKind = Move["kind"];

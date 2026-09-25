@@ -12,11 +12,11 @@ export function applyMoveByKind(state: GameState, move: Move): ApplyResult {
     case "DRAW_TO_HAND":
       return drawToHand(state);
     case "PLAY_HAND_TO_BUILD":
-      return playHandToBuild(state, move.cardId, move.buildId);
+      return playHandToBuild(state, move.cardId, move.target);
     case "PLAY_STOCK_TO_BUILD":
-      return playStockToBuild(state, move.buildId);
+      return playStockToBuild(state, move.target);
     case "PLAY_DISCARD_TO_BUILD":
-      return playDiscardToBuild(state, move.pileIndex, move.buildId);
+      return playDiscardToBuild(state, move.pileIndex, move.target);
     case "DISCARD_FROM_HAND":
       return discardFromHand(state, move.cardId, move.pileIndex);
     default: {

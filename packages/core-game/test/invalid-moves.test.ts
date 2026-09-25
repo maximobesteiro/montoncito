@@ -100,7 +100,7 @@ describe("invalid moves validations", () => {
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: "NOPE",
-      buildId: "B1",
+      target: "B1",
     });
     expectRejected(r, s, "Card not in hand");
   });
@@ -128,7 +128,7 @@ describe("invalid moves validations", () => {
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: bad.id,
-      buildId: "B1",
+      target: "B1",
     });
     expectRejected(r, s, "Card does not match build requirement");
   });
@@ -142,7 +142,7 @@ describe("invalid moves validations", () => {
     s = r.state;
     expect(s.phase).toBe("gameover"); // immediate win on empty stock
 
-    r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", buildId: "B1" });
+    r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", target: "B1" });
     expectRejected(r, s, "Not your turn");
   });
 
@@ -163,7 +163,7 @@ describe("invalid moves validations", () => {
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
 
-    r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", buildId: "B1" });
+    r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", target: "B1" });
     expectRejected(r, s, "Stock card does not match build requirement");
   });
 
@@ -182,7 +182,7 @@ describe("invalid moves validations", () => {
     r = applyMove(s, {
       kind: "PLAY_DISCARD_TO_BUILD",
       pileIndex: 99,
-      buildId: "B1",
+      target: "B1",
     });
     expectRejected(r, s, "Invalid discard pile index");
   });
@@ -202,7 +202,7 @@ describe("invalid moves validations", () => {
     r = applyMove(s, {
       kind: "PLAY_DISCARD_TO_BUILD",
       pileIndex: 0,
-      buildId: "B1",
+      target: "B1",
     });
     expectRejected(r, s, "Discard pile is empty");
   });

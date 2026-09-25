@@ -51,13 +51,13 @@ describe("explicit core outcomes", () => {
     {
       name: "hand play",
       setup: turn,
-      move: { kind: "PLAY_HAND_TO_BUILD", cardId: "H1", buildId: "B1" },
+      move: { kind: "PLAY_HAND_TO_BUILD", cardId: "H1", target: "B1" },
       event: "PlayedToBuild",
     },
     {
       name: "winning stock play",
       setup: turn,
-      move: { kind: "PLAY_STOCK_TO_BUILD", buildId: "B1" },
+      move: { kind: "PLAY_STOCK_TO_BUILD", target: "B1" },
       event: "GameOver",
     },
     {
@@ -84,7 +84,7 @@ describe("explicit core outcomes", () => {
         state.byId.P1!.discards[0] = [ace("discard")];
         return state;
       },
-      move: { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, buildId: "B1" },
+      move: { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, target: "B1" },
       event: "PlayedToBuild",
     },
   ];
@@ -115,6 +115,34 @@ describe("explicit core outcomes", () => {
     expect(result.events).toEqual([
       { type: "DrewToHand", payload: { player: "P1", count: 0 } },
     ]);
+  });
+
+  it.each([
+    ["hand", (state: GameState) => ({ kind: "PLAY_HAND_TO_BUILD" as const, cardId: "H1", target: "new" as const })],
+    ["stock", (_state: GameState) => ({ kind: "PLAY_STOCK_TO_BUILD" as const, target: "new" as const })],
+    ["discard", (state: GameState) => {
+      state.byId.P1!.discards[0] = [ace("discard")];
+      return { kind: "PLAY_DISCARD_TO_BUILD" as const, pileIndex: 0, target: "new" as const };
+    }],
+  ])("starts a deterministic Build pile from %s", (_source, makeMove) => {
+    const state = turn();
+    const move = makeMove(state);
+    const before = structuredClone(state);
+    freeze(state);
+    const first = applyMove(state, move);
+    expect(first.accepted).toBe(true);
+    if (!first.accepted) return;
+    expect(first.state.center.buildPiles.at(-1)).toMatchObject({ id: "B5", nextRank: 2 });
+    expect(applyMove(state, move)).toEqual(first);
+    expect(state).toEqual(before);
+  });
+
+  it("rejects a non-starter card targeting a new Build pile", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [{ kind: "standard", id: "H2", rank: 2, suit: "Hearts" }];
+    const result = applyMove(state, { kind: "PLAY_HAND_TO_BUILD", cardId: "H2", target: "new" });
+    expect(result.accepted).toBe(false);
+    expect(state.center.buildPiles).toHaveLength(4);
   });
 
   it("rejects without evaluating a winner or mutating the input", () => {

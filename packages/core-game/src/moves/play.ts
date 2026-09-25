@@ -1,186 +1,95 @@
-import { ApplyResult, GameEvent, GameState, Rank } from "../state/types";
-import {
-  getActivePlayer,
-  getBuildPile,
-  computeNextRankAfterPlace,
-} from "../state/selectors";
+import { ApplyResult, BuildPile, BuildPileTarget, Card, GameEvent, GameState, Rank } from "../state/types";
+import { getActivePlayer, getBuildPile, computeNextRankAfterPlace } from "../state/selectors";
 import { isWild } from "../utils/isWild";
-import { must } from "src/utils/guards";
 import { rejectMove } from "../state/reject";
 
-function placeOnBuild(
-  s: GameState,
-  buildId: string,
-  rankOrNull: Rank | null,
-): { state: GameState; events: GameEvent[] } {
-  const pile = getBuildPile(s, buildId);
-  const buildIndex = s.center.buildPiles.findIndex((b) => b.id === buildId);
+function newBuildId(state: GameState): string {
+  let suffix = state.center.buildPiles.length + 1;
+  const ids = new Set(state.center.buildPiles.map(({ id }) => id));
+  while (ids.has(`B${suffix}`)) suffix += 1;
+  return `B${suffix}`;
+}
 
-  const piles = s.center.buildPiles.slice();
-  const copy = { ...pile };
+function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { state: GameState; events: GameEvent[]; buildId: string } | ApplyResult {
+  let pile: BuildPile;
+  let buildId: string;
+  let piles = state.center.buildPiles;
+  const created = target === "new";
 
-  // Update nextRank based on placement result
-  copy.nextRank = computeNextRankAfterPlace(
-    pile.nextRank,
-    rankOrNull,
-    s.rules.maxBuildRank,
-  );
-
-  // If pile completed
-  const events: GameEvent[] = [];
-  if (copy.nextRank === null) {
-    events.push({ type: "BuildCompleted", payload: { buildId } });
-    if (s.rules.autoClearCompleteBuild) {
-      copy.cards = [];
-      copy.nextRank = 1;
-      events.push({ type: "BuildCleared", payload: { buildId } });
+  if (created) {
+    const canStart = card.kind === "standard" && card.rank === 1 || isWild(card, state.rules);
+    if (!canStart) return rejectMove(state, "Card does not match build requirement");
+    buildId = newBuildId(state);
+    pile = { id: buildId, cards: [], nextRank: 1 };
+    piles = [...piles, pile];
+  } else {
+    buildId = target;
+    try {
+      pile = getBuildPile(state, buildId);
+    } catch {
+      return rejectMove(state, "Card does not match build requirement");
     }
   }
 
-  piles[buildIndex] = copy;
-  const state = { ...s, center: { buildPiles: piles } };
-  return { state, events };
-}
-
-export function playHandToBuild(
-  state: GameState,
-  cardId: string,
-  buildId: string,
-): ApplyResult {
-  let s = state;
-  const events: GameEvent[] = [];
-  const active = getActivePlayer(s);
-
-  const idx = active.hand.cards.findIndex((c) => c.id === cardId);
-  if (idx < 0) return rejectMove(state, "Card not in hand");
-
-  const card = must(active.hand.cards[idx]);
-  const pile = getBuildPile(s, buildId);
-
-  // Remove from hand
-  const nextHand = active.hand.cards.slice();
-  nextHand.splice(idx, 1);
-
-  // Add to build pile (top = index 0)
-  const piles = s.center.buildPiles.slice();
-  const buildIndex = piles.findIndex((b) => b.id === buildId);
-  const updated = { ...pile, cards: [card, ...pile.cards] };
-  piles[buildIndex] = updated;
-
-  s = {
-    ...s,
-    byId: { ...s.byId, [active.id]: { ...active, hand: { cards: nextHand } } },
-    center: { buildPiles: piles },
-  };
-
-  // Determine rank contribution (wilds count as current required)
-  const rankOrNull: Rank | null =
-    card.kind === "standard" && !isWild(card, s.rules)
-      ? card.rank
-      : pile.nextRank;
-  const placed = placeOnBuild(s, buildId, rankOrNull);
-  s = placed.state;
-  events.push(
-    {
-      type: "PlayedToBuild",
-      payload: { player: active.id, from: "hand", cardId, buildId },
-    },
-    ...placed.events,
-  );
-
-  return { accepted: true, state: s, events };
-}
-
-export function playStockToBuild(
-  state: GameState,
-  buildId: string,
-): ApplyResult {
-  let s = state;
-  const events: GameEvent[] = [];
-  const active = getActivePlayer(s);
-  const top = active.stock.faceDown[active.stock.faceDown.length - 1];
-  if (!top) return rejectMove(state, "No stock card to play");
-
-  // Pop from stock
-  const nextStock = active.stock.faceDown.slice(0, -1);
-
-  // Add to build
-  const pile = getBuildPile(s, buildId);
-  const piles = s.center.buildPiles.slice();
-  const buildIndex = piles.findIndex((b) => b.id === buildId);
-  const updated = { ...pile, cards: [top, ...pile.cards] };
-  piles[buildIndex] = updated;
-
-  s = {
-    ...s,
-    byId: {
-      ...s.byId,
-      [active.id]: { ...active, stock: { faceDown: nextStock } },
-    },
-    center: { buildPiles: piles },
-  };
-
-  const rankOrNull: Rank | null =
-    top.kind === "standard" && !isWild(top, s.rules) ? top.rank : pile.nextRank;
-  const placed = placeOnBuild(s, buildId, rankOrNull);
-  s = placed.state;
-  events.push(
-    {
-      type: "PlayedToBuild",
-      payload: { player: active.id, from: "stock", cardId: top.id, buildId },
-    },
-    ...placed.events,
-  );
-
-  return { accepted: true, state: s, events };
-}
-
-export function playDiscardToBuild(
-  state: GameState,
-  pileIndex: number,
-  buildId: string,
-): ApplyResult {
-  let s = state;
-  const events: GameEvent[] = [];
-  const active = getActivePlayer(s);
-
-  if (pileIndex < 0 || pileIndex >= s.rules.discardPiles) {
-    return rejectMove(state, "Invalid discard pile index");
+  if (pile.nextRank === null || (!isWild(card, state.rules) && (card.kind !== "standard" || card.rank !== pile.nextRank))) {
+    return rejectMove(state, "Card does not match build requirement");
   }
 
-  const source = must(active.discards[pileIndex]);
-  const top = source[source.length - 1];
-  if (!top) return rejectMove(state, "Discard pile is empty");
-
-  // Pop from discard
-  const nextSource = source.slice(0, -1);
-  const nextDiscards = active.discards.slice();
-  nextDiscards[pileIndex] = nextSource;
-
-  // Add to build
-  const pile = getBuildPile(s, buildId);
-  const piles = s.center.buildPiles.slice();
-  const buildIndex = piles.findIndex((b) => b.id === buildId);
-  const updated = { ...pile, cards: [top, ...pile.cards] };
-  piles[buildIndex] = updated;
-
-  s = {
-    ...s,
-    byId: { ...s.byId, [active.id]: { ...active, discards: nextDiscards } },
-    center: { buildPiles: piles },
+  const rankOrNull: Rank | null = isWild(card, state.rules) ? pile.nextRank : (card as Extract<Card, { kind: "standard" }>).rank;
+  const updated: BuildPile = {
+    ...pile,
+    cards: [card, ...pile.cards],
+    nextRank: computeNextRankAfterPlace(pile.nextRank, rankOrNull, state.rules.maxBuildRank),
   };
-
-  const rankOrNull: Rank | null =
-    top.kind === "standard" && !isWild(top, s.rules) ? top.rank : pile.nextRank;
-  const placed = placeOnBuild(s, buildId, rankOrNull);
-  s = placed.state;
-  events.push(
-    {
-      type: "PlayedToBuild",
-      payload: { player: active.id, from: "discard", cardId: top.id, buildId },
-    },
-    ...placed.events,
-  );
-
-  return { accepted: true, state: s, events };
+  const events: GameEvent[] = [];
+  if (updated.nextRank === null) {
+    events.push({ type: "BuildCompleted", payload: { buildId } });
+    if (state.rules.autoClearCompleteBuild) {
+      updated.cards = [];
+      updated.nextRank = 1;
+      events.push({ type: "BuildCleared", payload: { buildId } });
+    }
+  }
+  const index = piles.findIndex(({ id }) => id === buildId);
+  const nextPiles = piles.slice();
+  nextPiles[index] = updated;
+  return { state: { ...state, center: { buildPiles: nextPiles } }, events, buildId };
 }
+
+type Source = "hand" | "stock" | "discard";
+function playFrom(state: GameState, source: Source, target: BuildPileTarget, cardId?: string, pileIndex?: number): ApplyResult {
+  const active = getActivePlayer(state);
+  let card: Card | undefined;
+  let byId = state.byId;
+  if (source === "hand") {
+    const index = active.hand.cards.findIndex(({ id }) => id === cardId);
+    if (index < 0) return rejectMove(state, "Card not in hand");
+    card = active.hand.cards[index];
+    const hand = active.hand.cards.slice();
+    hand.splice(index, 1);
+    byId = { ...byId, [active.id]: { ...active, hand: { cards: hand } } };
+  } else if (source === "stock") {
+    card = active.stock.faceDown[active.stock.faceDown.length - 1];
+    if (!card) return rejectMove(state, "No stock card to play");
+  } else {
+    const discard = active.discards[pileIndex!];
+    card = discard?.[discard.length - 1];
+    if (!card) return rejectMove(state, "Discard pile is empty");
+  }
+  const placed = placeOnBuild(state, target, card!);
+  if ("accepted" in placed) return placed;
+  if (source === "stock") {
+    byId = { ...byId, [active.id]: { ...active, stock: { faceDown: active.stock.faceDown.slice(0, -1) } } };
+  } else if (source === "discard") {
+    const discards = active.discards.slice();
+    discards[pileIndex!] = discards[pileIndex!].slice(0, -1);
+    byId = { ...byId, [active.id]: { ...active, discards } };
+  }
+  const finalState = { ...placed.state, byId };
+  const events: GameEvent[] = [{ type: "PlayedToBuild", payload: { player: active.id, from: source, cardId: card!.id, buildId: placed.buildId } }, ...placed.events];
+  return { accepted: true, state: finalState, events };
+}
+
+export const playHandToBuild = (state: GameState, cardId: string, target: BuildPileTarget): ApplyResult => playFrom(state, "hand", target, cardId);
+export const playStockToBuild = (state: GameState, target: BuildPileTarget): ApplyResult => playFrom(state, "stock", target);
+export const playDiscardToBuild = (state: GameState, pileIndex: number, target: BuildPileTarget): ApplyResult => playFrom(state, "discard", target, undefined, pileIndex);
