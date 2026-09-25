@@ -69,7 +69,7 @@ export function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean 
  * Determine winner by fewest Stock pile cards, then Hand cards, then Discard
  * pile cards. Remaining ties use the seeded player order deterministically.
  */
-function winnerByFewestStock(state: GameState): PlayerId | null {
+function winnerByFewestCardsThenTurnOrder(state: GameState): PlayerId | null {
   let best: {
     pid: PlayerId;
     stock: number;
@@ -144,7 +144,7 @@ export function checkGameOver(state: GameState): string | null {
     }
 
     if (!anyCanPlay) {
-      return winnerByFewestStock(state);
+      return winnerByFewestCardsThenTurnOrder(state);
     }
   }
 
