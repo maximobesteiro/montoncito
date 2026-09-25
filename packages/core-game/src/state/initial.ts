@@ -1,4 +1,5 @@
 import {
+  BuildPile,
   Card,
   GameState,
   PlayerId,

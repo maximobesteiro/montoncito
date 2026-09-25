@@ -6,7 +6,6 @@ import { must } from "./utils/guards";
 function matchesRequired(
   card: Card,
   required: Rank | null,
-  maxRank: Rank,
   rules: GameState["rules"],
 ): boolean {
   if (required === null) return false; // pile just completed; should be cleared before receiving more
@@ -44,7 +43,6 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
         !matchesRequired(
           card,
           pile.nextRank,
-          state.rules.maxBuildRank,
           state.rules,
         )
       ) {
@@ -65,7 +63,6 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
         !matchesRequired(
           top,
           pile.nextRank,
-          state.rules.maxBuildRank,
           state.rules,
         )
       ) {
@@ -93,7 +90,6 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
         !matchesRequired(
           top,
           pile.nextRank,
-          state.rules.maxBuildRank,
           state.rules,
         )
       ) {

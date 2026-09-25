@@ -37,14 +37,11 @@ export class GameService {
       discardPiles: number;
       handSize: number;
       stockSize: number;
-      buildPiles: number;
-      maxBuildRank: number; // will be coerced to RulesConfig['maxBuildRank']
       useJokers: boolean;
       jokersAreWild: boolean;
       kingsAreWild: boolean;
       additionalWildRanks: number[]; // will be coerced to Rank[]
       enableCardWildFlag: boolean;
-      autoClearCompleteBuild: boolean;
       seed: number;
     }>;
   }): StoredGame {
@@ -60,19 +57,6 @@ export class GameService {
     if (cfg.discardPiles !== undefined) opts.discardPiles = cfg.discardPiles;
     if (cfg.handSize !== undefined) opts.handSize = cfg.handSize;
     if (cfg.stockSize !== undefined) opts.stockSize = cfg.stockSize;
-    if (cfg.buildPiles !== undefined) opts.buildPiles = cfg.buildPiles;
-
-    if (cfg.maxBuildRank !== undefined) {
-      const clamped =
-        cfg.maxBuildRank < 1
-          ? 1
-          : cfg.maxBuildRank > 13
-            ? 13
-            : cfg.maxBuildRank;
-      // Coerce to engine's 'Rank' union type
-      opts.maxBuildRank = clamped as unknown as RulesConfig['maxBuildRank'];
-    }
-
     if (cfg.useJokers !== undefined) opts.useJokers = cfg.useJokers;
     if (cfg.jokersAreWild !== undefined) opts.jokersAreWild = cfg.jokersAreWild;
     if (cfg.kingsAreWild !== undefined) opts.kingsAreWild = cfg.kingsAreWild;
@@ -81,17 +65,13 @@ export class GameService {
       const ranks = cfg.additionalWildRanks
         .map((n) => (n < 1 ? 1 : n > 13 ? 13 : n))
         // Coerce each to Rank
-        .map((n) => n as unknown as RulesConfig['maxBuildRank']);
-      // TS: RulesConfig likely defines Rank[]; we reuse the same Rank type via maxBuildRank
+        .map((n) => n as unknown as NonNullable<RulesConfig['additionalWildRanks']>[number]);
       opts.additionalWildRanks =
         ranks as unknown as RulesConfig['additionalWildRanks'];
     }
 
     if (cfg.enableCardWildFlag !== undefined)
       opts.enableCardWildFlag = cfg.enableCardWildFlag;
-    if (cfg.autoClearCompleteBuild !== undefined)
-      opts.autoClearCompleteBuild = cfg.autoClearCompleteBuild;
-
     opts.seed = cfg.seed ?? Date.now();
     opts.id = id;
 

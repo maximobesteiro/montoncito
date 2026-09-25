@@ -176,23 +176,21 @@ export function createMockGameState(): GameState {
           !player1Discards.flat().includes(c) &&
           !player2Discards.flat().includes(c)
       ),
-      discard: [],
+      recyclePile: [],
     },
     center: { buildPiles },
+    nextBuildPileId: buildPiles.length + 1,
     winner: null,
     rngSeed: 123456789,
     rules: {
       handSize: 5,
       stockSize: 20,
-      buildPiles: 4,
-      maxBuildRank: 13,
       discardPiles: 4,
       useJokers: true,
       jokersAreWild: true,
       kingsAreWild: false,
       additionalWildRanks: [],
       enableCardWildFlag: true,
-      autoClearCompleteBuild: true,
     },
     data: {},
   };

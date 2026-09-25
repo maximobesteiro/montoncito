@@ -16,7 +16,6 @@ import { isWild } from "@mont/core-game";
 function matchesRequired(
   card: Card,
   required: Rank | null,
-  maxRank: Rank,
   rules: GameState["rules"]
 ): boolean {
   if (required === null) return false; // pile just completed
@@ -60,7 +59,6 @@ export function getValidMoves(
         matchesRequired(
           card,
           pile.nextRank,
-          gameState.rules.maxBuildRank,
           gameState.rules
         )
       ) {
@@ -78,7 +76,6 @@ export function getValidMoves(
         matchesRequired(
           stockTop,
           pile.nextRank,
-          gameState.rules.maxBuildRank,
           gameState.rules
         )
       ) {
@@ -100,7 +97,6 @@ export function getValidMoves(
         matchesRequired(
           topCard,
           pile.nextRank,
-          gameState.rules.maxBuildRank,
           gameState.rules
         )
       ) {
@@ -190,14 +186,14 @@ export function createMove(
       return {
         kind: "PLAY_HAND_TO_BUILD",
         cardId: action.cardId,
-        buildId: action.buildId,
+        target: action.buildId,
       };
 
     case "play-stock":
       if (!action.buildId) return null;
       return {
         kind: "PLAY_STOCK_TO_BUILD",
-        buildId: action.buildId,
+        target: action.buildId,
       };
 
     case "play-discard":
@@ -205,7 +201,7 @@ export function createMove(
       return {
         kind: "PLAY_DISCARD_TO_BUILD",
         pileIndex: action.pileIndex,
-        buildId: action.buildId,
+        target: action.buildId,
       };
 
     case "discard":
@@ -228,5 +224,3 @@ export function isValidMove(gameState: GameState, move: Move): boolean {
   const error = validateMove(gameState, move);
   return error === null;
 }
-
-
