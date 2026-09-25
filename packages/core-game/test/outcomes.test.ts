@@ -191,6 +191,29 @@ describe("explicit core outcomes", () => {
     });
   });
 
+  it("keeps a partial Hand when an automatic refill exhausts the shared piles", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [ace("discard")];
+    state.byId.P2!.hand.cards = [];
+    state.deck.drawPile = [ace("last-draw")];
+    state.deck.recyclePile = [];
+
+    const result = applyMove(state, {
+      kind: "DISCARD_FROM_HAND",
+      cardId: "discard",
+      pileIndex: 0,
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.byId.P2!.hand.cards.map(({ id }) => id)).toEqual([
+      "last-draw",
+    ]);
+    expect(result.events).toContainEqual({
+      type: "DrewToHand",
+      payload: { player: "P2", count: 1 },
+    });
+  });
+
   it("reshuffles the Recycle pile deterministically when the Draw pile empties", () => {
     const state = turn();
     state.byId.P1!.hand.cards = [];
@@ -209,7 +232,11 @@ describe("explicit core outcomes", () => {
     expect(first.accepted).toBe(true);
     expect(first).toEqual(second);
     expect(first.state.byId.P1!.hand.cards).toHaveLength(2);
-    expect(first.state.deck.drawPile).toHaveLength(1);
+    expect(first.state.byId.P1!.hand.cards.map(({ id }) => id)).toEqual([
+      "recycle-3",
+      "recycle-1",
+    ]);
+    expect(first.state.deck.drawPile.map(({ id }) => id)).toEqual(["recycle-2"]);
     expect(first.state.deck.recyclePile).toEqual([]);
     expect(first.state.rng).toMatchObject({
       algorithm: "mulberry32-v1",
