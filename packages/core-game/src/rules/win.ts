@@ -19,7 +19,7 @@ function cardMatchesRequired(
  * Returns true if the given player has ANY legal play onto ANY build pile,
  * considering hand, stock-top, and each discard-top. Drawing is not considered here.
  */
-function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean {
+export function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean {
   const ps = state.byId[pid];
   if (!ps) return false;
 
@@ -112,10 +112,9 @@ function winnerByFewestStock(state: GameState): PlayerId | null {
 
 /**
  * Game-over rules:
- * 1) Immediate win if any player's stock (goal pile) is empty.
- * 2) If draw pile is empty AND no player has any legal placement onto center
- *    build piles, end the game and declare winner by fewest stock cards
- *    (tie-breaker: earliest in turn order).
+ * 1) Immediate win if any player's Stock pile is empty.
+ * 2) If both shared draw sources are empty and no player has a legal placement,
+ *    compare Stock pile size, Hand size, Discard pile size, then player order.
  */
 export function checkGameOver(state: GameState): string | null {
   // Rule 1: immediate win on empty stock

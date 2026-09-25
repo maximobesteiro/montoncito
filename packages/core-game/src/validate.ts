@@ -2,6 +2,7 @@ import { Card, GameState, Move, Rank, RuleReason } from "./state/types";
 import { getActivePlayer, getBuildPile } from "./state/selectors";
 import { isWild } from "./utils/isWild";
 import { must } from "./utils/guards";
+import { playerHasAnyPlacement } from "./rules/win";
 
 function matchesRequired(
   card: Card,
@@ -28,6 +29,17 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const active = getActivePlayer(state);
       if (active.hand.cards.length >= state.rules.handSize)
         return "Hand already full";
+      return null;
+    }
+
+    case "END_TURN": {
+      if (state.phase !== "turn") return "Not your turn";
+      const active = getActivePlayer(state);
+      if (active.hand.cards.length > 0) return "Hand is not empty";
+      if (state.deck.drawPile.length > 0 || state.deck.recyclePile.length > 0)
+        return "Hand can still be refilled";
+      if (playerHasAnyPlacement(state, active.id))
+        return "A legal placement remains";
       return null;
     }
 
@@ -106,7 +118,7 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
         return "Invalid discard pile index";
       const card = active.hand.cards.find((c) => c.id === move.cardId);
       if (!card) return "Card not in hand";
-      return null; // discard is always allowed; ends turn via hasDiscarded flag
+      return null; // an accepted discard ends the Turn immediately
     }
   }
 }

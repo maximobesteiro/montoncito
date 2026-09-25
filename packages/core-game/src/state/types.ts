@@ -59,7 +59,7 @@ export interface PlayerState {
 export interface Turn {
   number: number;
   activePlayer: PlayerId;
-  hasDiscarded: boolean; // must discard to end turn
+  hasDiscarded: boolean;
 }
 
 export type Phase = "lobby" | "turn" | "gameover";
@@ -110,6 +110,7 @@ export interface GameState {
 export type Move =
   | { kind: "START_GAME" }
   | { kind: "DRAW_TO_HAND" } // up to rules.handSize
+  | { kind: "END_TURN" }
   | { kind: "PLAY_HAND_TO_BUILD"; cardId: string; target: BuildPileTarget }
   | { kind: "PLAY_STOCK_TO_BUILD"; target: BuildPileTarget }
   | { kind: "PLAY_DISCARD_TO_BUILD"; pileIndex: number; target: BuildPileTarget }
@@ -140,6 +141,9 @@ export type RuleReason =
   | "Need at least two players"
   | "Not your turn"
   | "Hand already full"
+  | "Hand is not empty"
+  | "Hand can still be refilled"
+  | "A legal placement remains"
   | "Card not in hand"
   | "Card does not match build requirement"
   | "No stock card to play"

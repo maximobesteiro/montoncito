@@ -4,6 +4,7 @@ import { startGame } from "./startGame";
 import { drawToHand } from "./draw";
 import { discardFromHand } from "./discard";
 import { playHandToBuild, playStockToBuild, playDiscardToBuild } from "./play";
+import { endTurn } from "./endTurn";
 
 export function applyMoveByKind(state: GameState, move: Move): ApplyResult {
   switch (move.kind) {
@@ -11,6 +12,8 @@ export function applyMoveByKind(state: GameState, move: Move): ApplyResult {
       return startGame(state);
     case "DRAW_TO_HAND":
       return drawToHand(state);
+    case "END_TURN":
+      return endTurn(state);
     case "PLAY_HAND_TO_BUILD":
       return playHandToBuild(state, move.cardId, move.target);
     case "PLAY_STOCK_TO_BUILD":
