@@ -25,8 +25,7 @@ export const StateUpdate = z.object({
 
 export const GameStarted = z.object({
   type: z.literal('GAME_STARTED'),
-  meta: GameMeta,
-  state: GameState,
+  roomId: z.string().min(1),
 });
 
 export const RoomUpdated = z.object({

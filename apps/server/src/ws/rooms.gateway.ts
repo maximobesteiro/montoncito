@@ -111,12 +111,9 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     this.server.to(roomId).emit('event', ev);
   }
 
-  /** Broadcast initial game state when the room owner starts the game */
-  public emitGameStarted(
-    roomId: string,
-    payload: { meta: unknown; state: unknown },
-  ) {
-    const ev = { type: 'GAME_STARTED', ...payload } as const;
+  /** Notify room members that this room has become a Game room. */
+  public emitGameStarted(roomId: string) {
+    const ev = { type: 'GAME_STARTED', roomId } as const;
     assertServerEvent(ev);
     this.server.to(roomId).emit('event', ev);
   }

@@ -3,10 +3,10 @@ import { z } from 'zod';
 export const UpdateRoomSchema = z
   .object({
     visibility: z.enum(['public', 'private']).optional(),
-    maxPlayers: z.coerce.number().int().min(2).max(16).optional(),
+    maxPlayers: z.coerce.number().int().min(2).max(4).optional(),
     gameConfig: z
       .object({
-        discardPiles: z.coerce.number().int().min(1).max(8).optional(),
+        discardPiles: z.coerce.number().int().min(1).max(4).optional(),
       })
       .strict()
       .optional(),
@@ -62,7 +62,7 @@ export const RoomViewSchema = z.object({
   slug: z.string().min(1),
   visibility: z.enum(['public', 'private']),
   status: z.enum(['open', 'in_progress', 'finished']),
-  maxPlayers: z.number().int().min(2),
+  maxPlayers: z.number().int().min(2).max(4),
   ownerId: z.string().min(1),
   players: z.array(
     z.object({
@@ -75,7 +75,7 @@ export const RoomViewSchema = z.object({
   createdAt: z.string().min(1),
   gameId: z.string().min(1).optional(),
   gameConfig: z.object({
-    discardPiles: z.number().int().min(1).max(8),
+    discardPiles: z.number().int().min(1).max(4),
   }),
 });
 

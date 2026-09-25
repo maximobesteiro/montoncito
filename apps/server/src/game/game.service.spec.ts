@@ -1,31 +1,27 @@
 import { GameService } from './game.service';
 
 describe('GameService core outcomes', () => {
-  it('commits an accepted winning transition and preserves its completion time on rejection', () => {
+  it('creates a playable game at sequence zero and advances sequence for accepted actions', () => {
     const service = new GameService();
     const game = service.create({
       roomId: 'room',
       players: ['P1', 'P2'],
       config: { seed: 1 },
     });
-    const initial = game.state;
-    const result = service.applyMove(game.meta.id, { kind: 'START_GAME' });
+    const activePlayer = game.state.turn.activePlayer;
+    const initialSeq = game.meta.seq;
+    const result = service.applyMove(game.meta.id, {
+      kind: 'DISCARD_FROM_HAND',
+      cardId: game.state.byId[activePlayer]!.hand.cards[0]!.id,
+      pileIndex: 0,
+    });
 
+    expect(game.state.phase).toBe('turn');
+    expect(game.state.rng).toMatchObject({ algorithm: 'mulberry32-v1', seed: 1 });
+    expect(initialSeq).toBe(0);
     expect(result.accepted).toBe(true);
     expect(service.get(game.meta.id).state).toBe(result.state);
-    expect(result.state).not.toBe(initial);
-    // Current setup uses an empty Draw pile, so starting wins immediately.
-    expect(result.state.phase).toBe('gameover');
-    expect(result.game.meta.winnerId).toBe('P1');
-    expect(result.game.meta.finishedAt).toEqual(expect.any(String));
-    const finishedAt = result.game.meta.finishedAt;
-    const rejected = service.applyMove(game.meta.id, { kind: 'START_GAME' });
-    expect(rejected).toMatchObject({
-      accepted: false,
-      reason: 'Game already started',
-    });
-    expect(rejected.state).toBe(result.state);
-    expect(rejected.game.meta.finishedAt).toBe(finishedAt);
+    expect(result.game.meta.seq).toBe(1);
   });
 
   it('returns rejection without replacing stored state or metadata', () => {
@@ -40,8 +36,9 @@ describe('GameService core outcomes', () => {
 
     const result = service.applyMove(game.meta.id, { kind: 'DRAW_TO_HAND' });
 
-    expect(result).toMatchObject({ accepted: false, reason: 'Not your turn' });
+    expect(result).toMatchObject({ accepted: false, reason: 'Hand already full' });
     expect(service.get(game.meta.id).state).toBe(state);
     expect(service.get(game.meta.id).meta).toEqual(meta);
+    expect(service.get(game.meta.id).meta.seq).toBe(0);
   });
 });
