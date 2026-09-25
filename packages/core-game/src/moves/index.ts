@@ -1,4 +1,5 @@
 import { ApplyResult, GameState, Move } from "../state/types";
+import { rejectMove } from "../state/reject";
 import { startGame } from "./startGame";
 import { drawToHand } from "./draw";
 import { discardFromHand } from "./discard";
@@ -18,10 +19,9 @@ export function applyMoveByKind(state: GameState, move: Move): ApplyResult {
       return playDiscardToBuild(state, move.pileIndex, move.buildId);
     case "DISCARD_FROM_HAND":
       return discardFromHand(state, move.cardId, move.pileIndex);
-    case undefined:
-      return {
-        state,
-        events: [{ type: "InvalidMove", payload: { reason: "Unknown move" } }],
-      };
+    default: {
+      const exhaustive: never = move;
+      return rejectMove(state, "Unknown move");
+    }
   }
 }

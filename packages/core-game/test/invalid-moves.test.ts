@@ -1,9 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { applyMove, createInitialState, Card, RulesConfig } from "../src";
+import {
+  applyMove,
+  createInitialState,
+  Card,
+  RulesConfig,
+  ApplyResult,
+  GameState,
+  RuleReason,
+  Rank,
+} from "../src";
 
 // helper: make a standard card with rank
-function mkStd(id: string, rank: number): Card {
-  return { kind: "standard", id, rank: rank as any, suit: "Hearts" };
+function mkStd(id: string, rank: Rank): Card {
+  return { kind: "standard", id, rank, suit: "Hearts" };
+}
+
+function expectRejected(
+  result: ApplyResult,
+  state: GameState,
+  reason: RuleReason,
+) {
+  expect(result.accepted).toBe(false);
+  if (result.accepted) throw new Error("Expected rejection");
+  expect(result.reason).toBe(reason);
+  expect(result.state).toBe(state);
 }
 
 const baseRules: Partial<RulesConfig> = {
@@ -25,8 +45,7 @@ describe("invalid moves validations", () => {
     const s0 = createInitialState(players, deck, { ...baseRules, seed: 1 });
 
     const r = applyMove(s0, { kind: "DRAW_TO_HAND" });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe("Not your turn");
+    expectRejected(r, s0, "Not your turn");
     expect(r.state.phase).toBe("lobby");
   });
 
@@ -45,8 +64,7 @@ describe("invalid moves validations", () => {
     expect(s.phase).toBe("turn"); // no immediate gameover now
 
     r = applyMove(s, { kind: "START_GAME" });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe("Game already started");
+    expectRejected(r, s, "Game already started");
   });
 
   it("DRAW_TO_HAND when hand already full", () => {
@@ -64,8 +82,7 @@ describe("invalid moves validations", () => {
     s = r.state;
     // Hand should be full already
     r = applyMove(s, { kind: "DRAW_TO_HAND" });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe("Hand already full");
+    expectRejected(r, s, "Hand already full");
   });
 
   it("PLAY_HAND_TO_BUILD with a card not in hand", () => {
@@ -85,8 +102,7 @@ describe("invalid moves validations", () => {
       cardId: "NOPE",
       buildId: "B1",
     });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe("Card not in hand");
+    expectRejected(r, s, "Card not in hand");
   });
 
   it("PLAY_HAND_TO_BUILD that does not match build requirement", () => {
@@ -107,17 +123,14 @@ describe("invalid moves validations", () => {
 
     // Find a card that doesn't match the build requirement (rank 5 or 6)
     const bad = s.byId["P1"].hand.cards.find(
-      (c) => c.kind === "standard" && (c.rank === 5 || c.rank === 6)
+      (c) => c.kind === "standard" && (c.rank === 5 || c.rank === 6),
     )!;
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
       cardId: bad.id,
       buildId: "B1",
     });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe(
-      "Card does not match build requirement"
-    );
+    expectRejected(r, s, "Card does not match build requirement");
   });
 
   it("PLAY_STOCK_TO_BUILD with no stock card (game already over)", () => {
@@ -130,8 +143,7 @@ describe("invalid moves validations", () => {
     expect(s.phase).toBe("gameover"); // immediate win on empty stock
 
     r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", buildId: "B1" });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe("Not your turn");
+    expectRejected(r, s, "Not your turn");
   });
 
   it("PLAY_STOCK_TO_BUILD where stock top does not match requirement", () => {
@@ -152,10 +164,7 @@ describe("invalid moves validations", () => {
     s = r.state;
 
     r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", buildId: "B1" });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe(
-      "Stock card does not match build requirement"
-    );
+    expectRejected(r, s, "Stock card does not match build requirement");
   });
 
   it("PLAY_DISCARD_TO_BUILD with invalid discard pile index", () => {
@@ -175,10 +184,7 @@ describe("invalid moves validations", () => {
       pileIndex: 99,
       buildId: "B1",
     });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe(
-      "Invalid discard pile index"
-    );
+    expectRejected(r, s, "Invalid discard pile index");
   });
 
   it("PLAY_DISCARD_TO_BUILD from an empty discard pile", () => {
@@ -198,7 +204,6 @@ describe("invalid moves validations", () => {
       pileIndex: 0,
       buildId: "B1",
     });
-    expect(r.events[0]?.type).toBe("InvalidMove");
-    expect((r.events[0]?.payload as any)?.reason).toBe("Discard pile is empty");
+    expectRejected(r, s, "Discard pile is empty");
   });
 });

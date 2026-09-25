@@ -6,11 +6,12 @@ import {
 } from "../state/selectors";
 import { isWild } from "../utils/isWild";
 import { must } from "src/utils/guards";
+import { rejectMove } from "../state/reject";
 
 function placeOnBuild(
   s: GameState,
   buildId: string,
-  rankOrNull: Rank | null
+  rankOrNull: Rank | null,
 ): { state: GameState; events: GameEvent[] } {
   const pile = getBuildPile(s, buildId);
   const buildIndex = s.center.buildPiles.findIndex((b) => b.id === buildId);
@@ -22,7 +23,7 @@ function placeOnBuild(
   copy.nextRank = computeNextRankAfterPlace(
     pile.nextRank,
     rankOrNull,
-    s.rules.maxBuildRank
+    s.rules.maxBuildRank,
   );
 
   // If pile completed
@@ -44,20 +45,14 @@ function placeOnBuild(
 export function playHandToBuild(
   state: GameState,
   cardId: string,
-  buildId: string
+  buildId: string,
 ): ApplyResult {
   let s = state;
   const events: GameEvent[] = [];
   const active = getActivePlayer(s);
 
   const idx = active.hand.cards.findIndex((c) => c.id === cardId);
-  if (idx < 0)
-    return {
-      state: s,
-      events: [
-        { type: "InvalidMove", payload: { reason: "Card not in hand" } },
-      ],
-    };
+  if (idx < 0) return rejectMove(state, "Card not in hand");
 
   const card = must(active.hand.cards[idx]);
   const pile = getBuildPile(s, buildId);
@@ -90,25 +85,21 @@ export function playHandToBuild(
       type: "PlayedToBuild",
       payload: { player: active.id, from: "hand", cardId, buildId },
     },
-    ...placed.events
+    ...placed.events,
   );
 
-  return { state: s, events };
+  return { accepted: true, state: s, events };
 }
 
 export function playStockToBuild(
   state: GameState,
-  buildId: string
+  buildId: string,
 ): ApplyResult {
   let s = state;
   const events: GameEvent[] = [];
   const active = getActivePlayer(s);
   const top = active.stock.faceDown[active.stock.faceDown.length - 1];
-  if (!top)
-    return {
-      state: s,
-      events: [{ type: "InvalidMove", payload: { reason: "No stock card" } }],
-    };
+  if (!top) return rejectMove(state, "No stock card to play");
 
   // Pop from stock
   const nextStock = active.stock.faceDown.slice(0, -1);
@@ -138,42 +129,28 @@ export function playStockToBuild(
       type: "PlayedToBuild",
       payload: { player: active.id, from: "stock", cardId: top.id, buildId },
     },
-    ...placed.events
+    ...placed.events,
   );
 
-  return { state: s, events };
+  return { accepted: true, state: s, events };
 }
 
 export function playDiscardToBuild(
   state: GameState,
   pileIndex: number,
-  buildId: string
+  buildId: string,
 ): ApplyResult {
   let s = state;
   const events: GameEvent[] = [];
   const active = getActivePlayer(s);
 
   if (pileIndex < 0 || pileIndex >= s.rules.discardPiles) {
-    return {
-      state: s,
-      events: [
-        {
-          type: "InvalidMove",
-          payload: { reason: "Invalid discard pile index" },
-        },
-      ],
-    };
+    return rejectMove(state, "Invalid discard pile index");
   }
 
   const source = must(active.discards[pileIndex]);
   const top = source[source.length - 1];
-  if (!top)
-    return {
-      state: s,
-      events: [
-        { type: "InvalidMove", payload: { reason: "Discard pile empty" } },
-      ],
-    };
+  if (!top) return rejectMove(state, "Discard pile is empty");
 
   // Pop from discard
   const nextSource = source.slice(0, -1);
@@ -202,8 +179,8 @@ export function playDiscardToBuild(
       type: "PlayedToBuild",
       payload: { player: active.id, from: "discard", cardId: top.id, buildId },
     },
-    ...placed.events
+    ...placed.events,
   );
 
-  return { state: s, events };
+  return { accepted: true, state: s, events };
 }

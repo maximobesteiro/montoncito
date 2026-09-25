@@ -19,12 +19,37 @@ export const ListRoomsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
 
-export const MoveSchema = z
-  .object({
-    type: z.string().min(1),
-    payload: z.unknown().optional(),
-  })
-  .strict();
+export const MoveSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('START_GAME') }).strict(),
+  z.object({ kind: z.literal('DRAW_TO_HAND') }).strict(),
+  z
+    .object({
+      kind: z.literal('PLAY_HAND_TO_BUILD'),
+      cardId: z.string().min(1),
+      buildId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('PLAY_STOCK_TO_BUILD'),
+      buildId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('PLAY_DISCARD_TO_BUILD'),
+      pileIndex: z.number().int(),
+      buildId: z.string().min(1),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('DISCARD_FROM_HAND'),
+      cardId: z.string().min(1),
+      pileIndex: z.number().int(),
+    })
+    .strict(),
+]);
 
 export const SetReadySchema = z
   .object({
