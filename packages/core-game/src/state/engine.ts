@@ -1,4 +1,5 @@
-import { ApplyResult, GameEvent, GameState, Move } from "./types";
+import { ApplyResult, GameState, Move } from "./types";
+import { rejectMove } from "./reject";
 import { validateMove } from "../validate";
 import { applyMoveByKind } from "../moves";
 import { checkGameOver } from "../rules/win";
@@ -6,13 +7,12 @@ import { checkGameOver } from "../rules/win";
 export function applyMove(state: GameState, move: Move): ApplyResult {
   const err = validateMove(state, move);
   if (err) {
-    const events: GameEvent[] = [
-      { type: "InvalidMove", payload: { reason: err } },
-    ];
-    return { state, events };
+    return rejectMove(state, err);
   }
 
-  let { state: s, events } = applyMoveByKind(state, move);
+  const result = applyMoveByKind(state, move);
+  if (!result.accepted) return result;
+  let { state: s, events } = result;
 
   const winner = checkGameOver(s);
   if (winner) {
@@ -20,5 +20,5 @@ export function applyMove(state: GameState, move: Move): ApplyResult {
     events = events.concat({ type: "GameOver", payload: { winner } });
   }
 
-  return { state: s, events };
+  return { accepted: true, state: s, events };
 }

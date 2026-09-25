@@ -129,7 +129,26 @@ export interface GameEvent {
 }
 
 // --- Apply result ------------------------------------------------------------
-export interface ApplyResult {
-  state: GameState;
-  events: GameEvent[];
-}
+export type RuleReason =
+  | "Game already started"
+  | "Need at least two players"
+  | "Not your turn"
+  | "Hand already full"
+  | "Card not in hand"
+  | "Card does not match build requirement"
+  | "No stock card to play"
+  | "Stock card does not match build requirement"
+  | "Invalid discard pile index"
+  | "Discard pile is empty"
+  | "Discard card does not match build requirement"
+  | "Unknown move";
+
+export type ApplyResult =
+  | { accepted: true; state: GameState; events: GameEvent[] }
+  | {
+      accepted: false;
+      state: GameState;
+      reason: RuleReason;
+      /** Legacy notification; callers must use `accepted` and `reason`. */
+      events: GameEvent[];
+    };

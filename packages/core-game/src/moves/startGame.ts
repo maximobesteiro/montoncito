@@ -31,7 +31,7 @@ function dealStockRoundRobin(s: GameState): GameState {
 
 function drawToHandUpTo(
   s: GameState,
-  pid: string
+  pid: string,
 ): { state: GameState; drew: number } {
   const byId = { ...s.byId };
   const ps = byId[pid];
@@ -92,5 +92,5 @@ export function startGame(state: GameState): ApplyResult {
       payload: { player: s.turn.activePlayer, count: drew },
     });
 
-  return { state: s, events };
+  return { accepted: true, state: s, events };
 }

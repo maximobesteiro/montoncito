@@ -7,6 +7,7 @@ import {
   type Move,
   type Card,
   type RulesConfig,
+  type ApplyResult,
 } from '@mont/core-game';
 
 export type GameId = string;
@@ -122,17 +123,18 @@ export class GameService {
 
   public applyMove(
     gameId: GameId,
-    move: unknown,
-  ): { game: StoredGame; events: unknown[] } {
+    move: Move,
+  ): ApplyResult & { game: StoredGame } {
     const g = this.get(gameId);
-    // Controller validates the shape; we narrow here for the core call.
-    const { state: next, events } = coreApplyMove(g.state, move as Move);
+    const result = coreApplyMove(g.state, move);
+    if (!result.accepted) return { ...result, game: g };
+    const next = result.state;
     g.state = next;
     g.meta.winnerId = next.winner ?? null;
     if (next.phase === 'gameover' && !g.meta.finishedAt) {
       g.meta.finishedAt = new Date().toISOString();
     }
     this.games.set(gameId, g);
-    return { game: g, events };
+    return { ...result, game: g };
   }
 }

@@ -1,4 +1,4 @@
-import { Card, GameState, Move, Rank } from "./state/types";
+import { Card, GameState, Move, Rank, RuleReason } from "./state/types";
 import { getActivePlayer, getBuildPile } from "./state/selectors";
 import { isWild } from "./utils/isWild";
 import { must } from "./utils/guards";
@@ -7,7 +7,7 @@ function matchesRequired(
   card: Card,
   required: Rank | null,
   maxRank: Rank,
-  rules: GameState["rules"]
+  rules: GameState["rules"],
 ): boolean {
   if (required === null) return false; // pile just completed; should be cleared before receiving more
   if (isWild(card, rules)) return true;
@@ -17,7 +17,7 @@ function matchesRequired(
   return false;
 }
 
-export function validateMove(state: GameState, move: Move): string | null {
+export function validateMove(state: GameState, move: Move): RuleReason | null {
   switch (move.kind) {
     case "START_GAME":
       if (state.phase !== "lobby") return "Game already started";
@@ -43,7 +43,7 @@ export function validateMove(state: GameState, move: Move): string | null {
           card,
           pile.nextRank,
           state.rules.maxBuildRank,
-          state.rules
+          state.rules,
         )
       ) {
         return "Card does not match build requirement";
@@ -62,7 +62,7 @@ export function validateMove(state: GameState, move: Move): string | null {
           top,
           pile.nextRank,
           state.rules.maxBuildRank,
-          state.rules
+          state.rules,
         )
       ) {
         return "Stock card does not match build requirement";
@@ -88,7 +88,7 @@ export function validateMove(state: GameState, move: Move): string | null {
           top,
           pile.nextRank,
           state.rules.maxBuildRank,
-          state.rules
+          state.rules,
         )
       ) {
         return "Discard card does not match build requirement";

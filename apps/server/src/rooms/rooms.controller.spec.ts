@@ -28,7 +28,7 @@ describe('RoomsController', () => {
     status: 'open' as const,
     maxPlayers: 4,
     ownerId: 'client-1',
-    players: [{ id: 'client-1', isOwner: true }],
+    players: [{ id: 'client-1', isOwner: true, ready: false }],
     createdAt: '2024-01-01T00:00:00.000Z',
     gameConfig: { discardPiles: 1 },
   };
@@ -40,7 +40,14 @@ describe('RoomsController', () => {
     status: 'open' as const,
     maxPlayers: 4,
     ownerId: 'client-1',
-    players: [{ id: 'client-1', displayName: 'Player 1', isOwner: true }],
+    players: [
+      {
+        id: 'client-1',
+        displayName: 'Player 1',
+        isOwner: true,
+        isReady: false,
+      },
+    ],
     createdAt: '2024-01-01T00:00:00.000Z',
     gameId: undefined,
     gameConfig: { discardPiles: 1 },
@@ -320,13 +327,21 @@ describe('RoomsController', () => {
     it('should join room successfully', () => {
       const joinedRoom = {
         ...mockRoom,
-        players: [...mockRoom.players, { id: 'client-2', isOwner: false }],
+        players: [
+          ...mockRoom.players,
+          { id: 'client-2', isOwner: false, ready: false },
+        ],
       };
       const joinedRoomView = {
         ...mockRoomView,
         players: [
           ...mockRoomView.players,
-          { id: 'client-2', displayName: 'Player 2', isOwner: false },
+          {
+            id: 'client-2',
+            displayName: 'Player 2',
+            isOwner: false,
+            isReady: false,
+          },
         ],
       };
 
@@ -459,8 +474,8 @@ describe('RoomsController', () => {
         ...mockRoom,
         gameId: 'game-123',
         players: [
-          { id: 'client-1', isOwner: true },
-          { id: 'client-2', isOwner: false },
+          { id: 'client-1', isOwner: true, ready: false },
+          { id: 'client-2', isOwner: false, ready: false },
         ],
       };
       roomsService.getById.mockReturnValue(roomWithGame);
@@ -477,7 +492,7 @@ describe('RoomsController', () => {
       const roomWithGame = {
         ...mockRoom,
         gameId: 'game-123',
-        players: [{ id: 'client-1', isOwner: true }],
+        players: mockRoom.players,
       };
       roomsService.getById.mockReturnValue(roomWithGame);
 
@@ -494,7 +509,7 @@ describe('RoomsController', () => {
       const roomWithoutGame = {
         ...mockRoom,
         gameId: undefined,
-        players: [{ id: 'client-1', isOwner: true }],
+        players: mockRoom.players,
       };
       roomsService.getById.mockReturnValue(roomWithoutGame);
 
@@ -520,14 +535,24 @@ describe('RoomsController', () => {
       const roomWithGame = {
         ...mockRoom,
         gameId: 'game-123',
-        players: [{ id: 'client-1', isOwner: true }],
+        players: mockRoom.players,
       };
-      const moveData = { type: 'draw', payload: { pile: 'stock' } };
+      const moveData = { kind: 'DRAW_TO_HAND' };
       const updatedGame = { ...mockGame };
-      const events = [{ type: 'card_drawn', playerId: 'client-1' }];
+      const events = [
+        {
+          type: 'DrewToHand' as const,
+          payload: { player: 'client-1', count: 1 },
+        },
+      ];
 
       roomsService.getById.mockReturnValue(roomWithGame);
-      gameService.applyMove.mockReturnValue({ game: updatedGame, events });
+      gameService.applyMove.mockReturnValue({
+        accepted: true,
+        state: updatedGame.state,
+        game: updatedGame,
+        events,
+      });
 
       const result = controller.applyMove('room-123', 'client-1', moveData);
 
@@ -541,17 +566,40 @@ describe('RoomsController', () => {
         state: updatedGame.state,
       });
       expect(result).toEqual({
+        accepted: true,
         meta: updatedGame.meta,
         state: updatedGame.state,
         events,
       });
     });
 
+    it('returns a rejected outcome without broadcasting a state update', () => {
+      roomsService.getById.mockReturnValue({ ...mockRoom, gameId: 'game-123' });
+      gameService.applyMove.mockReturnValue({
+        accepted: false,
+        reason: 'Hand already full',
+        state: mockGame.state,
+        game: mockGame,
+        events: [],
+      });
+
+      expect(
+        controller.applyMove('room-123', 'client-1', { kind: 'DRAW_TO_HAND' }),
+      ).toEqual({
+        accepted: false,
+        reason: 'Hand already full',
+        meta: mockGame.meta,
+        state: mockGame.state,
+        events: [],
+      });
+      expect(wsGateway.emitStateUpdate).not.toHaveBeenCalled();
+    });
+
     it('should throw ForbiddenException when user is not a room member', () => {
       const roomWithGame = {
         ...mockRoom,
         gameId: 'game-123',
-        players: [{ id: 'client-1', isOwner: true }],
+        players: mockRoom.players,
       };
       roomsService.getById.mockReturnValue(roomWithGame);
 
@@ -568,7 +616,7 @@ describe('RoomsController', () => {
       const roomWithoutGame = {
         ...mockRoom,
         gameId: undefined,
-        players: [{ id: 'client-1', isOwner: true }],
+        players: mockRoom.players,
       };
       roomsService.getById.mockReturnValue(roomWithoutGame);
 
@@ -585,7 +633,7 @@ describe('RoomsController', () => {
       const roomWithGame = {
         ...mockRoom,
         gameId: 'game-123',
-        players: [{ id: 'client-1', isOwner: true }],
+        players: mockRoom.players,
       };
       roomsService.getById.mockReturnValue(roomWithGame);
 

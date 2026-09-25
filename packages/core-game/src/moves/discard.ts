@@ -1,11 +1,12 @@
 import { ApplyResult, GameEvent, GameState } from "../state/types";
 import { getActivePlayer, nextPlayerId } from "../state/selectors";
 import { must } from "../utils/guards";
+import { rejectMove } from "../state/reject";
 
 export function discardFromHand(
   state: GameState,
   cardId: string,
-  pileIndex: number
+  pileIndex: number,
 ): ApplyResult {
   let s = state;
   const events: GameEvent[] = [];
@@ -13,25 +14,12 @@ export function discardFromHand(
   const active = getActivePlayer(s);
 
   if (pileIndex < 0 || pileIndex >= s.rules.discardPiles) {
-    return {
-      state: s,
-      events: [
-        {
-          type: "InvalidMove",
-          payload: { reason: "Invalid discard pile index" },
-        },
-      ],
-    };
+    return rejectMove(state, "Invalid discard pile index");
   }
 
   const idx = active.hand.cards.findIndex((c) => c.id === cardId);
   if (idx < 0) {
-    return {
-      state: s,
-      events: [
-        { type: "InvalidMove", payload: { reason: "Card not in hand" } },
-      ],
-    };
+    return rejectMove(state, "Card not in hand");
   }
 
   // remove from hand
@@ -68,8 +56,8 @@ export function discardFromHand(
       type: "Discarded",
       payload: { player: active.id, cardId: card.id, pileIndex },
     },
-    { type: "TurnEnded", payload: { turn: s.turn.number } }
+    { type: "TurnEnded", payload: { turn: s.turn.number } },
   );
 
-  return { state: s, events };
+  return { accepted: true, state: s, events };
 }

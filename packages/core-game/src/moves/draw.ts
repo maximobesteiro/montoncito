@@ -1,5 +1,6 @@
 import { ApplyResult, GameEvent, GameState } from "../state/types";
 import { getActivePlayer } from "../state/selectors";
+import { rejectMove } from "../state/reject";
 
 export function drawToHand(state: GameState): ApplyResult {
   let s = state;
@@ -8,12 +9,7 @@ export function drawToHand(state: GameState): ApplyResult {
   const target = s.rules.handSize;
 
   if (active.hand.cards.length >= target) {
-    return {
-      state: s,
-      events: [
-        { type: "InvalidMove", payload: { reason: "Hand already full" } },
-      ],
-    };
+    return rejectMove(state, "Hand already full");
   }
 
   const byId = { ...s.byId };
@@ -34,5 +30,5 @@ export function drawToHand(state: GameState): ApplyResult {
     type: "DrewToHand",
     payload: { player: active.id, count: drew },
   });
-  return { state: s, events };
+  return { accepted: true, state: s, events };
 }

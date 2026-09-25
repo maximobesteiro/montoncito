@@ -251,11 +251,23 @@ export class RoomsController {
 
     const move = MoveSchema.parse(body ?? {});
 
-    const { game, events } = this.games.applyMove(room.gameId, move);
+    const result = this.games.applyMove(room.gameId, move);
+    const { game, events } = result;
+
+    if (!result.accepted) {
+      return {
+        accepted: false as const,
+        reason: result.reason,
+        meta: game.meta,
+        state: game.state,
+        events,
+      };
+    }
 
     this.ws.emitStateUpdate(roomId, { meta: game.meta, state: game.state });
 
     return {
+      accepted: true as const,
       meta: game.meta,
       state: game.state,
       events,
