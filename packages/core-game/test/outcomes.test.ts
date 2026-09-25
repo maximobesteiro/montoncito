@@ -6,6 +6,7 @@ import {
   type Card,
   type GameState,
   type Move,
+  type Rank,
   type RuleReason,
 } from "../src";
 
@@ -25,7 +26,10 @@ function lobby(): GameState {
 }
 
 function turn(): GameState {
-  return applyMove(lobby(), { kind: "START_GAME" }).state;
+  const state = applyMove(lobby(), { kind: "START_GAME" }).state;
+  state.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
+  state.nextBuildPileId = 2;
+  return state;
 }
 
 function freeze(value: unknown): void {
@@ -117,13 +121,157 @@ describe("explicit core outcomes", () => {
     ]);
   });
 
+  it("refills from the Draw pile without consuming random generator state", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [ace("held")];
+    state.deck.drawPile = [ace("draw-1"), ace("draw-2")];
+    state.deck.recyclePile = [ace("recycle")];
+    const before = structuredClone(state);
+    freeze(state);
+
+    const result = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.byId.P1!.hand.cards.map(({ id }) => id)).toEqual([
+      "held",
+      "draw-1",
+    ]);
+    expect(result.state.deck.drawPile.map(({ id }) => id)).toEqual(["draw-2"]);
+    expect(result.state.deck.recyclePile.map(({ id }) => id)).toEqual([
+      "recycle",
+    ]);
+    expect(result.state.rng).toEqual(before.rng);
+    expect(state).toEqual(before);
+  });
+
+  it("reshuffles the Recycle pile deterministically when the Draw pile empties", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [
+      ace("recycle-1"),
+      ace("recycle-2"),
+      ace("recycle-3"),
+    ];
+    const before = structuredClone(state);
+    freeze(state);
+
+    const first = applyMove(state, { kind: "DRAW_TO_HAND" });
+    const second = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(first.accepted).toBe(true);
+    expect(first).toEqual(second);
+    expect(first.state.byId.P1!.hand.cards).toHaveLength(2);
+    expect(first.state.deck.drawPile).toHaveLength(1);
+    expect(first.state.deck.recyclePile).toEqual([]);
+    expect(first.state.rng).toMatchObject({
+      algorithm: "mulberry32-v1",
+      cursor: 2,
+    });
+    expect(state).toEqual(before);
+  });
+
+  it("ends the game only when both Draw and Recycle piles are empty", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [];
+    state.byId.P1!.stock.faceDown = [
+      { kind: "standard", id: "P1-stock", rank: 5, suit: "Hearts" },
+    ];
+    state.byId.P2!.stock.faceDown = [
+      { kind: "standard", id: "P2-stock", rank: 6, suit: "Hearts" },
+    ];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [];
+
+    const result = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.phase).toBe("gameover");
+    expect(result.state.winner).toBe("P1");
+  });
+
+  it("does not end the game while a card can start another Build pile", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [ace("starter")];
+    state.byId.P1!.stock.faceDown = [
+      { kind: "standard", id: "P1-stock", rank: 5, suit: "Hearts" },
+    ];
+    state.byId.P2!.stock.faceDown = [
+      { kind: "standard", id: "P2-stock", rank: 6, suit: "Hearts" },
+    ];
+    state.center.buildPiles = [
+      {
+        id: "B1",
+        cards: [{ kind: "standard", id: "existing", rank: 1, suit: "Hearts" }],
+        nextRank: 2,
+      },
+    ];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [];
+
+    const result = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(result.state.phase).toBe("turn");
+  });
+
+  it("breaks exhausted-pile ties by Hand, Discard pile, then player order", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [
+      { kind: "standard", id: "P1-hand", rank: 7, suit: "Hearts" },
+    ];
+    state.byId.P1!.stock.faceDown = [
+      { kind: "standard", id: "P1-stock", rank: 5, suit: "Hearts" },
+    ];
+    state.byId.P1!.discards[0] = [
+      { kind: "standard", id: "P1-discard", rank: 9, suit: "Hearts" },
+    ];
+    state.byId.P2!.hand.cards = [];
+    state.byId.P2!.stock.faceDown = [
+      { kind: "standard", id: "P2-stock", rank: 6, suit: "Hearts" },
+    ];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [];
+
+    const handResult = applyMove(state, { kind: "DRAW_TO_HAND" });
+
+    expect(handResult.state.winner).toBe("P2");
+
+    const discardState = structuredClone(state);
+    discardState.byId.P2!.hand.cards = [
+      { kind: "standard", id: "P2-hand", rank: 8, suit: "Hearts" },
+    ];
+    const discardResult = applyMove(discardState, { kind: "DRAW_TO_HAND" });
+
+    expect(discardResult.state.winner).toBe("P2");
+  });
+
   it.each([
-    ["hand", (state: GameState) => ({ kind: "PLAY_HAND_TO_BUILD" as const, cardId: "H1", target: "new" as const })],
-    ["stock", (_state: GameState) => ({ kind: "PLAY_STOCK_TO_BUILD" as const, target: "new" as const })],
-    ["discard", (state: GameState) => {
-      state.byId.P1!.discards[0] = [ace("discard")];
-      return { kind: "PLAY_DISCARD_TO_BUILD" as const, pileIndex: 0, target: "new" as const };
-    }],
+    [
+      "hand",
+      (state: GameState) => ({
+        kind: "PLAY_HAND_TO_BUILD" as const,
+        cardId: "H1",
+        target: "new" as const,
+      }),
+    ],
+    [
+      "stock",
+      (_state: GameState) => ({
+        kind: "PLAY_STOCK_TO_BUILD" as const,
+        target: "new" as const,
+      }),
+    ],
+    [
+      "discard",
+      (state: GameState) => {
+        state.byId.P1!.discards[0] = [ace("discard")];
+        return {
+          kind: "PLAY_DISCARD_TO_BUILD" as const,
+          pileIndex: 0,
+          target: "new" as const,
+        };
+      },
+    ],
   ])("starts a deterministic Build pile from %s", (_source, makeMove) => {
     const state = turn();
     const move = makeMove(state);
@@ -132,17 +280,94 @@ describe("explicit core outcomes", () => {
     const first = applyMove(state, move);
     expect(first.accepted).toBe(true);
     if (!first.accepted) return;
-    expect(first.state.center.buildPiles.at(-1)).toMatchObject({ id: "B5", nextRank: 2 });
+    expect(first.state.center.buildPiles.at(-1)).toMatchObject({
+      id: "B2",
+      nextRank: 2,
+    });
     expect(applyMove(state, move)).toEqual(first);
     expect(state).toEqual(before);
   });
 
   it("rejects a non-starter card targeting a new Build pile", () => {
     const state = turn();
-    state.byId.P1!.hand.cards = [{ kind: "standard", id: "H2", rank: 2, suit: "Hearts" }];
-    const result = applyMove(state, { kind: "PLAY_HAND_TO_BUILD", cardId: "H2", target: "new" });
+    state.byId.P1!.hand.cards = [
+      { kind: "standard", id: "H2", rank: 2, suit: "Hearts" },
+    ];
+    const result = applyMove(state, {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "H2",
+      target: "new",
+    });
     expect(result.accepted).toBe(false);
-    expect(state.center.buildPiles).toHaveLength(4);
+    expect(state.center.buildPiles).toHaveLength(1);
+  });
+
+  it("progresses through wild ranks, then recycles and removes a completed Build pile", () => {
+    let state = turn();
+    state.center.buildPiles = [];
+    state.nextBuildPileId = 1;
+    state.rules.useJokers = true;
+    state.byId.P1!.hand.cards = Array.from({ length: 12 }, (_, index) =>
+      index === 4
+        ? {
+            kind: "standard" as const,
+            id: "king",
+            rank: 13 as Rank,
+            suit: "Hearts" as const,
+          }
+        : index === 9
+          ? { kind: "joker" as const, id: "joker" }
+          : {
+              kind: "standard" as const,
+              id: `rank-${index + 1}`,
+              rank: (index + 1) as Rank,
+              suit: "Hearts",
+            },
+    );
+    // Kings and Jokers each represent the next required rank.
+    let result = applyMove(state, {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "rank-1",
+      target: "new",
+    });
+    expect(result.accepted).toBe(true);
+    state = result.state;
+    const buildId = state.center.buildPiles[0]!.id;
+    for (const id of [
+      "rank-2",
+      "rank-3",
+      "rank-4",
+      "king",
+      "rank-6",
+      "rank-7",
+      "rank-8",
+      "rank-9",
+      "joker",
+      "rank-11",
+      "rank-12",
+    ]) {
+      result = applyMove(state, {
+        kind: "PLAY_HAND_TO_BUILD",
+        cardId: id,
+        target: buildId,
+      });
+      expect(result.accepted).toBe(true);
+      state = result.state;
+    }
+    expect(state.center.buildPiles).toEqual([]);
+    expect(state.deck.recyclePile.map(({ id }) => id)).toHaveLength(12);
+    expect(result.events.map(({ type }) => type)).toContain("BuildCompleted");
+    expect(result.events.map(({ type }) => type)).toContain("BuildCleared");
+
+    state.byId.P1!.hand.cards = [ace("next-build")];
+    result = applyMove(state, {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "next-build",
+      target: "new",
+    });
+    expect(result.accepted).toBe(true);
+    if (result.accepted)
+      expect(result.state.center.buildPiles[0]?.id).toBe("B2");
   });
 
   it("rejects without evaluating a winner or mutating the input", () => {

@@ -5,6 +5,7 @@ import type {
   Rank,
   Card,
   BuildPile,
+  BuildPileTarget,
 } from "@mont/core-game";
 import { validateMove } from "@mont/core-game";
 import { getActivePlayer, getBuildPile } from "@mont/core-game";
@@ -16,8 +17,7 @@ import { isWild } from "@mont/core-game";
 function matchesRequired(
   card: Card,
   required: Rank | null,
-  maxRank: Rank,
-  rules: GameState["rules"]
+  rules: GameState["rules"],
 ): boolean {
   if (required === null) return false; // pile just completed
   if (isWild(card, rules)) return true;
@@ -25,22 +25,29 @@ function matchesRequired(
   return card.rank === required;
 }
 
+function canStartBuildPile(card: Card, rules: GameState["rules"]): boolean {
+  return (card.kind === "standard" && card.rank === 1) || isWild(card, rules);
+}
+
 /**
  * Get all valid moves for the current player
  */
 export function getValidMoves(
   gameState: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): {
-  handToBuild: Array<{ cardId: string; buildId: string }>;
-  stockToBuild: Array<{ buildId: string }>;
-  discardToBuild: Array<{ pileIndex: number; buildId: string }>;
+  handToBuild: Array<{ cardId: string; buildId: BuildPileTarget }>;
+  stockToBuild: Array<{ buildId: BuildPileTarget }>;
+  discardToBuild: Array<{ pileIndex: number; buildId: BuildPileTarget }>;
   canDiscard: Array<{ cardId: string; pileIndex: number }>;
 } {
   const result = {
-    handToBuild: [] as Array<{ cardId: string; buildId: string }>,
-    stockToBuild: [] as Array<{ buildId: string }>,
-    discardToBuild: [] as Array<{ pileIndex: number; buildId: string }>,
+    handToBuild: [] as Array<{ cardId: string; buildId: BuildPileTarget }>,
+    stockToBuild: [] as Array<{ buildId: BuildPileTarget }>,
+    discardToBuild: [] as Array<{
+      pileIndex: number;
+      buildId: BuildPileTarget;
+    }>,
     canDiscard: [] as Array<{ cardId: string; pileIndex: number }>,
   };
 
@@ -54,16 +61,12 @@ export function getValidMoves(
 
   // Check hand cards to build piles
   for (const card of player.hand.cards) {
+    if (canStartBuildPile(card, gameState.rules)) {
+      result.handToBuild.push({ cardId: card.id, buildId: "new" });
+    }
     for (const pile of gameState.center.buildPiles) {
       if (pile.nextRank === null) continue; // completed pile
-      if (
-        matchesRequired(
-          card,
-          pile.nextRank,
-          gameState.rules.maxBuildRank,
-          gameState.rules
-        )
-      ) {
+      if (matchesRequired(card, pile.nextRank, gameState.rules)) {
         result.handToBuild.push({ cardId: card.id, buildId: pile.id });
       }
     }
@@ -72,16 +75,12 @@ export function getValidMoves(
   // Check stock top card
   const stockTop = player.stock.faceDown[player.stock.faceDown.length - 1];
   if (stockTop) {
+    if (canStartBuildPile(stockTop, gameState.rules)) {
+      result.stockToBuild.push({ buildId: "new" });
+    }
     for (const pile of gameState.center.buildPiles) {
       if (pile.nextRank === null) continue;
-      if (
-        matchesRequired(
-          stockTop,
-          pile.nextRank,
-          gameState.rules.maxBuildRank,
-          gameState.rules
-        )
-      ) {
+      if (matchesRequired(stockTop, pile.nextRank, gameState.rules)) {
         result.stockToBuild.push({ buildId: pile.id });
       }
     }
@@ -94,16 +93,13 @@ export function getValidMoves(
     const topCard = discardPile[discardPile.length - 1];
     if (!topCard) continue;
 
+    if (canStartBuildPile(topCard, gameState.rules)) {
+      result.discardToBuild.push({ pileIndex: i, buildId: "new" });
+    }
+
     for (const pile of gameState.center.buildPiles) {
       if (pile.nextRank === null) continue;
-      if (
-        matchesRequired(
-          topCard,
-          pile.nextRank,
-          gameState.rules.maxBuildRank,
-          gameState.rules
-        )
-      ) {
+      if (matchesRequired(topCard, pile.nextRank, gameState.rules)) {
         result.discardToBuild.push({ pileIndex: i, buildId: pile.id });
       }
     }
@@ -124,7 +120,7 @@ export function getValidMoves(
  */
 export function getPlayableHandCards(
   gameState: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): Set<string> {
   const moves = getValidMoves(gameState, playerId);
   return new Set(moves.handToBuild.map((m) => m.cardId));
@@ -135,7 +131,7 @@ export function getPlayableHandCards(
  */
 export function getPlayableDiscardPiles(
   gameState: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): Set<number> {
   const moves = getValidMoves(gameState, playerId);
   return new Set(moves.discardToBuild.map((m) => m.pileIndex));
@@ -146,7 +142,7 @@ export function getPlayableDiscardPiles(
  */
 export function isStockPlayable(
   gameState: GameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): boolean {
   const moves = getValidMoves(gameState, playerId);
   return moves.stockToBuild.length > 0;
@@ -157,10 +153,10 @@ export function isStockPlayable(
  */
 export function getPlayableBuildPiles(
   gameState: GameState,
-  playerId: PlayerId
-): Set<string> {
+  playerId: PlayerId,
+): Set<BuildPileTarget> {
   const moves = getValidMoves(gameState, playerId);
-  const buildPileIds = new Set<string>();
+  const buildPileIds = new Set<BuildPileTarget>();
   moves.handToBuild.forEach((m) => buildPileIds.add(m.buildId));
   moves.stockToBuild.forEach((m) => buildPileIds.add(m.buildId));
   moves.discardToBuild.forEach((m) => buildPileIds.add(m.buildId));
@@ -177,8 +173,8 @@ export function createMove(
     type: "play-hand" | "play-stock" | "play-discard" | "discard";
     cardId?: string;
     pileIndex?: number;
-    buildId?: string;
-  }
+    buildId?: BuildPileTarget;
+  },
 ): Move | null {
   if (gameState.phase !== "turn" || gameState.turn.activePlayer !== playerId) {
     return null;
@@ -190,14 +186,14 @@ export function createMove(
       return {
         kind: "PLAY_HAND_TO_BUILD",
         cardId: action.cardId,
-        buildId: action.buildId,
+        target: action.buildId,
       };
 
     case "play-stock":
       if (!action.buildId) return null;
       return {
         kind: "PLAY_STOCK_TO_BUILD",
-        buildId: action.buildId,
+        target: action.buildId,
       };
 
     case "play-discard":
@@ -205,7 +201,7 @@ export function createMove(
       return {
         kind: "PLAY_DISCARD_TO_BUILD",
         pileIndex: action.pileIndex,
-        buildId: action.buildId,
+        target: action.buildId,
       };
 
     case "discard":
@@ -228,5 +224,3 @@ export function isValidMove(gameState: GameState, move: Move): boolean {
   const error = validateMove(gameState, move);
   return error === null;
 }
-
-

@@ -7,16 +7,13 @@ function mkStd(id: string, rank: number): Card {
 }
 
 describe("game over when deck is empty and no placements are available", () => {
-  it("declares winner by fewest stock cards; tie breaks by turn order", () => {
+  it("declares winner by fewest cards in stock, Hand, then Discard piles", () => {
     const rules: Partial<RulesConfig> = {
       handSize: 2,
       stockSize: 2,
-      buildPiles: 2,
       discardPiles: 3,
-      maxBuildRank: 13,
       kingsAreWild: false, // keep it simple: no wilds so we can control "no moves"
       useJokers: false,
-      autoClearCompleteBuild: true,
     };
 
     // We want:
@@ -53,10 +50,11 @@ describe("game over when deck is empty and no placements are available", () => {
     expect(s.deck.drawPile.length).toBe(0);
 
     // No rank 1 in any hand/stock/discards; no wilds → nobody can play.
-    // checkGameOver should detect deck empty + no placements and pick winner by fewest stock.
+    // checkGameOver should detect deck empty + no placements and pick winner by
+    // fewest Stock cards, then Hand cards, then Discard pile cards.
     //
-    // Currently both players have equal stock (2). Tie-breaker is turn order:
-    // P1 appears first, so P1 should win.
+    // Both players have equal Stock cards, but P2 has an empty Hand while P1
+    // has two cards, so P2 wins before the seeded turn-order tie-breaker.
     //
     // We trigger the check by attempting any move; DRAW_TO_HAND will be invalid (hand full),
     // but the engine calls checkGameOver after each apply.
@@ -64,6 +62,6 @@ describe("game over when deck is empty and no placements are available", () => {
     s = r.state;
 
     expect(s.phase).toBe("gameover");
-    expect(s.winner).toBe("P1"); // tie-breaker by order
+    expect(s.winner).toBe("P2");
   });
 });

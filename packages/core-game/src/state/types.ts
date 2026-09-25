@@ -13,10 +13,17 @@ export type Card =
 // --- Deck / board ------------------------------------------------------------
 export interface Deck {
   drawPile: Card[]; // face-down
-  discard?: Card[]; // optional global trash/burn (usually unused)
+  recyclePile: Card[];
 }
 
-/** Shared build piles ascend from 1 to maxBuildRank (usually 13). */
+/** Retained state for deterministic random operations. */
+export interface RandomGeneratorState {
+  algorithm: "mulberry32-v1";
+  seed: number;
+  cursor: number;
+}
+
+/** Shared Build piles ascend from 1 through 12. */
 export interface BuildPile {
   id: string;
   cards: Card[]; // convention: index 0 = top (consistent across engine)
@@ -58,11 +65,9 @@ export interface Turn {
 export type Phase = "lobby" | "turn" | "gameover";
 
 export interface RulesConfig {
-  /** Commonly: handSize=5, stockSize≈20, buildPiles=4, maxBuildRank=13, discardPiles=3 */
+  /** Commonly: handSize=5, stockSize≈20, discardPiles=3 */
   handSize: number;
   stockSize: number;
-  buildPiles: number;
-  maxBuildRank: Rank;
   discardPiles: number;
 
   // ---- Wildness policy (hybrid: rules + optional per-card flag) -------------
@@ -77,8 +82,6 @@ export interface RulesConfig {
   /** Respect per-card `baseWild` flags (useful for custom decks). */
   enableCardWildFlag?: boolean;
 
-  /** Clear a center build pile automatically when it reaches maxBuildRank. */
-  autoClearCompleteBuild?: boolean;
 }
 
 // --- Full game state ---------------------------------------------------------
@@ -94,9 +97,10 @@ export interface GameState {
 
   deck: Deck; // remaining draw pile
   center: { buildPiles: BuildPile[] }; // shared piles
+  nextBuildPileId: number;
 
   winner?: PlayerId | null;
-  rngSeed: number;
+  rng: RandomGeneratorState;
   rules: RulesConfig;
 
   data?: Record<string, unknown>; // extension hook

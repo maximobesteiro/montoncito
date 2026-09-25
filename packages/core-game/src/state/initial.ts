@@ -6,31 +6,24 @@ import {
   PlayerState,
   RulesConfig,
 } from "./types";
-import { makeRng } from "../utils/random";
 
 export function createInitialState(
   players: { id: PlayerId; name?: string }[],
   deck: Card[],
-  opts?: Partial<RulesConfig> & { seed?: number; id?: string }
+  opts?: Partial<RulesConfig> & { seed?: number; id?: string },
 ): GameState {
   const rules: RulesConfig = {
     handSize: opts?.handSize ?? 5,
     stockSize: opts?.stockSize ?? 20,
-    buildPiles: opts?.buildPiles ?? 4,
-    maxBuildRank: opts?.maxBuildRank ?? 13,
     discardPiles: opts?.discardPiles ?? 3,
     useJokers: opts?.useJokers ?? false,
     jokersAreWild: opts?.jokersAreWild ?? true,
     kingsAreWild: opts?.kingsAreWild ?? true,
     additionalWildRanks: opts?.additionalWildRanks ?? [],
     enableCardWildFlag: opts?.enableCardWildFlag ?? true,
-    autoClearCompleteBuild: opts?.autoClearCompleteBuild ?? true,
   };
 
-  const rngSeed = opts?.seed ?? 123456789;
-  // Note: we expect deck to already be shuffled by caller if desired.
-  // rng is here for future use if you later move shuffling inside.
-  makeRng(rngSeed);
+  const seed = (opts?.seed ?? 123456789) >>> 0;
 
   const byId: Record<PlayerId, PlayerState> = {};
   for (const p of players) {
@@ -43,14 +36,7 @@ export function createInitialState(
     };
   }
 
-  const buildPiles: BuildPile[] = Array.from(
-    { length: rules.buildPiles },
-    (_, i) => ({
-      id: `B${i + 1}`,
-      cards: [],
-      nextRank: 1,
-    })
-  );
+  const buildPiles: BuildPile[] = [];
 
   return {
     version: 1,
@@ -63,10 +49,11 @@ export function createInitialState(
     },
     players: players.map((p) => p.id),
     byId,
-    deck: { drawPile: deck.slice(), discard: [] },
+    deck: { drawPile: deck.slice(), recyclePile: [] },
     center: { buildPiles },
+    nextBuildPileId: 1,
     winner: null,
-    rngSeed,
+    rng: { algorithm: "mulberry32-v1", seed, cursor: 0 },
     rules,
     data: {},
   };

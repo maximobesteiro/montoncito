@@ -1,14 +1,14 @@
 "use client";
 
-import type { BuildPile } from "@mont/core-game";
+import type { BuildPile, BuildPileTarget } from "@mont/core-game";
 import type { CardSize } from "./Card";
 import { Pile } from "./Pile";
 
 interface BuildPilesProps {
   buildPiles: BuildPile[];
   size?: CardSize;
-  onPileClick?: (buildId: string) => void;
-  playablePiles?: Set<string>;
+  onPileClick?: (buildId: BuildPileTarget) => void;
+  playablePiles?: Set<BuildPileTarget>;
 }
 
 export function BuildPiles({
@@ -48,6 +48,17 @@ export function BuildPiles({
             </div>
           );
         })}
+        <button
+          type="button"
+          className={`
+            brutal-border bg-surface p-2 brutal-shadow-sm transition-transform
+            ${playablePiles.has("new") ? "border-btn-primary" : ""}
+            ${onPileClick ? "cursor-pointer hover:scale-105" : ""}
+          `}
+          onClick={onPileClick ? () => onPileClick("new") : undefined}
+        >
+          New Build Pile
+        </button>
       </div>
     </div>
   );

@@ -4,9 +4,7 @@ import { applyMove, createInitialState, Card, RulesConfig } from "../src";
 const rules: Partial<RulesConfig> = {
   handSize: 5,
   stockSize: 3,
-  buildPiles: 2,
   discardPiles: 3,
-  maxBuildRank: 13,
   kingsAreWild: true,
   useJokers: false,
 };
@@ -20,9 +18,7 @@ describe("game flow (start → draw → discard auto-ends turn)", () => {
     const rules: Partial<RulesConfig> = {
       handSize: 5,
       stockSize: 3,
-      buildPiles: 2,
       discardPiles: 3,
-      maxBuildRank: 13,
       kingsAreWild: true,
       useJokers: false,
     };
@@ -57,13 +53,13 @@ describe("game flow (start → draw → discard auto-ends turn)", () => {
     // Start game (deals stock, initializes build piles, draws to P1 hand)
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
     expect(s.phase).toBe("turn");
     expect(s.turn.activePlayer).toBe("P1");
 
     // Ensure P1 can draw up to full hand (if not already)
     r = applyMove(s, { kind: "DRAW_TO_HAND" });
     s = r.state;
-
     // Discard one from hand to pile 0 -> should auto-end turn
     const cardId = s.byId["P1"].hand.cards[0]?.id!;
     r = applyMove(s, { kind: "DISCARD_FROM_HAND", cardId, pileIndex: 0 });
@@ -85,12 +81,9 @@ describe("play to build flow (hand, wild king, stock)", () => {
     const rules: Partial<RulesConfig> = {
       handSize: 5,
       stockSize: 1, // each player gets 1 stock card
-      buildPiles: 2, // B1, B2
       discardPiles: 3,
-      maxBuildRank: 13,
       kingsAreWild: true,
       useJokers: false,
-      autoClearCompleteBuild: true,
     };
 
     // Deck order matters:
@@ -123,6 +116,7 @@ describe("play to build flow (hand, wild king, stock)", () => {
     // Start game: deals stock, creates build piles, draws to P1 hand
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
 
     expect(s.phase).toBe("turn");
     expect(s.turn.activePlayer).toBe("P1");

@@ -26,20 +26,20 @@ export const MoveSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('PLAY_HAND_TO_BUILD'),
       cardId: z.string().min(1),
-      buildId: z.string().min(1),
+      target: z.string().min(1),
     })
     .strict(),
   z
     .object({
       kind: z.literal('PLAY_STOCK_TO_BUILD'),
-      buildId: z.string().min(1),
+      target: z.string().min(1),
     })
     .strict(),
   z
     .object({
       kind: z.literal('PLAY_DISCARD_TO_BUILD'),
       pileIndex: z.number().int(),
-      buildId: z.string().min(1),
+      target: z.string().min(1),
     })
     .strict(),
   z
