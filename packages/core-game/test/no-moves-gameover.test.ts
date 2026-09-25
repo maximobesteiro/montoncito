@@ -11,12 +11,9 @@ describe("game over when deck is empty and no placements are available", () => {
     const rules: Partial<RulesConfig> = {
       handSize: 2,
       stockSize: 2,
-      buildPiles: 2,
       discardPiles: 3,
-      maxBuildRank: 13,
       kingsAreWild: false, // keep it simple: no wilds so we can control "no moves"
       useJokers: false,
-      autoClearCompleteBuild: true,
     };
 
     // We want:

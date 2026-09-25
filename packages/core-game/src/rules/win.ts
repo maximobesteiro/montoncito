@@ -43,6 +43,10 @@ function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean {
 
   if (candidates.length === 0) return false;
 
+  if (state.center.buildPiles.length === 0 && candidates.some((card) =>
+    (card.kind === "standard" && card.rank === 1) || isWild(card, state.rules),
+  )) return true;
+
   // Check each center build pile requirement
   for (const pile of state.center.buildPiles) {
     const req = pile.nextRank;

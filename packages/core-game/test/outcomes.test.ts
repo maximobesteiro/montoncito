@@ -6,6 +6,7 @@ import {
   type Card,
   type GameState,
   type Move,
+  type Rank,
   type RuleReason,
 } from "../src";
 
@@ -25,7 +26,9 @@ function lobby(): GameState {
 }
 
 function turn(): GameState {
-  return applyMove(lobby(), { kind: "START_GAME" }).state;
+  const state = applyMove(lobby(), { kind: "START_GAME" }).state;
+  state.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
+  return state;
 }
 
 function freeze(value: unknown): void {
@@ -132,7 +135,7 @@ describe("explicit core outcomes", () => {
     const first = applyMove(state, move);
     expect(first.accepted).toBe(true);
     if (!first.accepted) return;
-    expect(first.state.center.buildPiles.at(-1)).toMatchObject({ id: "B5", nextRank: 2 });
+    expect(first.state.center.buildPiles.at(-1)).toMatchObject({ id: "B2", nextRank: 2 });
     expect(applyMove(state, move)).toEqual(first);
     expect(state).toEqual(before);
   });
@@ -142,7 +145,34 @@ describe("explicit core outcomes", () => {
     state.byId.P1!.hand.cards = [{ kind: "standard", id: "H2", rank: 2, suit: "Hearts" }];
     const result = applyMove(state, { kind: "PLAY_HAND_TO_BUILD", cardId: "H2", target: "new" });
     expect(result.accepted).toBe(false);
-    expect(state.center.buildPiles).toHaveLength(4);
+    expect(state.center.buildPiles).toHaveLength(1);
+  });
+
+  it("progresses through wild ranks, then recycles and removes a completed Build pile", () => {
+    let state = turn();
+    state.center.buildPiles = [];
+    state.rules.useJokers = true;
+    state.byId.P1!.hand.cards = Array.from({ length: 12 }, (_, index) =>
+      index === 4
+        ? { kind: "standard" as const, id: "king", rank: 13 as Rank, suit: "Hearts" as const }
+        : index === 9
+          ? { kind: "joker" as const, id: "joker" }
+          : { kind: "standard" as const, id: `rank-${index + 1}`, rank: (index + 1) as Rank, suit: "Hearts" },
+    );
+    // Kings and Jokers each represent the next required rank.
+    let result = applyMove(state, { kind: "PLAY_HAND_TO_BUILD", cardId: "rank-1", target: "new" });
+    expect(result.accepted).toBe(true);
+    state = result.state;
+    const buildId = state.center.buildPiles[0]!.id;
+    for (const id of ["rank-2", "rank-3", "rank-4", "king", "rank-6", "rank-7", "rank-8", "rank-9", "joker", "rank-11", "rank-12"]) {
+      result = applyMove(state, { kind: "PLAY_HAND_TO_BUILD", cardId: id, target: buildId });
+      expect(result.accepted).toBe(true);
+      state = result.state;
+    }
+    expect(state.center.buildPiles).toEqual([]);
+    expect(state.deck.recyclePile.map(({ id }) => id)).toHaveLength(12);
+    expect(result.events.map(({ type }) => type)).toContain("BuildCompleted");
+    expect(result.events.map(({ type }) => type)).toContain("BuildCleared");
   });
 
   it("rejects without evaluating a winner or mutating the input", () => {

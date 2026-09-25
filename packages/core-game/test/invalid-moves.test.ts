@@ -29,12 +29,9 @@ function expectRejected(
 const baseRules: Partial<RulesConfig> = {
   handSize: 2,
   stockSize: 1, // <-- avoid immediate gameover
-  buildPiles: 2,
   discardPiles: 3,
-  maxBuildRank: 13,
   kingsAreWild: true,
   useJokers: false,
-  autoClearCompleteBuild: true,
 };
 
 const players = [{ id: "P1" }, { id: "P2" }];
@@ -61,6 +58,7 @@ describe("invalid moves validations", () => {
 
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
     expect(s.phase).toBe("turn"); // no immediate gameover now
 
     r = applyMove(s, { kind: "START_GAME" });
@@ -80,6 +78,7 @@ describe("invalid moves validations", () => {
 
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
     // Hand should be full already
     r = applyMove(s, { kind: "DRAW_TO_HAND" });
     expectRejected(r, s, "Hand already full");
@@ -96,6 +95,7 @@ describe("invalid moves validations", () => {
 
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
 
     r = applyMove(s, {
       kind: "PLAY_HAND_TO_BUILD",
@@ -120,6 +120,7 @@ describe("invalid moves validations", () => {
 
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
 
     // Find a card that doesn't match the build requirement (rank 5 or 6)
     const bad = s.byId["P1"].hand.cards.find(
@@ -140,6 +141,7 @@ describe("invalid moves validations", () => {
 
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
     expect(s.phase).toBe("gameover"); // immediate win on empty stock
 
     r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", target: "B1" });
@@ -162,6 +164,7 @@ describe("invalid moves validations", () => {
 
     let r = applyMove(s, { kind: "START_GAME" });
     s = r.state;
+    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
 
     r = applyMove(s, { kind: "PLAY_STOCK_TO_BUILD", target: "B1" });
     expectRejected(r, s, "Stock card does not match build requirement");

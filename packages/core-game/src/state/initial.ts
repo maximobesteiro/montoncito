@@ -1,5 +1,4 @@
 import {
-  BuildPile,
   Card,
   GameState,
   PlayerId,
@@ -16,15 +15,12 @@ export function createInitialState(
   const rules: RulesConfig = {
     handSize: opts?.handSize ?? 5,
     stockSize: opts?.stockSize ?? 20,
-    buildPiles: opts?.buildPiles ?? 4,
-    maxBuildRank: opts?.maxBuildRank ?? 13,
     discardPiles: opts?.discardPiles ?? 3,
     useJokers: opts?.useJokers ?? false,
     jokersAreWild: opts?.jokersAreWild ?? true,
     kingsAreWild: opts?.kingsAreWild ?? true,
     additionalWildRanks: opts?.additionalWildRanks ?? [],
     enableCardWildFlag: opts?.enableCardWildFlag ?? true,
-    autoClearCompleteBuild: opts?.autoClearCompleteBuild ?? true,
   };
 
   const rngSeed = opts?.seed ?? 123456789;
@@ -43,14 +39,7 @@ export function createInitialState(
     };
   }
 
-  const buildPiles: BuildPile[] = Array.from(
-    { length: rules.buildPiles },
-    (_, i) => ({
-      id: `B${i + 1}`,
-      cards: [],
-      nextRank: 1,
-    })
-  );
+  const buildPiles: BuildPile[] = [];
 
   return {
     version: 1,
@@ -63,7 +52,7 @@ export function createInitialState(
     },
     players: players.map((p) => p.id),
     byId,
-    deck: { drawPile: deck.slice(), discard: [] },
+    deck: { drawPile: deck.slice(), recyclePile: [] },
     center: { buildPiles },
     winner: null,
     rngSeed,

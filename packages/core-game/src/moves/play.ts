@@ -39,20 +39,21 @@ function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { 
   const updated: BuildPile = {
     ...pile,
     cards: [card, ...pile.cards],
-    nextRank: computeNextRankAfterPlace(pile.nextRank, rankOrNull, state.rules.maxBuildRank),
+    nextRank: computeNextRankAfterPlace(pile.nextRank, rankOrNull, 12),
   };
   const events: GameEvent[] = [];
   if (updated.nextRank === null) {
     events.push({ type: "BuildCompleted", payload: { buildId } });
-    if (state.rules.autoClearCompleteBuild) {
-      updated.cards = [];
-      updated.nextRank = 1;
-      events.push({ type: "BuildCleared", payload: { buildId } });
-    }
+    events.push({ type: "BuildCleared", payload: { buildId } });
   }
   const index = piles.findIndex(({ id }) => id === buildId);
   const nextPiles = piles.slice();
-  nextPiles[index] = updated;
+  if (updated.nextRank === null) {
+    nextPiles.splice(index, 1);
+    state = { ...state, deck: { ...state.deck, recyclePile: [...state.deck.recyclePile, ...updated.cards] } };
+  } else {
+    nextPiles[index] = updated;
+  }
   return { state: { ...state, center: { buildPiles: nextPiles } }, events, buildId };
 }
 

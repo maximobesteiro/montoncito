@@ -57,20 +57,6 @@ export function startGame(state: GameState): ApplyResult {
   let s = state;
   const events: GameEvent[] = [];
 
-  // Initialize center build piles if not already
-  if (s.center.buildPiles.length === 0) {
-    s = {
-      ...s,
-      center: {
-        buildPiles: Array.from({ length: s.rules.buildPiles }, (_, i) => ({
-          id: `B${i + 1}`,
-          cards: [],
-          nextRank: 1,
-        })),
-      },
-    };
-  }
-
   // Deal stock piles
   s = dealStockRoundRobin(s);
 
