@@ -1,6 +1,6 @@
 "use client";
 
-import type { GameState, PlayerId } from "@mont/core-game";
+import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
 import { BuildPiles } from "./BuildPiles";
 import { PlayerArea } from "./PlayerArea";
 import { OpponentArea } from "./OpponentArea";
@@ -12,11 +12,11 @@ interface GameBoardProps {
   onHandCardClick?: (cardId: string) => void;
   onStockClick?: () => void;
   onDiscardClick?: (pileIndex: number) => void;
-  onBuildPileClick?: (buildId: string) => void;
+  onBuildPileClick?: (buildId: BuildPileTarget) => void;
   playableHandCards?: Set<string>;
   isStockPlayable?: boolean;
   playableDiscardPiles?: Set<number>;
-  playableBuildPiles?: Set<string>;
+  playableBuildPiles?: Set<BuildPileTarget>;
 }
 
 export function GameBoard({

@@ -8,7 +8,7 @@ import { isWild } from "../utils/isWild";
 function cardMatchesRequired(
   card: Card,
   required: Rank | null,
-  rules: GameState["rules"]
+  rules: GameState["rules"],
 ): boolean {
   if (required === null) return false; // pile already completed and should be cleared/reset
   if (isWild(card, rules)) return true;
@@ -43,9 +43,15 @@ function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean {
 
   if (candidates.length === 0) return false;
 
-  if (state.center.buildPiles.length === 0 && candidates.some((card) =>
-    (card.kind === "standard" && card.rank === 1) || isWild(card, state.rules),
-  )) return true;
+  if (
+    state.center.buildPiles.length === 0 &&
+    candidates.some(
+      (card) =>
+        (card.kind === "standard" && card.rank === 1) ||
+        isWild(card, state.rules),
+    )
+  )
+    return true;
 
   // Check each center build pile requirement
   for (const pile of state.center.buildPiles) {
@@ -60,11 +66,17 @@ function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean {
 }
 
 /**
- * Determine winner by fewest stock cards. Ties are broken by earliest
- * appearance in `players` turn order to keep the outcome deterministic.
+ * Determine winner by fewest Stock pile cards, then Hand cards, then Discard
+ * pile cards. Remaining ties use the seeded player order deterministically.
  */
 function winnerByFewestStock(state: GameState): PlayerId | null {
-  let best: { pid: PlayerId; stock: number; order: number } | null = null;
+  let best: {
+    pid: PlayerId;
+    stock: number;
+    hand: number;
+    discards: number;
+    order: number;
+  } | null = null;
 
   for (let i = 0; i < state.players.length; i++) {
     const maybePid = state.players[i];
@@ -74,13 +86,25 @@ function winnerByFewestStock(state: GameState): PlayerId | null {
     const ps = state.byId[pid];
     if (!ps) continue;
     const stock = ps.stock.faceDown.length;
+    const hand = ps.hand.cards.length;
+    const discards = ps.discards.reduce(
+      (count, pile) => count + pile.length,
+      0,
+    );
 
     if (
       !best ||
       stock < best.stock ||
-      (stock === best.stock && i < best.order)
+      (stock === best.stock && hand < best.hand) ||
+      (stock === best.stock &&
+        hand === best.hand &&
+        discards < best.discards) ||
+      (stock === best.stock &&
+        hand === best.hand &&
+        discards === best.discards &&
+        i < best.order)
     ) {
-      best = { pid, stock, order: i };
+      best = { pid, stock, hand, discards, order: i };
     }
   }
 

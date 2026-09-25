@@ -10,7 +10,7 @@ import {
 export function createInitialState(
   players: { id: PlayerId; name?: string }[],
   deck: Card[],
-  opts?: Partial<RulesConfig> & { seed?: number; id?: string }
+  opts?: Partial<RulesConfig> & { seed?: number; id?: string },
 ): GameState {
   const rules: RulesConfig = {
     handSize: opts?.handSize ?? 5,
@@ -23,7 +23,7 @@ export function createInitialState(
     enableCardWildFlag: opts?.enableCardWildFlag ?? true,
   };
 
-  const seed = opts?.seed ?? 123456789;
+  const seed = (opts?.seed ?? 123456789) >>> 0;
 
   const byId: Record<PlayerId, PlayerState> = {};
   for (const p of players) {
