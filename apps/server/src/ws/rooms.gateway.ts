@@ -16,6 +16,15 @@ import { assertServerEvent } from './events';
 import { RoomsService } from '../rooms/rooms.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { randomUUID } from 'crypto';
+import {
+  GAME_ROOM_PROTOCOL_VERSION,
+  RoomStateUpdateSchema,
+  SyncRequestSchema,
+  SyncSnapshotSchema,
+  type ProtocolFailure,
+} from '@mont/game-room';
+import { GameService } from '../game/game.service';
+import type { GameState } from '@mont/core-game';
 
 type Conn = WsJoinClaims; // { roomId, playerId }
 
@@ -38,6 +47,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @Inject(forwardRef(() => RoomsService))
     private readonly rooms: RoomsService,
     private readonly profiles: ProfilesService,
+    private readonly games: GameService,
   ) {}
 
   public handleConnection(client: Socket) {
@@ -50,6 +60,10 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       const decoded = jwt.verify(raw, wsSecret) as Record<string, unknown>; // will throw if expired/bad
       const claims = WsJoinClaims.parse(decoded);
+      const room = this.rooms.getById(claims.roomId);
+      if (!room.players.some((player) => player.id === claims.playerId)) {
+        throw new Error('Player is no longer a member of this room');
+      }
 
       void client.join(claims.roomId);
       this.conns.set(client.id, claims);
@@ -104,11 +118,17 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   /** Broadcast fresh view (state/meta) to everyone in the room */
   public emitStateUpdate(
     roomId: string,
-    payload: { meta?: unknown; state: unknown },
+    payload: { meta: { seq: number }; state: GameState },
   ) {
     const ev = { type: 'STATE_UPDATE', ...payload } as const;
     assertServerEvent(ev);
     this.server.to(roomId).emit('event', ev);
+    const update = RoomStateUpdateSchema.parse({
+      version: GAME_ROOM_PROTOCOL_VERSION,
+      seq: payload.meta.seq,
+      state: payload.state,
+    });
+    this.server.to(roomId).emit('room.state', update);
   }
 
   /** Notify room members that this room has become a Game room. */
@@ -204,5 +224,85 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const ev = { type: 'CHAT_MESSAGE', ...payload } as const;
     assertServerEvent(ev);
     this.server.to(roomId).emit('event', ev);
+  }
+
+  @SubscribeMessage('room.sync.request')
+  public synchronizeRoom(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
+    const claims = this.conns.get(client.id);
+    if (!claims) return;
+
+    const request = SyncRequestSchema.safeParse(payload);
+    if (!request.success) {
+      const version =
+        typeof payload === 'object' && payload !== null && 'version' in payload
+          ? (payload as { version?: unknown }).version
+          : undefined;
+      this.emitProtocolFailure(
+        client,
+        version !== undefined && version !== GAME_ROOM_PROTOCOL_VERSION
+          ? {
+              version: GAME_ROOM_PROTOCOL_VERSION,
+              code: 'UNSUPPORTED_VERSION',
+              message: 'Unsupported Game room protocol version',
+            }
+          : {
+              version: GAME_ROOM_PROTOCOL_VERSION,
+              code: 'MALFORMED_MESSAGE',
+              message: 'Invalid synchronization request',
+            },
+      );
+      return;
+    }
+
+    let room: ReturnType<RoomsService['getById']>;
+    try {
+      room = this.rooms.getById(claims.roomId);
+    } catch {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'NOT_A_MEMBER',
+        message: 'Game room is unavailable to this player',
+      });
+      return;
+    }
+    if (!room.players.some((player) => player.id === claims.playerId)) {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'NOT_A_MEMBER',
+        message: 'Player is no longer a member of this Game room',
+      });
+      return;
+    }
+    if (!room.gameId) {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'GAME_NOT_STARTED',
+        message: 'Game has not started',
+      });
+      return;
+    }
+
+    try {
+      const game = this.games.get(room.gameId);
+      const snapshot = SyncSnapshotSchema.parse({
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        seq: game.meta.seq,
+        state: game.state,
+      });
+      client.emit('room.sync.snapshot', snapshot);
+    } catch {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'MALFORMED_MESSAGE',
+        message: 'Game room synchronization snapshot is invalid',
+      });
+    }
+  }
+
+  private emitProtocolFailure(client: Socket, payload: ProtocolFailure) {
+    client.emit('protocol.error', payload);
   }
 }

@@ -159,7 +159,7 @@ export default function WaitingRoomPage() {
             setRoom(ev.room as RoomView);
           }
           if (ev.type === "GAME_STARTED") {
-            router.push(`/game?room=${ev.roomId}`);
+            router.push(`/game/${ev.roomId}`);
           }
           if (ev.type === "KICKED") {
             showToast("You have been kicked from the room", "warning");
@@ -204,7 +204,7 @@ export default function WaitingRoomPage() {
   useEffect(() => {
     if (!room) return;
     if (room.status === "in_progress") {
-      router.push(`/game?room=${room.id}`);
+      router.push(`/game/${room.id}`);
     }
   }, [room, router]);
 

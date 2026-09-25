@@ -37,13 +37,7 @@ export class RoomsController {
     if (!clientId) throw new Error('Missing X-Client-Id header');
     const room = this.rooms.create({ clientId });
 
-    const claims: WsJoinClaims = { roomId: room.id, playerId: clientId };
-    const wsSecret = this.configService.get<string>('WS_SECRET');
-    if (!wsSecret) throw new Error('WS_SECRET not configured');
-
-    const wsJoinToken = jwt.sign(claims, wsSecret, {
-      expiresIn: '10m',
-    });
+    const wsJoinToken = this.createWsJoinToken(room.id, clientId);
 
     return { ...this.rooms.toView(room), wsJoinToken };
   }
@@ -103,13 +97,7 @@ export class RoomsController {
 
     const room = this.rooms.join({ roomId, clientId });
 
-    const claims: WsJoinClaims = { roomId, playerId: clientId };
-    const wsSecret = this.configService.get<string>('WS_SECRET');
-    if (!wsSecret) throw new Error('WS_SECRET not configured');
-
-    const wsJoinToken = jwt.sign(claims, wsSecret, {
-      expiresIn: '10m',
-    });
+    const wsJoinToken = this.createWsJoinToken(roomId, clientId);
 
     const roomView = this.rooms.toView(room);
 
@@ -119,6 +107,22 @@ export class RoomsController {
     if (!alreadyMember) this.ws.emitRoomUpdated(roomId, roomView);
 
     return { ...roomView, wsJoinToken };
+  }
+
+  @Post(':id/socket-token')
+  public createGameRoomSocketToken(
+    @Param('id') roomId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new Error('Missing X-Client-Id header');
+    const room = this.rooms.getById(roomId);
+    if (!room.players.some((player) => player.id === clientId)) {
+      throw new ForbiddenException('Only room members can connect to the game');
+    }
+    if (!room.gameId) throw new ConflictException('Game has not started');
+
+    const wsJoinToken = this.createWsJoinToken(roomId, clientId);
+    return { wsJoinToken };
   }
 
   @Post(':id/leave')
@@ -269,5 +273,13 @@ export class RoomsController {
       state: game.state,
       events,
     };
+  }
+
+  private createWsJoinToken(roomId: string, playerId: string): string {
+    const wsSecret = this.configService.get<string>('WS_SECRET');
+    if (!wsSecret) throw new Error('WS_SECRET not configured');
+
+    const claims: WsJoinClaims = { roomId, playerId };
+    return jwt.sign(claims, wsSecret, { expiresIn: '10m' });
   }
 }
