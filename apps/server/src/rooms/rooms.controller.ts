@@ -201,13 +201,10 @@ export class RoomsController {
     @Headers('x-client-id') clientId: string | undefined,
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
+    const alreadyStarted = this.rooms.getById(roomId).status === 'in_progress';
     const room = this.rooms.start({ roomId, requesterId: clientId });
 
-    // If a game was created, broadcast initial state to room members.
-    if (room.gameId) {
-      const game = this.games.get(room.gameId);
-      this.ws.emitGameStarted(roomId, { meta: game.meta, state: game.state });
-    }
+    if (!alreadyStarted && room.gameId) this.ws.emitGameStarted(roomId);
 
     return this.rooms.toView(room);
   }

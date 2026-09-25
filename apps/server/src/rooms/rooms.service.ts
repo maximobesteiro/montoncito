@@ -80,7 +80,7 @@ export class RoomsService {
       ownerId: params.clientId,
       players: [{ id: params.clientId, isOwner: true, ready: false }],
       createdAt: now,
-      gameConfig: { discardPiles: 1 },
+      gameConfig: { discardPiles: 3 },
     };
 
     this.roomsById.set(id, room);
@@ -114,7 +114,7 @@ export class RoomsService {
       ownerId: params.clientId,
       players: [{ id: params.clientId, isOwner: true, ready: false }],
       createdAt: now,
-      gameConfig: { discardPiles: 1 },
+      gameConfig: { discardPiles: 3 },
     };
 
     this.roomsById.set(id, room);
@@ -185,8 +185,8 @@ export class RoomsService {
     if (params.patch.gameConfig) {
       if (typeof params.patch.gameConfig.discardPiles !== 'undefined') {
         const v = params.patch.gameConfig.discardPiles;
-        if (v < 1 || v > 8) {
-          throw new BadRequestException('discardPiles must be between 1 and 8');
+        if (v < 1 || v > 4) {
+          throw new BadRequestException('discardPiles must be between 1 and 4');
         }
         room.gameConfig.discardPiles = v;
       }
@@ -379,9 +379,15 @@ export class RoomsService {
     if (!room) throw new NotFoundException('Room not found');
     if (room.ownerId !== params.requesterId)
       throw new ForbiddenException('Only the owner can start the game');
+    if (room.status === 'in_progress' && room.gameId) return room;
     if (room.status !== 'open') throw new ConflictException('Room is not open');
-    if (room.players.length < 2)
-      throw new ConflictException('At least two players are required to start');
+    if (room.players.length < 2 || room.players.length > 4) {
+      throw new ConflictException('Between two and four players are required to start');
+    }
+
+    if (room.gameConfig.discardPiles < 1 || room.gameConfig.discardPiles > 4) {
+      throw new BadRequestException('discardPiles must be between 1 and 4');
+    }
 
     // Check that all non-owner players are ready
     const nonOwnerPlayers = room.players.filter((p) => !p.isOwner);

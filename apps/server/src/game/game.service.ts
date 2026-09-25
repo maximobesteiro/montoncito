@@ -1,12 +1,10 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import {
-  createInitialState,
+  createStartedGame,
   applyMove as coreApplyMove,
   type GameState,
   type Move,
-  type Card,
-  type RulesConfig,
   type ApplyResult,
 } from '@mont/core-game';
 
@@ -17,6 +15,7 @@ export type GameMeta = {
   roomId: string;
   players: string[]; // ordered clientIds
   startedAt: string;
+  seq: number;
   finishedAt?: string;
   winnerId?: string | null;
 };
@@ -33,59 +32,23 @@ export class GameService {
   public create(params: {
     roomId: string;
     players: string[];
-    config: Partial<{
-      discardPiles: number;
-      handSize: number;
-      stockSize: number;
-      useJokers: boolean;
-      jokersAreWild: boolean;
-      kingsAreWild: boolean;
-      additionalWildRanks: number[]; // will be coerced to Rank[]
-      enableCardWildFlag: boolean;
-      seed: number;
-    }>;
+    config?: { discardPiles?: number; seed?: number };
   }): StoredGame {
     const id = randomUUID();
-
-    // 1) Deck typed explicitly
-    const deck: Card[] = [];
-
-    // 2) Build engine opts safely and only when defined
-    const opts: Partial<RulesConfig> & { seed?: number; id?: string } = {};
     const cfg = params.config ?? {};
-
-    if (cfg.discardPiles !== undefined) opts.discardPiles = cfg.discardPiles;
-    if (cfg.handSize !== undefined) opts.handSize = cfg.handSize;
-    if (cfg.stockSize !== undefined) opts.stockSize = cfg.stockSize;
-    if (cfg.useJokers !== undefined) opts.useJokers = cfg.useJokers;
-    if (cfg.jokersAreWild !== undefined) opts.jokersAreWild = cfg.jokersAreWild;
-    if (cfg.kingsAreWild !== undefined) opts.kingsAreWild = cfg.kingsAreWild;
-
-    if (cfg.additionalWildRanks !== undefined) {
-      const ranks = cfg.additionalWildRanks
-        .map((n) => (n < 1 ? 1 : n > 13 ? 13 : n))
-        // Coerce each to Rank
-        .map((n) => n as unknown as NonNullable<RulesConfig['additionalWildRanks']>[number]);
-      opts.additionalWildRanks =
-        ranks as unknown as RulesConfig['additionalWildRanks'];
-    }
-
-    if (cfg.enableCardWildFlag !== undefined)
-      opts.enableCardWildFlag = cfg.enableCardWildFlag;
-    opts.seed = cfg.seed ?? Date.now();
-    opts.id = id;
-
-    const state = createInitialState(
-      params.players.map((pid) => ({ id: pid })), // names optional
-      deck,
-      opts,
-    );
+    const state = createStartedGame({
+      players: params.players,
+      seed: cfg.seed ?? randomInt(0, 0x1_0000_0000),
+      id,
+      discardPiles: cfg.discardPiles,
+    });
 
     const meta: GameMeta = {
       id,
       roomId: params.roomId,
       players: params.players,
       startedAt: new Date().toISOString(),
+      seq: 0,
       finishedAt: undefined,
       winnerId: state.winner ?? null,
     };
@@ -110,6 +73,7 @@ export class GameService {
     if (!result.accepted) return { ...result, game: g };
     const next = result.state;
     g.state = next;
+    g.meta.seq += 1;
     g.meta.winnerId = next.winner ?? null;
     if (next.phase === 'gameover' && !g.meta.finishedAt) {
       g.meta.finishedAt = new Date().toISOString();

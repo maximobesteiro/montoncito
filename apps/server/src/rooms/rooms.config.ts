@@ -3,8 +3,8 @@ import { z } from 'zod';
 
 const RoomEnvSchema = z.object({
   ROOM_DEFAULT_VISIBILITY: z.enum(['public', 'private']).default('public'),
-  ROOM_DEFAULT_MAX_PLAYERS: z.coerce.number().int().min(2).max(16).default(2),
-  ROOM_HARD_MAX_PLAYERS: z.coerce.number().int().min(2).max(16).default(8),
+  ROOM_DEFAULT_MAX_PLAYERS: z.coerce.number().int().min(2).max(4).default(2),
+  ROOM_HARD_MAX_PLAYERS: z.coerce.number().int().min(2).max(4).default(4),
   ROOM_SLUG_LENGTH: z.coerce.number().int().min(6).max(21).default(10),
 });
 

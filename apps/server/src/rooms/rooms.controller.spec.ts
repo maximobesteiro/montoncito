@@ -30,7 +30,7 @@ describe('RoomsController', () => {
     ownerId: 'client-1',
     players: [{ id: 'client-1', isOwner: true, ready: false }],
     createdAt: '2024-01-01T00:00:00.000Z',
-    gameConfig: { discardPiles: 1 },
+    gameConfig: { discardPiles: 3 },
   };
 
   const mockRoomView = {
@@ -50,7 +50,7 @@ describe('RoomsController', () => {
     ],
     createdAt: '2024-01-01T00:00:00.000Z',
     gameId: undefined,
-    gameConfig: { discardPiles: 1 },
+    gameConfig: { discardPiles: 3 },
   };
 
   const mockGame = {
@@ -59,6 +59,7 @@ describe('RoomsController', () => {
       roomId: 'room-123',
       players: ['client-1', 'client-2'],
       startedAt: '2024-01-01T00:00:00.000Z',
+      seq: 0,
     },
     state: {
       version: 1 as const,
@@ -88,7 +89,7 @@ describe('RoomsController', () => {
       center: { buildPiles: [] },
       nextBuildPileId: 1,
       winner: null,
-      rng: { algorithm: "mulberry32-v1", seed: 123456789, cursor: 0 },
+      rng: { algorithm: "mulberry32-v1" as const, seed: 123456789, cursor: 0 },
       rules: {
         handSize: 5,
         stockSize: 20,
@@ -250,16 +251,16 @@ describe('RoomsController', () => {
 
   describe('patch', () => {
     it('should update room successfully', () => {
-      const updateData = { visibility: 'private' as const, maxPlayers: 6 };
+      const updateData = { visibility: 'private' as const, maxPlayers: 4 };
       const updatedRoom = {
         ...mockRoom,
         visibility: 'private' as const,
-        maxPlayers: 6,
+        maxPlayers: 4,
       };
       const updatedRoomView = {
         ...mockRoomView,
         visibility: 'private' as const,
-        maxPlayers: 6,
+        maxPlayers: 4,
       };
 
       roomsService.update.mockReturnValue(updatedRoom);
@@ -272,7 +273,7 @@ describe('RoomsController', () => {
         requesterId: 'client-1',
         patch: {
           visibility: 'private',
-          maxPlayers: 6,
+          maxPlayers: 4,
           gameConfig: undefined,
         },
       });
@@ -440,9 +441,9 @@ describe('RoomsController', () => {
         gameId: 'game-123',
       };
 
+      roomsService.getById.mockReturnValue(mockRoom);
       roomsService.start.mockReturnValue(startedRoom);
       roomsService.toView.mockReturnValue(startedRoomView);
-      gameService.get.mockReturnValue(mockGame);
 
       const result = controller.start('room-123', 'client-1');
 
@@ -452,10 +453,27 @@ describe('RoomsController', () => {
       });
       expect(mockRoomsService.toView).toHaveBeenCalledWith(startedRoom);
       expect(result).toEqual(startedRoomView);
-      expect(wsGateway.emitGameStarted).toHaveBeenCalledWith('room-123', {
-        meta: mockGame.meta,
-        state: mockGame.state,
+      expect(wsGateway.emitGameStarted).toHaveBeenCalledWith('room-123');
+      expect(gameService.get).not.toHaveBeenCalled();
+    });
+
+    it('does not notify clients again when the start is retried', () => {
+      const startedRoom = {
+        ...mockRoom,
+        status: 'in_progress' as const,
+        gameId: 'game-123',
+      };
+      roomsService.getById.mockReturnValue(startedRoom);
+      roomsService.start.mockReturnValue(startedRoom);
+      roomsService.toView.mockReturnValue({
+        ...mockRoomView,
+        status: 'in_progress',
+        gameId: 'game-123',
       });
+
+      controller.start('room-123', 'client-1');
+
+      expect(wsGateway.emitGameStarted).not.toHaveBeenCalled();
     });
 
     it('should throw error when clientId is missing', () => {

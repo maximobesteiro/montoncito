@@ -159,9 +159,7 @@ export default function WaitingRoomPage() {
             setRoom(ev.room as RoomView);
           }
           if (ev.type === "GAME_STARTED") {
-            // Seed store so /game can render immediately (optional)
-            setGameState(ev.state as GameState);
-            router.push(`/game?room=${view.id}`);
+            router.push(`/game?room=${ev.roomId}`);
           }
           if (ev.type === "KICKED") {
             showToast("You have been kicked from the room", "warning");
@@ -507,7 +505,7 @@ export default function WaitingRoomPage() {
                   <input
                     type="number"
                     min={2}
-                    max={16}
+                    max={4}
                     value={room.maxPlayers}
                     disabled={!isHost || saving || room.status !== "open"}
                     onChange={(e) =>
@@ -522,7 +520,7 @@ export default function WaitingRoomPage() {
                   <input
                     type="number"
                     min={1}
-                    max={8}
+                    max={4}
                     value={room.gameConfig.discardPiles}
                     disabled={!isHost || saving || room.status !== "open"}
                     onChange={(e) =>
