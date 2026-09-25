@@ -12,7 +12,11 @@ const CardSchema = z.discriminatedUnion("kind", [
     suit: z.enum(["Clubs", "Diamonds", "Hearts", "Spades"]),
     baseWild: z.boolean().optional(),
   }),
-  z.object({ kind: z.literal("joker"), id: z.string().min(1), baseWild: z.boolean().optional() }),
+  z.object({
+    kind: z.literal("joker"),
+    id: z.string().min(1),
+    baseWild: z.boolean().optional(),
+  }),
 ]);
 
 const RulesConfigSchema = z.object({
@@ -66,25 +70,34 @@ export const AuthoritativeStateSchema = z.object({
   data: z.record(z.string(), z.unknown()).optional(),
 }) satisfies z.ZodType<GameState>;
 
-export const SyncRequestSchema = z.object({
-  version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
-}).strict();
+export const SyncRequestSchema = z
+  .object({
+    version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
+  })
+  .strict();
 
-export const SyncRequestMessageSchema = z.object({
-  type: z.literal("room.sync.request"),
-  payload: z.unknown(),
-}).strict();
+export const SyncRequestMessageSchema = z
+  .object({
+    type: z.literal("room.sync.request"),
+    payload: z.unknown(),
+  })
+  .strict();
 
-export const SyncSnapshotSchema = z.object({
+const VersionedAuthoritativeStateSchema = z.object({
   version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
   seq: z.number().int().nonnegative(),
   state: AuthoritativeStateSchema,
 }).strict();
 
-export const SyncSnapshotMessageSchema = z.object({
-  type: z.literal("room.sync.snapshot"),
-  payload: SyncSnapshotSchema,
-}).strict();
+export const SyncSnapshotSchema = VersionedAuthoritativeStateSchema;
+export const RoomStateUpdateSchema = VersionedAuthoritativeStateSchema;
+
+export const SyncSnapshotMessageSchema = z
+  .object({
+    type: z.literal("room.sync.snapshot"),
+    payload: SyncSnapshotSchema,
+  })
+  .strict();
 
 export const ProtocolFailureCodeSchema = z.enum([
   "UNSUPPORTED_VERSION",
@@ -93,16 +106,20 @@ export const ProtocolFailureCodeSchema = z.enum([
   "GAME_NOT_STARTED",
 ]);
 
-export const ProtocolFailureSchema = z.object({
-  version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
-  code: ProtocolFailureCodeSchema,
-  message: z.string().min(1),
-}).strict();
+export const ProtocolFailureSchema = z
+  .object({
+    version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
+    code: ProtocolFailureCodeSchema,
+    message: z.string().min(1),
+  })
+  .strict();
 
-export const ProtocolFailureMessageSchema = z.object({
-  type: z.literal("protocol.error"),
-  payload: ProtocolFailureSchema,
-}).strict();
+export const ProtocolFailureMessageSchema = z
+  .object({
+    type: z.literal("protocol.error"),
+    payload: ProtocolFailureSchema,
+  })
+  .strict();
 
 export type SyncRequest = z.infer<typeof SyncRequestSchema>;
 export type SyncSnapshot = z.infer<typeof SyncSnapshotSchema>;

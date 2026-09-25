@@ -6,8 +6,13 @@ import type { GameState } from "@mont/core-game";
 import {
   GAME_ROOM_PROTOCOL_VERSION,
   ProtocolFailureSchema,
-  SyncSnapshotSchema,
+  createGameRoomSession,
+  failGameRoomSession,
+  markGameRoomConnected,
+  receiveGameRoomSnapshot,
+  receiveGameRoomUpdate,
   type ProtocolFailure,
+  type GameRoomSession,
 } from "@mont/game-room";
 import { apiFetch, getOrCreateClientId, getServerUrl } from "./api";
 
@@ -25,17 +30,19 @@ export type GameRoomView = {
 };
 
 export function useGameRoom(roomId: string): GameRoomView {
-  const [view, setView] = useState<GameRoomView>({
-    state: null,
-    seq: null,
-    connectionStatus: "connecting",
-    problem: null,
-  });
+  const [session, setSession] = useState<GameRoomSession>(createGameRoomSession);
+  const [connectionStatus, setConnectionStatus] =
+    useState<GameRoomConnectionStatus>("connecting");
+  const [connectionProblem, setConnectionProblem] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     let disposed = false;
     let socket: Socket | null = null;
-    setView({ state: null, seq: null, connectionStatus: "connecting", problem: null });
+    setSession(createGameRoomSession());
+    setConnectionStatus("connecting");
+    setConnectionProblem(null);
 
     const connect = async () => {
       try {
@@ -51,63 +58,47 @@ export function useGameRoom(roomId: string): GameRoomView {
           auth: { token: wsJoinToken },
         });
         socket.on("connect", () => {
-          setView((previous) => ({
-            ...previous,
-            connectionStatus: "synchronizing",
-            problem: null,
-          }));
+          setSession((previous) => markGameRoomConnected(previous));
+          setConnectionStatus("synchronizing");
+          setConnectionProblem(null);
           socket?.emit("room.sync.request", { version: GAME_ROOM_PROTOCOL_VERSION });
         });
         socket.on("room.sync.snapshot", (payload: unknown) => {
-          const parsed = SyncSnapshotSchema.safeParse(payload);
-          if (!parsed.success) {
-            setView((previous) => ({
-              ...previous,
-              connectionStatus: "failed",
-              problem: "Received an invalid synchronization snapshot",
-            }));
-            return;
-          }
-          setView({
-            state: parsed.data.state,
-            seq: parsed.data.seq,
-            connectionStatus: "connected",
-            problem: null,
-          });
+          setSession((previous) => receiveGameRoomSnapshot(previous, payload));
+          setConnectionStatus("connected");
+        });
+        socket.on("room.state", (payload: unknown) => {
+          setSession((previous) => receiveGameRoomUpdate(previous, payload));
         });
         socket.on("protocol.error", (payload: unknown) => {
           const parsed = ProtocolFailureSchema.safeParse(payload);
-          setView((previous) => ({
-            ...previous,
-            connectionStatus: "failed",
-            problem: parsed.success
-              ? formatProtocolProblem(parsed.data)
-              : "The server returned an invalid protocol failure",
-          }));
+          const failure: ProtocolFailure = parsed.success
+            ? parsed.data
+            : {
+                version: GAME_ROOM_PROTOCOL_VERSION,
+                code: "MALFORMED_MESSAGE",
+                message: "The server returned an invalid protocol failure",
+              };
+          setSession((previous) => failGameRoomSession(previous, failure));
+          setConnectionStatus("failed");
         });
         socket.on("connect_error", (error: Error) => {
-          setView((previous) => ({
-            ...previous,
-            connectionStatus: "failed",
-            problem: error.message || "Unable to connect to the Game room",
-          }));
+          setConnectionStatus("failed");
+          setConnectionProblem(error.message || "Unable to connect to the Game room");
         });
         socket.on("disconnect", (reason) => {
           if (!disposed && reason !== "io client disconnect") {
-            setView((previous) => ({
-              ...previous,
-              connectionStatus: "connecting",
-            }));
+            setConnectionStatus("connecting");
           }
         });
       } catch (error) {
         if (disposed) return;
-        setView((previous) => ({
-          ...previous,
-          connectionStatus: "failed",
-          problem:
-            error instanceof Error ? error.message : "Unable to connect to the Game room",
-        }));
+        setConnectionStatus("failed");
+        setConnectionProblem(
+          error instanceof Error
+            ? error.message
+            : "Unable to connect to the Game room",
+        );
       }
     };
 
@@ -118,7 +109,16 @@ export function useGameRoom(roomId: string): GameRoomView {
     };
   }, [roomId]);
 
-  return view;
+  return {
+    state: session.status === "synchronized" ? session.state : null,
+    seq: session.status === "synchronized" ? session.seq : null,
+    connectionStatus:
+      session.status === "failed" ? "failed" : connectionStatus,
+    problem:
+      session.status === "failed"
+        ? formatProtocolProblem(session.problem)
+        : connectionProblem,
+  };
 }
 
 function formatProtocolProblem(problem: ProtocolFailure): string {

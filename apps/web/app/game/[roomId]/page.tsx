@@ -12,7 +12,9 @@ export default function GameRoomPage() {
       <main className="min-h-screen bg-muted p-6">
         <section className="brutal-border brutal-shadow mx-auto max-w-3xl bg-card p-6">
           <h1 className="text-2xl font-bold">Game room unavailable</h1>
-          <p className="mt-2" role="alert">{problem}</p>
+          <p className="mt-2" role="alert">
+            {problem}
+          </p>
         </section>
       </main>
     );
@@ -37,7 +39,9 @@ export default function GameRoomPage() {
           <h1 className="text-2xl font-bold">Game room</h1>
           <p className="font-mono text-sm">{roomId}</p>
         </div>
-        <p className="font-mono text-sm" aria-live="polite">Sequence {seq}</p>
+        <p className="font-mono text-sm" aria-live="polite">
+          Sequence {seq}
+        </p>
       </header>
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[2fr_1fr]">
         <section className="brutal-border brutal-shadow bg-card p-4">
@@ -47,7 +51,10 @@ export default function GameRoomPage() {
           ) : (
             <div className="flex flex-wrap gap-3">
               {state.center.buildPiles.map((pile) => (
-                <div key={pile.id} className="brutal-border min-w-24 bg-surface p-3">
+                <div
+                  key={pile.id}
+                  className="brutal-border min-w-24 bg-surface p-3"
+                >
                   <p className="font-mono text-sm">Pile {pile.id}</p>
                   <p className="text-lg font-bold">Next: {pile.nextRank ?? "complete"}</p>
                   <p className="text-xs">{pile.cards.length} cards</p>
@@ -64,8 +71,12 @@ export default function GameRoomPage() {
               return (
                 <li key={playerId} className="brutal-border bg-surface p-3">
                   <p className="font-bold">{player?.name ?? playerId}</p>
-                  <p className="text-sm">Stock: {player?.stock.faceDown.length ?? 0} cards</p>
-                  <p className="text-sm">Hand: {player?.hand.cards.length ?? 0} cards</p>
+                  <p className="text-sm">
+                    Stock: {player?.stock.faceDown.length ?? 0} cards
+                  </p>
+                  <p className="text-sm">
+                    Hand: {player?.hand.cards.length ?? 0} cards
+                  </p>
                 </li>
               );
             })}

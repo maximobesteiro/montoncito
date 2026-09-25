@@ -11,11 +11,17 @@ describe('Game room synchronization over Socket.IO', () => {
   let socketServer: Server;
   let gateway: RoomsGateway;
   let baseUrl: string;
+  let clients: ClientSocket[];
 
   beforeEach(async () => {
     httpServer = createServer();
     socketServer = new Server(httpServer, { cors: { origin: '*' } });
-    const state = createStartedGame({ players: ['P1', 'P2'], seed: 1, id: 'game-1' });
+    clients = [];
+    const state = createStartedGame({
+      players: ['P1', 'P2'],
+      seed: 1,
+      id: 'game-1',
+    });
     const rooms = {
       getById: () => ({ players: [{ id: 'P1' }, { id: 'P2' }], gameId: 'game-1' }),
     };
@@ -26,9 +32,8 @@ describe('Game room synchronization over Socket.IO', () => {
       {} as never,
       games as never,
     );
-    gateway.server = socketServer;
-
     const namespace = socketServer.of('/ws');
+    gateway.server = namespace as unknown as Server;
     namespace.on('connection', (client) => {
       gateway.handleConnection(client);
       client.on('room.sync.request', (payload: unknown) => {
@@ -37,16 +42,24 @@ describe('Game room synchronization over Socket.IO', () => {
     });
     await new Promise<void>((resolve) => httpServer.listen(0, resolve));
     const address = httpServer.address();
-    if (!address || typeof address === 'string') throw new Error('No test server address');
+    if (!address || typeof address === 'string') {
+      throw new Error('No test server address');
+    }
     baseUrl = `http://127.0.0.1:${address.port}/ws`;
   });
 
   afterEach(async () => {
+    clients.forEach((client) => client.disconnect());
     await new Promise<void>((resolve) => socketServer.close(() => resolve()));
   });
 
   it('sends a full authoritative snapshot to a current member', async () => {
     const client = await connectAs('P1');
+    const state = createStartedGame({
+      players: ['P1', 'P2'],
+      seed: 1,
+      id: 'game-1',
+    });
     const snapshot = waitForEvent(client, 'room.sync.snapshot');
     client.emit('room.sync.request', { version: 1 });
 
@@ -54,6 +67,14 @@ describe('Game room synchronization over Socket.IO', () => {
       version: 1,
       seq: 0,
       state: { id: 'game-1', players: ['P1', 'P2'] },
+    });
+    const nextState = { ...state, turn: { ...state.turn, number: 2 } };
+    const update = waitForEvent(client, 'room.state');
+    gateway.emitStateUpdate('room-1', { meta: { seq: 1 }, state: nextState });
+    await expect(update).resolves.toMatchObject({
+      version: 1,
+      seq: 1,
+      state: { id: 'game-1', turn: { number: 2 } },
     });
     client.disconnect();
   });
@@ -74,7 +95,9 @@ describe('Game room synchronization over Socket.IO', () => {
     const client = await connectAs('P1');
     const unsupported = waitForEvent(client, 'protocol.error');
     client.emit('room.sync.request', { version: 2 });
-    await expect(unsupported).resolves.toMatchObject({ code: 'UNSUPPORTED_VERSION' });
+    await expect(unsupported).resolves.toMatchObject({
+      code: 'UNSUPPORTED_VERSION',
+    });
 
     const malformed = waitForEvent(client, 'protocol.error');
     client.emit('room.sync.request', { version: 1, roomId: 'room-2' });
@@ -92,6 +115,7 @@ describe('Game room synchronization over Socket.IO', () => {
       client.once('connect', resolve);
       client.once('connect_error', reject);
     });
+    clients.push(client);
     return client;
   }
 

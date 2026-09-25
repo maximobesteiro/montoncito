@@ -1,4 +1,9 @@
-import { SyncSnapshotSchema, type ProtocolFailure, type SyncSnapshot } from "./protocol.js";
+import {
+  RoomStateUpdateSchema,
+  SyncSnapshotSchema,
+  type ProtocolFailure,
+  type SyncSnapshot,
+} from "./protocol.js";
 
 export type GameRoomSession =
   | { status: "connecting" }
@@ -10,7 +15,9 @@ export function createGameRoomSession(): GameRoomSession {
   return { status: "connecting" };
 }
 
-export function markGameRoomConnected(_session: GameRoomSession): GameRoomSession {
+export function markGameRoomConnected(
+  _session: GameRoomSession,
+): GameRoomSession {
   return { status: "awaiting_snapshot" };
 }
 
@@ -27,7 +34,34 @@ export function receiveGameRoomSnapshot(
       message: "Received an invalid synchronization snapshot",
     });
   }
-  return { status: "synchronized", seq: result.data.seq, state: result.data.state };
+  return {
+    status: "synchronized",
+    seq: result.data.seq,
+    state: result.data.state,
+  };
+}
+
+export function receiveGameRoomUpdate(
+  session: GameRoomSession,
+  input: unknown,
+): GameRoomSession {
+  if (session.status === "failed") return session;
+  const result = RoomStateUpdateSchema.safeParse(input);
+  if (!result.success) {
+    return failGameRoomSession(session, {
+      version: 1,
+      code: "MALFORMED_MESSAGE",
+      message: "Received an invalid Game room state update",
+    });
+  }
+  if (session.status === "synchronized" && result.data.seq <= session.seq) {
+    return session;
+  }
+  return {
+    status: "synchronized",
+    seq: result.data.seq,
+    state: result.data.state,
+  };
 }
 
 export function failGameRoomSession(

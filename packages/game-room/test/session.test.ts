@@ -4,6 +4,7 @@ import {
   createGameRoomSession,
   failGameRoomSession,
   markGameRoomConnected,
+  receiveGameRoomUpdate,
   receiveGameRoomSnapshot,
 } from "../src/session.js";
 
@@ -37,9 +38,26 @@ describe("Game room session transitions", () => {
   it("fails closed for malformed synchronization snapshots", () => {
     const session = markGameRoomConnected(createGameRoomSession());
 
-    expect(receiveGameRoomSnapshot(session, { version: 2, seq: -1 })).toMatchObject({
+    expect(
+      receiveGameRoomSnapshot(session, { version: 2, seq: -1 }),
+    ).toMatchObject({
       status: "failed",
       problem: { code: "MALFORMED_MESSAGE" },
     });
+  });
+
+  it("applies newer authoritative state broadcasts to a synchronized session", () => {
+    const session = receiveGameRoomSnapshot(
+      markGameRoomConnected(createGameRoomSession()),
+      snapshot,
+    );
+    const updatedState = {
+      ...snapshot.state,
+      turn: { ...snapshot.state.turn, number: 2 },
+    };
+
+    expect(
+      receiveGameRoomUpdate(session, { version: 1, seq: 1, state: updatedState }),
+    ).toEqual({ status: "synchronized", seq: 1, state: updatedState });
   });
 });
