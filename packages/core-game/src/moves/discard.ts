@@ -1,8 +1,8 @@
 import { ApplyResult, GameEvent, GameState } from "../state/types";
-import { getActivePlayer, nextPlayerId } from "../state/selectors";
+import { getActivePlayer } from "../state/selectors";
 import { must } from "../utils/guards";
 import { rejectMove } from "../state/reject";
-import { refillHand } from "./draw";
+import { endTurn } from "./endTurn";
 
 export function discardFromHand(
   state: GameState,
@@ -40,29 +40,14 @@ export function discardFromHand(
     [active.id]: { ...active, hand: { cards: nextHand }, discards },
   };
 
-  // advance turn immediately
-  const nextId = nextPlayerId(s);
-  s = {
-    ...s,
-    byId,
-    turn: {
-      number: s.turn.number + 1,
-      activePlayer: nextId,
-      hasDiscarded: false,
-    },
-  };
+  s = { ...s, byId };
+  events.push({
+    type: "Discarded",
+    payload: { player: active.id, cardId: card.id, pileIndex },
+  });
 
-  events.push(
-    {
-      type: "Discarded",
-      payload: { player: active.id, cardId: card.id, pileIndex },
-    },
-    { type: "TurnEnded", payload: { turn: s.turn.number } },
-  );
+  const turnEnd = endTurn(s);
+  events.push(...turnEnd.events);
 
-  const refill = refillHand(s, nextId);
-  s = refill.state;
-  events.push(refill.event);
-
-  return { accepted: true, state: s, events };
+  return { accepted: true, state: turnEnd.state, events };
 }

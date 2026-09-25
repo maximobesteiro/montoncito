@@ -19,6 +19,10 @@ export function nextPlayerId(state: GameState): PlayerId {
   return must(next, "Next player not found");
 }
 
+export function hasRefillSource(state: GameState): boolean {
+  return state.deck.drawPile.length > 0 || state.deck.recyclePile.length > 0;
+}
+
 export function getBuildPile(state: GameState, buildId: string): BuildPile {
   const bp = state.center.buildPiles.find((b) => b.id === buildId);
   return must(bp, `Build pile ${buildId} not found`);
