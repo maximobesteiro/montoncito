@@ -31,6 +31,7 @@ export function GameRoomChat({
       );
     } catch {
       // Browser storage may be unavailable; keep the default expanded state.
+      setExpanded(true);
     }
   }, [roomId]);
 

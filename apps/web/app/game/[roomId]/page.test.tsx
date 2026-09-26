@@ -80,6 +80,19 @@ it("keeps a chat draft when the player collapses and reopens the panel", () => {
   );
 });
 
+it("keeps chat available when session storage cannot be read", () => {
+  showGameRoom();
+  const read = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("storage disabled");
+  });
+  try {
+    render(<GameRoomPage />);
+    expect(screen.getByRole("button", { name: /collapse chat/i })).toBeTruthy();
+  } finally {
+    read.mockRestore();
+  }
+});
+
 it("counts only live arrivals while collapsed and clears unread when expanded", () => {
   showGameRoom(3); // Recovered before the page became visible.
   const { rerender } = render(<GameRoomPage />);
