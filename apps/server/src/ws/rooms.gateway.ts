@@ -12,7 +12,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { WsJoinClaims } from './auth';
-import { assertServerEvent } from './events';
+import { assertServerEvent, ChatHistory } from './events';
 import { RoomsService } from '../rooms/rooms.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { randomUUID } from 'crypto';
@@ -174,7 +174,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const claims = this.conns.get(client.id);
     if (!claims) return;
 
-    if (!this.getCurrentMemberRoom(client, claims)) return;
+    const room = this.getCurrentMemberRoom(client, claims);
+    if (!room) return;
 
     // Validate message
     const text = data?.text?.trim();
@@ -185,29 +186,30 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const playerName = profile?.displayName ?? 'Unknown';
 
     // Broadcast chat message to all players in the room
-    this.emitChatMessage(claims.roomId, {
+    const message = {
+      type: 'CHAT_MESSAGE' as const,
       id: randomUUID(),
       playerId: claims.playerId,
       playerName,
       text,
       timestamp: Date.now(),
-    });
+    };
+    assertServerEvent(message);
+    room.chatMessages.push(message);
+    if (room.chatMessages.length > 100) room.chatMessages.shift();
+    this.server.to(claims.roomId).emit('event', message);
   }
 
-  /** Broadcast a chat message to everyone in the room */
-  public emitChatMessage(
-    roomId: string,
-    payload: {
-      id: string;
-      playerId: string;
-      playerName: string;
-      text: string;
-      timestamp: number;
-    },
-  ) {
-    const ev = { type: 'CHAT_MESSAGE', ...payload } as const;
-    assertServerEvent(ev);
-    this.server.to(roomId).emit('event', ev);
+  @SubscribeMessage('chat.history.request')
+  public sendChatHistory(@ConnectedSocket() client: Socket) {
+    const claims = this.conns.get(client.id);
+    if (!claims) return;
+    const room = this.getCurrentMemberRoom(client, claims);
+    if (!room) return;
+    client.emit(
+      'chat.history',
+      ChatHistory.parse({ messages: room.chatMessages }),
+    );
   }
 
   @SubscribeMessage('room.sync.request')

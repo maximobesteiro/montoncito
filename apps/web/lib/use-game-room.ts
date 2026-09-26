@@ -33,6 +33,12 @@ import {
   getServerUrl,
 } from "./api";
 import type { ChatMessage } from "./socket-client";
+import {
+  appendChatMessage,
+  isChatMessage,
+  readChatHistory,
+  reconcileChatHistory,
+} from "./room-chat";
 
 export type GameRoomConnectionStatus =
   | "connecting"
@@ -125,6 +131,8 @@ export function useGameRoom(roomId: string): GameRoomView {
     let renewalInFlight = false;
     let renewalAttempt = 0;
     let requestedFreshSnapshot = false;
+    let liveSinceRequest: ChatMessage[] = [];
+    let awaitingChatHistory = false;
     updateGameRoomSession(sessionRef, setSession, createGameRoomSession);
     setConnectionStatus("connecting");
     socketRef.current = null;
@@ -142,6 +150,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       clearPendingAction(roomId);
       pendingActionRef.current = null;
       chatReadyRef.current = false;
+      setChatMessages([]);
       socket?.disconnect();
       updateGameRoomSession(sessionRef, setSession, removeGameRoomSession);
       setConnectionStatus("removed");
@@ -199,6 +208,9 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
+          liveSinceRequest = [];
+          awaitingChatHistory = true;
+          socket?.emit("chat.history.request");
           chatReadyRef.current = false;
           requestedFreshSnapshot = false;
           updateGameRoomSession(sessionRef, setSession, markGameRoomConnected);
@@ -292,7 +304,9 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socket.on("event", (payload: unknown) => {
           if (isChatMessage(payload)) {
-            setChatMessages((previous) => [...previous, payload]);
+            if (awaitingChatHistory)
+              liveSinceRequest = appendChatMessage(liveSinceRequest, payload);
+            setChatMessages((previous) => appendChatMessage(previous, payload));
           }
           if (
             typeof payload === "object" &&
@@ -302,6 +316,13 @@ export function useGameRoom(roomId: string): GameRoomView {
           ) {
             markRemoved();
           }
+        });
+        socket.on("chat.history", (payload: unknown) => {
+          const history = readChatHistory(payload);
+          if (!history) return;
+          setChatMessages(reconcileChatHistory(history, liveSinceRequest));
+          awaitingChatHistory = false;
+          liveSinceRequest = [];
         });
         socket.on("connect_error", () => {
           chatReadyRef.current = false;
@@ -368,26 +389,6 @@ export function useGameRoom(roomId: string): GameRoomView {
     chatMessages,
     sendChat,
   };
-}
-
-function isChatMessage(
-  payload: unknown,
-): payload is ChatMessage & { type: "CHAT_MESSAGE" } {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("type" in payload) ||
-    payload.type !== "CHAT_MESSAGE"
-  )
-    return false;
-  const message = payload as Record<string, unknown>;
-  return (
-    typeof message.id === "string" &&
-    typeof message.playerId === "string" &&
-    typeof message.playerName === "string" &&
-    typeof message.text === "string" &&
-    typeof message.timestamp === "number"
-  );
 }
 
 function updateGameRoomSession(

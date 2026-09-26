@@ -37,6 +37,11 @@ export const ChatMessage = z.object({
   timestamp: z.number().int().nonnegative(),
 });
 
+export const ChatHistory = z.object({
+  messages: z.array(ChatMessage).max(100),
+});
+export type RoomChatMessage = z.infer<typeof ChatMessage>;
+
 /** Optional utility events */
 export const Pong = z.object({
   type: z.literal('PONG'),

@@ -8,6 +8,7 @@ import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
 import { RoomChat } from "@/components/RoomChat";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { appendChatMessage } from "@/lib/room-chat";
 
 type RoomView = {
   id: string;
@@ -144,7 +145,6 @@ export default function WaitingRoomPage() {
 
         // 3) Connect to Socket.IO to receive presence + GAME_STARTED
         const sock = getSocketClient();
-        sock.connect(wsJoinToken);
         unsub = sock.on((ev) => {
           if (ev.type === "ROOM_UPDATED") {
             // Update room state (including player list) in real-time
@@ -158,11 +158,15 @@ export default function WaitingRoomPage() {
             router.push("/");
           }
           if (ev.type === "CHAT_MESSAGE") {
-            setChatMessages((prev) => [...prev, ev]);
+            setChatMessages((prev) => appendChatMessage(prev, ev));
+          }
+          if (ev.type === "CHAT_HISTORY") {
+            setChatMessages(ev.messages);
           }
           // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
           // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
         });
+        sock.connect(wsJoinToken);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load room");

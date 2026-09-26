@@ -57,4 +57,24 @@ describe('RoomsService.start', () => {
     );
     expect(rooms.getById(lobby.id)).toEqual(before);
   });
+
+  it('discards chat history when the last member leaves and the room is removed', () => {
+    const room = rooms.getOrCreateBySlug({ slug: 'same-room', clientId: 'P1' });
+    room.chatMessages.push({
+      type: 'CHAT_MESSAGE',
+      id: 'one',
+      playerId: 'P1',
+      playerName: 'Alice',
+      text: 'Old chat',
+      timestamp: 1,
+    });
+    rooms.leave({ roomId: room.id, clientId: 'P1' });
+
+    const replacement = rooms.getOrCreateBySlug({
+      slug: 'same-room',
+      clientId: 'P2',
+    });
+    expect(replacement.id).not.toBe(room.id);
+    expect(replacement.chatMessages).toEqual([]);
+  });
 });
