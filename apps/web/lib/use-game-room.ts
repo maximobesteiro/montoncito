@@ -189,8 +189,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           const currentSession = sessionRef.current;
           const synchronized = receiveGameRoomSnapshot(currentSession, payload);
           if (synchronized.status !== "synchronized") {
-            sessionRef.current = synchronized;
-            setSession(synchronized);
+            updateGameRoomSession(sessionRef, setSession, () => synchronized);
             setConnectionStatus("failed");
             return;
           }
@@ -217,8 +216,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           const recovered = restored
             ? setPendingGameRoomAction(synchronized, restored)
             : synchronized;
-          sessionRef.current = recovered;
-          setSession(recovered);
+          updateGameRoomSession(sessionRef, setSession, () => recovered);
           setConnectionStatus("connected");
           if (restored) socket?.emit("room.action.submit", restored);
         });
