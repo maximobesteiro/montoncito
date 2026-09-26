@@ -258,25 +258,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    let room: ReturnType<RoomsService['getById']>;
-    try {
-      room = this.rooms.getById(claims.roomId);
-    } catch {
-      this.emitProtocolFailure(client, {
-        version: GAME_ROOM_PROTOCOL_VERSION,
-        code: 'NOT_A_MEMBER',
-        message: 'Game room is unavailable to this player',
-      });
-      return;
-    }
-    if (!room.players.some((player) => player.id === claims.playerId)) {
-      this.emitProtocolFailure(client, {
-        version: GAME_ROOM_PROTOCOL_VERSION,
-        code: 'NOT_A_MEMBER',
-        message: 'Player is no longer a member of this Game room',
-      });
-      return;
-    }
+    const room = this.getCurrentMemberRoom(client, claims);
+    if (!room) return;
     if (!room.gameId) {
       this.emitProtocolFailure(client, {
         version: GAME_ROOM_PROTOCOL_VERSION,
@@ -334,25 +317,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    let room: ReturnType<RoomsService['getById']>;
-    try {
-      room = this.rooms.getById(claims.roomId);
-    } catch {
-      this.emitProtocolFailure(client, {
-        version: GAME_ROOM_PROTOCOL_VERSION,
-        code: 'NOT_A_MEMBER',
-        message: 'Game room is unavailable to this player',
-      });
-      return;
-    }
-    if (!room.players.some((player) => player.id === claims.playerId)) {
-      this.emitProtocolFailure(client, {
-        version: GAME_ROOM_PROTOCOL_VERSION,
-        code: 'NOT_A_MEMBER',
-        message: 'Player is no longer a member of this Game room',
-      });
-      return;
-    }
+    const room = this.getCurrentMemberRoom(client, claims);
+    if (!room) return;
     if (!room.gameId) {
       this.emitProtocolFailure(client, {
         version: GAME_ROOM_PROTOCOL_VERSION,
@@ -405,5 +371,28 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private emitProtocolFailure(client: Socket, payload: ProtocolFailure) {
     client.emit('protocol.error', payload);
+  }
+
+  private getCurrentMemberRoom(client: Socket, claims: Conn) {
+    let room: ReturnType<RoomsService['getById']>;
+    try {
+      room = this.rooms.getById(claims.roomId);
+    } catch {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'NOT_A_MEMBER',
+        message: 'Game room is unavailable to this player',
+      });
+      return null;
+    }
+    if (!room.players.some((player) => player.id === claims.playerId)) {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'NOT_A_MEMBER',
+        message: 'Player is no longer a member of this Game room',
+      });
+      return null;
+    }
+    return room;
   }
 }
