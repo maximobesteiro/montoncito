@@ -4,8 +4,6 @@ import {
   createStartedGame,
   applyMove as coreApplyMove,
   type GameState,
-  type Move,
-  type ApplyResult,
 } from '@mont/core-game';
 import type { PlayerAction } from '@mont/game-room';
 
@@ -102,18 +100,6 @@ export class GameService {
     const g = this.games.get(gameId);
     if (!g) throw new NotFoundException('Game not found');
     return g;
-  }
-
-  public applyMove(
-    gameId: GameId,
-    move: Move,
-  ): ApplyResult & { game: StoredGame } {
-    const g = this.get(gameId);
-    const result = coreApplyMove(g.state, move);
-    if (!result.accepted) return { ...result, game: g };
-    this.commitAcceptedState(g, result.state);
-    this.games.set(gameId, g);
-    return { ...result, game: g };
   }
 
   public processAction(

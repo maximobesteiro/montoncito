@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useGameStore } from "@/stores/game-store";
 
 interface Lobby {
@@ -55,7 +54,7 @@ export default function LobbyPage() {
     setRoomId(lobbyId);
     setCurrentPlayerId("P1"); // In real app, get from auth
     // Navigate to game room
-    window.location.href = `/game?room=${lobbyId}`;
+    window.location.href = `/game/${lobbyId}`;
   };
 
   const handleCreateLobby = () => {
@@ -145,15 +144,6 @@ export default function LobbyPage() {
               ))}
             </div>
           )}
-        </div>
-
-        <div className="mt-6">
-          <Link
-            href="/game"
-            className="brutal-button bg-btn-primary text-text-on-dark hover:bg-btn-primary-hover inline-block"
-          >
-            Go to Game (Mock - No Backend)
-          </Link>
         </div>
       </div>
     </div>

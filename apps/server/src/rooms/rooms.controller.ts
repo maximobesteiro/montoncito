@@ -7,7 +7,6 @@ import {
   Post,
   Query,
   Patch,
-  ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,7 +16,6 @@ import {
   ListRoomsQuerySchema,
   SetReadySchema,
 } from './rooms.dto';
-import { GameService } from '../game/game.service';
 import { RoomsGateway } from '../ws/rooms.gateway';
 import { WsJoinClaims } from '../ws/auth';
 import jwt from 'jsonwebtoken';
@@ -26,7 +24,6 @@ import jwt from 'jsonwebtoken';
 export class RoomsController {
   public constructor(
     private readonly rooms: RoomsService,
-    private readonly games: GameService,
     private readonly ws: RoomsGateway,
     private readonly configService: ConfigService,
   ) {}
@@ -208,28 +205,6 @@ export class RoomsController {
     if (!alreadyStarted && room.gameId) this.ws.emitGameStarted(roomId);
 
     return this.rooms.toView(room);
-  }
-
-  @Get(':id/game')
-  public getGame(
-    @Param('id') roomId: string,
-    @Headers('x-client-id') clientId: string | undefined,
-  ) {
-    if (!clientId) throw new Error('Missing X-Client-Id header');
-
-    const room = this.rooms.getById(roomId);
-
-    const isMember = room.players.some((p) => p.id === clientId);
-    if (!isMember) {
-      throw new ForbiddenException('Only room members can view the game');
-    }
-
-    if (!room.gameId) {
-      throw new ConflictException('Game has not started');
-    }
-
-    const game = this.games.get(room.gameId);
-    return { meta: game.meta, state: game.state };
   }
 
   private createWsJoinToken(roomId: string, playerId: string): string {
