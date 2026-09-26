@@ -51,7 +51,7 @@ it("starts expanded and restores a room's collapsed state only within its browse
       .getByRole("button", { name: /expand chat/i })
       .getAttribute("aria-expanded"),
   ).toBe("false");
-  expect(screen.queryByPlaceholderText("Type a message...")).toBeNull();
+  expect(screen.queryByRole("textbox")).toBeNull();
 
   unmount();
   const { rerender } = render(<GameRoomPage />);
@@ -63,6 +63,21 @@ it("starts expanded and restores a room's collapsed state only within its browse
   gameRoom.roomId = "room-1";
   rerender(<GameRoomPage />);
   expect(screen.getByRole("button", { name: /expand chat/i })).toBeTruthy();
+});
+
+it("keeps a chat draft when the player collapses and reopens the panel", () => {
+  showGameRoom();
+  render(<GameRoomPage />);
+  const draft = screen.getByPlaceholderText(
+    "Type a message...",
+  ) as HTMLInputElement;
+  fireEvent.change(draft, { target: { value: "Keep this draft" } });
+  fireEvent.click(screen.getByRole("button", { name: /collapse chat/i }));
+  expect(screen.queryByRole("textbox")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /expand chat/i }));
+  expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(
+    "Keep this draft",
+  );
 });
 
 it("counts only live arrivals while collapsed and clears unread when expanded", () => {

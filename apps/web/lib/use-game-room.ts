@@ -66,6 +66,7 @@ export function useGameRoom(roomId: string): GameRoomView {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [liveChatCount, setLiveChatCount] = useState(0);
   const seenChatIds = useRef(new Set<string>());
+  const chatHistoryReadyRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const chatReadyRef = useRef(false);
   const pendingActionRef = useRef<ActionSubmission | null>(null);
@@ -135,6 +136,7 @@ export function useGameRoom(roomId: string): GameRoomView {
     chatReadyRef.current = false;
     setChatMessages([]);
     seenChatIds.current = new Set();
+    chatHistoryReadyRef.current = false;
     setLiveChatCount(0);
     pendingActionRef.current = null;
 
@@ -207,6 +209,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
+          chatHistoryReadyRef.current = false;
           socket?.emit("chat.history.request", {
             version: GAME_ROOM_PROTOCOL_VERSION,
           });
@@ -308,7 +311,9 @@ export function useGameRoom(roomId: string): GameRoomView {
               setChatMessages((previous) =>
                 appendChatMessage(previous, payload),
               );
-              setLiveChatCount((count) => count + 1);
+              if (chatHistoryReadyRef.current) {
+                setLiveChatCount((count) => count + 1);
+              }
             }
           }
           if (
@@ -325,6 +330,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           if (messages) {
             seenChatIds.current = new Set(messages.map(({ id }) => id));
             setChatMessages(messages);
+            chatHistoryReadyRef.current = true;
           }
         });
         socket.on("connect_error", () => {
