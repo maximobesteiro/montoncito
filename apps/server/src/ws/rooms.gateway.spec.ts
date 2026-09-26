@@ -266,6 +266,63 @@ describe('Game room synchronization over Socket.IO', () => {
     expect(gameService.get(gameId).meta.seq).toBe(0);
   });
 
+  it.each([
+    [
+      'King',
+      {
+        kind: 'standard' as const,
+        id: 'wild',
+        rank: 13 as const,
+        suit: 'Hearts' as const,
+      },
+    ],
+    ['Joker', { kind: 'joker' as const, id: 'wild' }],
+  ])('delivers a %s discard rejection only to the submitting Game room client', async (_name, wild) => {
+    const actionLog = jest.spyOn(console, 'info').mockImplementation();
+    const game = gameService.get(gameId);
+    const activePlayer = game.state.turn.activePlayer;
+    game.state.byId[activePlayer]!.hand.cards = [wild];
+    const stateBefore = JSON.parse(JSON.stringify(game.state));
+    const sender = await connectAs(activePlayer);
+    const observer = await connectAs(activePlayer === 'P1' ? 'P2' : 'P1');
+    let observerReceivedResult = false;
+    observer.on('room.action.rejected', () => {
+      observerReceivedResult = true;
+    });
+    observer.on('room.action.accepted', () => {
+      observerReceivedResult = true;
+    });
+    const actionId = '550e8400-e29b-41d4-a716-446655440023';
+    const rejection = waitForEvent(sender, 'room.action.rejected');
+
+    sender.emit('room.action.submit', {
+      version: 1,
+      actionId,
+      baseSeq: 0,
+      action: { kind: 'DISCARD_FROM_HAND', cardId: 'wild', pileIndex: 0 },
+    });
+
+    await expect(rejection).resolves.toMatchObject({
+      version: 1,
+      actionId,
+      code: 'ILLEGAL_ACTION',
+      seq: 0,
+      state: stateBefore,
+    });
+    expect(JSON.parse(actionLog.mock.calls[0]![0] as string)).toEqual({
+      roomId: 'room-1',
+      playerId: activePlayer,
+      actionId,
+      seq: 0,
+      outcome: 'rejected',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(observerReceivedResult).toBe(false);
+    expect(game.meta.seq).toBe(0);
+    expect(game.state.turn.activePlayer).toBe(activePlayer);
+    expect(game.state).toEqual(stateBefore);
+  });
+
   it('rejects malformed Action frames without entering the Action sequence', async () => {
     const client = await connectAs('P1');
     const failure = waitForEvent(client, 'protocol.error');
