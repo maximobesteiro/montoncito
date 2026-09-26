@@ -261,6 +261,30 @@ describe("useGameRoom reconnect behavior", () => {
     ).toBeNull();
   });
 
+  it("keeps a finished Game room synchronized but rejects route-facing submissions", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.connect();
+    const finishedSnapshot = {
+      ...snapshot,
+      state: {
+        ...snapshot.state,
+        phase: "gameover" as const,
+        winner: "player-1",
+      },
+    };
+    socket.fire("room.sync.snapshot", finishedSnapshot);
+
+    const view = renderHook();
+    expect(view.state).toMatchObject({ phase: "gameover", winner: "player-1" });
+    expect(view.submitAction({ kind: "END_TURN" })).toBe(false);
+    expect(
+      socket.emitted.some((frame) => frame.event === "room.action.submit"),
+    ).toBe(false);
+  });
+
   function renderHook() {
     harness.cursor = 0;
     return useGameRoom(roomId);

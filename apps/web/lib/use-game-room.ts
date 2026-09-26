@@ -77,6 +77,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       }
       const currentSession = sessionRef.current;
       if (currentSession.status !== "synchronized") return false;
+      if (currentSession.state.phase === "gameover") return false;
       const pending: ActionSubmission = {
         version: GAME_ROOM_PROTOCOL_VERSION,
         actionId: crypto.randomUUID(),
