@@ -268,6 +268,34 @@ describe("useGameRoom reconnect behavior", () => {
     expect(renderHook().connectionStatus).toBe("failed");
   });
 
+  it("does not retry a Pending Action from a snapshot older than current state", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.connect();
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+    renderHook();
+
+    const pendingAction = {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440022",
+      baseSeq: 4,
+      action: { kind: "END_TURN" },
+    };
+    window.sessionStorage.setItem(
+      `montoncito:${roomId}:pending-action`,
+      JSON.stringify(pendingAction),
+    );
+
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 4 });
+
+    expect(
+      socket.emitted.some((frame) => frame.event === "room.action.submit"),
+    ).toBe(false);
+    expect(renderHook().seq).toBe(5);
+  });
+
   it("clears pending storage and Authoritative state when membership is removed", async () => {
     renderHook();
     harness.effect?.();

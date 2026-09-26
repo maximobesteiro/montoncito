@@ -9,6 +9,7 @@ import {
   ActionRejectedSchema,
   ActionSubmissionSchema,
   ProtocolFailureSchema,
+  SyncSnapshotSchema,
   createGameRoomSession,
   failGameRoomSession,
   markGameRoomConnected,
@@ -192,14 +193,21 @@ export function useGameRoom(roomId: string): GameRoomView {
           });
         });
         socket.on("room.sync.snapshot", (payload: unknown) => {
-          const synchronized = receiveGameRoomSnapshot(
-            sessionRef.current,
-            payload,
-          );
+          const currentSession = sessionRef.current;
+          const synchronized = receiveGameRoomSnapshot(currentSession, payload);
           if (synchronized.status !== "synchronized") {
             sessionRef.current = synchronized;
             setSession(synchronized);
             setConnectionStatus("failed");
+            return;
+          }
+          const snapshot = SyncSnapshotSchema.safeParse(payload);
+          if (
+            currentSession.status === "synchronized" &&
+            snapshot.success &&
+            snapshot.data.seq < currentSession.seq
+          ) {
+            setConnectionStatus("synchronizing");
             return;
           }
 
