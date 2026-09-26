@@ -582,12 +582,34 @@ describe('RoomsController', () => {
       ).toThrow(ForbiddenException);
     });
 
-    it('requires the Game room to have started', () => {
+    it('renews credentials for an open room without changing identity', () => {
       roomsService.getById.mockReturnValue(mockRoom);
+
+      const result = controller.createGameRoomSocketToken(
+        'room-123',
+        'client-1',
+      );
+      const claims = jwt.verify(result.wsJoinToken, 'test-secret') as {
+        roomId: string;
+        playerId: string;
+      };
+
+      expect(claims).toMatchObject({
+        roomId: 'room-123',
+        playerId: 'client-1',
+      });
+    });
+
+    it('renews credentials for a member of a finished room', () => {
+      roomsService.getById.mockReturnValue({
+        ...mockRoom,
+        status: 'finished',
+        gameId: 'game-123',
+      });
 
       expect(() =>
         controller.createGameRoomSocketToken('room-123', 'client-1'),
-      ).toThrow(ConflictException);
+      ).not.toThrow();
     });
   });
 });

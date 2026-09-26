@@ -17,6 +17,7 @@ describe('Game room synchronization over Socket.IO', () => {
   let gameId: string;
   let baseUrl: string;
   let clients: ClientSocket[];
+  let roomPlayers: { id: string }[];
 
   beforeEach(async () => {
     httpServer = createServer();
@@ -29,9 +30,8 @@ describe('Game room synchronization over Socket.IO', () => {
       config: { seed: 1 },
     });
     gameId = game.meta.id;
-    const rooms = {
-      getById: () => ({ players: [{ id: 'P1' }, { id: 'P2' }], gameId }),
-    };
+    roomPlayers = [{ id: 'P1' }, { id: 'P2' }];
+    const rooms = { getById: () => ({ players: roomPlayers, gameId }) };
     gateway = new RoomsGateway(
       { get: () => secret } as never,
       rooms as never,
@@ -210,6 +210,50 @@ describe('Game room synchronization over Socket.IO', () => {
       code: 'MALFORMED_MESSAGE',
     });
     client.disconnect();
+  });
+
+  it('rechecks membership for every synchronization and Action', async () => {
+    const client = await connectAs('P1');
+    roomPlayers = [{ id: 'P2' }];
+
+    const syncFailure = waitForEvent(client, 'protocol.error');
+    client.emit('room.sync.request', { version: 1 });
+    await expect(syncFailure).resolves.toMatchObject({ code: 'NOT_A_MEMBER' });
+
+    const actionFailure = waitForEvent(client, 'protocol.error');
+    client.emit('room.action.submit', {
+      version: 1,
+      actionId: '550e8400-e29b-41d4-a716-446655440020',
+      baseSeq: 0,
+      action: { kind: 'END_TURN' },
+    });
+    await expect(actionFailure).resolves.toMatchObject({
+      code: 'NOT_A_MEMBER',
+    });
+    expect(gameService.get(gameId).meta.seq).toBe(0);
+  });
+
+  it('synchronizes finished games as read-only and rejects new Actions consistently', async () => {
+    const game = gameService.get(gameId);
+    game.state = { ...game.state, phase: 'gameover', winner: 'P1' };
+    const client = await connectAs('P1');
+
+    const snapshot = waitForEvent(client, 'room.sync.snapshot');
+    client.emit('room.sync.request', { version: 1 });
+    await expect(snapshot).resolves.toMatchObject({
+      seq: 0,
+      state: { phase: 'gameover', winner: 'P1' },
+    });
+
+    const rejection = waitForEvent(client, 'room.action.rejected');
+    client.emit('room.action.submit', {
+      version: 1,
+      actionId: '550e8400-e29b-41d4-a716-446655440021',
+      baseSeq: 0,
+      action: { kind: 'END_TURN' },
+    });
+    await expect(rejection).resolves.toMatchObject({ code: 'GAME_FINISHED' });
+    expect(game.meta.seq).toBe(0);
   });
 
   async function connectAs(playerId: string): Promise<ClientSocket> {

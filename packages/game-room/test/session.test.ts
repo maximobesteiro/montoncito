@@ -3,6 +3,7 @@ import { createStartedGame } from "@mont/core-game";
 import {
   createGameRoomSession,
   failGameRoomSession,
+  removeGameRoomSession,
   markGameRoomConnected,
   receiveGameRoomUpdate,
   receiveGameRoomSnapshot,
@@ -160,6 +161,28 @@ describe("Game room session transitions", () => {
       status: "failed",
       problem: { code: "UNSUPPORTED_VERSION" },
     });
+  });
+
+  it("clears Authoritative state and Pending Action for removed membership", () => {
+    const pendingAction = {
+      version: 1 as const,
+      actionId: "550e8400-e29b-41d4-a716-446655440006",
+      baseSeq: 0,
+      action: { kind: "END_TURN" as const },
+    };
+    const synchronized = setPendingGameRoomAction(
+      receiveGameRoomSnapshot(
+        markGameRoomConnected(createGameRoomSession()),
+        snapshot,
+      ),
+      pendingAction,
+    );
+
+    const removed = removeGameRoomSession(synchronized);
+
+    expect(removed).toEqual({ status: "removed" });
+    expect(markGameRoomConnected(removed)).toBe(removed);
+    expect(receiveGameRoomSnapshot(removed, snapshot)).toBe(removed);
   });
 
   it("fails closed for malformed synchronization snapshots", () => {

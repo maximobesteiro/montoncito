@@ -16,6 +16,7 @@ import {
   receiveGameRoomUpdate,
   receiveGameRoomActionAccepted,
   receiveGameRoomActionRejected,
+  removeGameRoomSession,
   setPendingGameRoomAction,
   type PlayerAction,
   type ActionSubmission,
@@ -30,7 +31,8 @@ export type GameRoomConnectionStatus =
   | "connecting"
   | "synchronizing"
   | "connected"
-  | "failed";
+  | "failed"
+  | "removed";
 
 export type GameRoomView = {
   state: GameState | null;
@@ -95,11 +97,67 @@ export function useGameRoom(roomId: string): GameRoomView {
   useEffect(() => {
     let disposed = false;
     let socket: Socket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let renewalInFlight = false;
+    let renewalAttempt = 0;
     setSession(createGameRoomSession());
     setConnectionStatus("connecting");
     setConnectionProblem(null);
     socketRef.current = null;
     pendingActionRef.current = null;
+
+    const isRemovedError = (error: unknown) =>
+      error instanceof Error && /HTTP (403|404)\b/.test(error.message);
+
+    const markRemoved = () => {
+      if (disposed) return;
+      if (retryTimer) clearTimeout(retryTimer);
+      clearPendingAction(roomId);
+      pendingActionRef.current = null;
+      socket?.disconnect();
+      setSession((previous) => removeGameRoomSession(previous));
+      setConnectionStatus("removed");
+      setConnectionProblem("You are no longer a member of this Game room");
+    };
+
+    const scheduleRenewal = () => {
+      if (disposed || renewalInFlight || retryTimer) return;
+      renewalInFlight = true;
+      const renew = async () => {
+        try {
+          const clientId = getOrCreateClientId();
+          const { wsJoinToken } = await apiFetch<{ wsJoinToken: string }>(
+            `/rooms/${encodeURIComponent(roomId)}/socket-token`,
+            { method: "POST", clientId },
+          );
+          if (disposed || !socket) return;
+          renewalAttempt = 0;
+          renewalInFlight = false;
+          socket.auth = { token: wsJoinToken };
+          if (!socket.connected) socket.connect();
+        } catch (error) {
+          renewalInFlight = false;
+          if (isRemovedError(error)) {
+            markRemoved();
+            return;
+          }
+          if (disposed) return;
+          setConnectionStatus("connecting");
+          setConnectionProblem(
+            error instanceof Error
+              ? error.message
+              : "Unable to renew Game room credentials",
+          );
+          const delay = Math.min(1000 * 2 ** renewalAttempt, 15000);
+          renewalAttempt += 1;
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            scheduleRenewal();
+          }, delay);
+        }
+      };
+      void renew();
+    };
 
     const connect = async () => {
       try {
@@ -114,6 +172,8 @@ export function useGameRoom(roomId: string): GameRoomView {
         socket = io(`${getServerUrl()}/ws`, {
           transports: ["websocket"],
           auth: { token: wsJoinToken },
+          autoConnect: false,
+          reconnection: false,
         });
         socketRef.current = socket;
         socket.on("connect", () => {
@@ -168,34 +228,59 @@ export function useGameRoom(roomId: string): GameRoomView {
                 code: "MALFORMED_MESSAGE",
                 message: "The server returned an invalid protocol failure",
               };
+          if (failure.code === "NOT_A_MEMBER") {
+            markRemoved();
+            return;
+          }
           setSession((previous) => failGameRoomSession(previous, failure));
           setConnectionStatus("failed");
         });
+        socket.on("event", (payload: unknown) => {
+          if (
+            typeof payload === "object" &&
+            payload !== null &&
+            "type" in payload &&
+            payload.type === "KICKED"
+          ) {
+            markRemoved();
+          }
+        });
         socket.on("connect_error", (error: Error) => {
-          setConnectionStatus("failed");
           setConnectionProblem(
             error.message || "Unable to connect to the Game room",
           );
+          scheduleRenewal();
         });
         socket.on("disconnect", (reason) => {
           if (!disposed && reason !== "io client disconnect") {
             setConnectionStatus("connecting");
+            scheduleRenewal();
           }
         });
+        socket.connect();
       } catch (error) {
         if (disposed) return;
-        setConnectionStatus("failed");
-        setConnectionProblem(
-          error instanceof Error
-            ? error.message
-            : "Unable to connect to the Game room",
-        );
+        if (isRemovedError(error)) {
+          markRemoved();
+        } else {
+          setConnectionStatus("connecting");
+          setConnectionProblem(
+            error instanceof Error
+              ? error.message
+              : "Unable to connect to the Game room",
+          );
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            void connect();
+          }, 1000);
+        }
       }
     };
 
     void connect();
     return () => {
       disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
       socket?.disconnect();
       if (socketRef.current === socket) socketRef.current = null;
     };
@@ -205,9 +290,18 @@ export function useGameRoom(roomId: string): GameRoomView {
     state: session.status === "synchronized" ? session.state : null,
     seq: session.status === "synchronized" ? session.seq : null,
     currentPlayerId,
-    connectionStatus: session.status === "failed" ? "failed" : connectionStatus,
+    connectionStatus:
+      session.status === "failed"
+        ? "failed"
+        : session.status === "removed"
+          ? "removed"
+          : connectionStatus,
     problem:
-      session.status === "failed" ? session.problem.message : connectionProblem,
+      session.status === "failed"
+        ? session.problem.message
+        : session.status === "removed"
+          ? "You are no longer a member of this Game room"
+          : connectionProblem,
     pendingAction:
       session.status === "synchronized"
         ? (session.pendingAction ?? null)
