@@ -140,21 +140,13 @@ export function useGameRoom(roomId: string): GameRoomView {
           setSession((previous) => receiveGameRoomUpdate(previous, payload));
         });
         socket.on("room.action.accepted", (payload: unknown) => {
-          const actionId = getActionId(payload);
-          if (actionId && pendingActionRef.current?.actionId === actionId) {
-            clearPendingAction(roomId);
-            pendingActionRef.current = null;
-          }
+          clearMatchingPendingAction(roomId, payload, pendingActionRef);
           setSession((previous) =>
             receiveGameRoomActionAccepted(previous, payload),
           );
         });
         socket.on("room.action.rejected", (payload: unknown) => {
-          const actionId = getActionId(payload);
-          if (actionId && pendingActionRef.current?.actionId === actionId) {
-            clearPendingAction(roomId);
-            pendingActionRef.current = null;
-          }
+          clearMatchingPendingAction(roomId, payload, pendingActionRef);
           setSession((previous) =>
             receiveGameRoomActionRejected(previous, payload),
           );
@@ -240,6 +232,17 @@ function clearPendingAction(roomId: string): void {
   } catch {
     // Keep transport outcome handling independent of browser storage availability.
   }
+}
+
+function clearMatchingPendingAction(
+  roomId: string,
+  payload: unknown,
+  pendingActionRef: { current: ActionSubmission | null },
+): void {
+  const actionId = getActionId(payload);
+  if (!actionId || pendingActionRef.current?.actionId !== actionId) return;
+  clearPendingAction(roomId);
+  pendingActionRef.current = null;
 }
 
 function getActionId(payload: unknown): string | null {

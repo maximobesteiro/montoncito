@@ -374,6 +374,9 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           version: GAME_ROOM_PROTOCOL_VERSION,
           actionId: outcome.actionId,
           seq: outcome.seq,
+          ...(outcome.acceptedSeq !== undefined
+            ? { acceptedSeq: outcome.acceptedSeq }
+            : {}),
           state: outcome.state,
         };
         if (outcome.duplicate) {

@@ -124,6 +124,7 @@ export const ActionAcceptedSchema = z
     version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
     actionId: z.string().uuid(),
     seq: z.number().int().nonnegative(),
+    acceptedSeq: z.number().int().nonnegative().optional(),
     state: AuthoritativeStateSchema,
   })
   .strict();

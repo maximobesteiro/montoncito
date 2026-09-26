@@ -32,6 +32,7 @@ export function ActionPanel({
   }
 
   const validMoves = getValidMoves(gameState, currentPlayerId);
+  const handCards = gameState.byId[currentPlayerId]?.hand.cards ?? [];
   const canPlay =
     validMoves.handToBuild.length > 0 ||
     validMoves.stockToBuild.length > 0 ||
@@ -69,7 +70,7 @@ export function ActionPanel({
               })
             }
           >
-            Play Hand card {move.cardId} →{" "}
+            Play {describeHandCard(move.cardId, handCards)} from Hand →{" "}
             {move.buildId === "new" ? "new Build pile" : `pile ${move.buildId}`}
           </button>
         ))}
@@ -108,20 +109,21 @@ export function ActionPanel({
         ))}
         {!canPlay &&
           validMoves.canDiscard.map((move) => (
-          <button
-            key={`end-${move.cardId}-${move.pileIndex}`}
-            className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
-            disabled={disabled}
-            onClick={() =>
-              submitAction?.({
-                kind: "DISCARD_FROM_HAND",
-                cardId: move.cardId,
-                pileIndex: move.pileIndex,
-              })
-            }
-          >
-            Discard {move.cardId} to pile {move.pileIndex + 1}
-          </button>
+            <button
+              key={`end-${move.cardId}-${move.pileIndex}`}
+              className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
+              disabled={disabled}
+              onClick={() =>
+                submitAction?.({
+                  kind: "DISCARD_FROM_HAND",
+                  cardId: move.cardId,
+                  pileIndex: move.pileIndex,
+                })
+              }
+            >
+              Discard {describeHandCard(move.cardId, handCards)} to pile{" "}
+              {move.pileIndex + 1}
+            </button>
           ))}
         {canEndTurn && (
           <button
@@ -135,4 +137,13 @@ export function ActionPanel({
       </div>
     </section>
   );
+}
+
+function describeHandCard(
+  cardId: string,
+  handCards: GameState["byId"][string]["hand"]["cards"],
+): string {
+  const card = handCards.find((candidate) => candidate.id === cardId);
+  if (!card) return "card";
+  return card.kind === "joker" ? "Joker" : `${card.rank} of ${card.suit}`;
 }

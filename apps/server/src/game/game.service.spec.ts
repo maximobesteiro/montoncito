@@ -78,19 +78,28 @@ describe('GameService core outcomes', () => {
     });
 
     const nextPlayer = service.get(game.meta.id).state.turn.activePlayer;
-    const nextHandCard = service.get(game.meta.id).state.byId[nextPlayer]!.hand.cards[0]!;
+    const nextHandCard = service.get(game.meta.id).state.byId[nextPlayer]!.hand
+      .cards[0]!;
     const laterResult = await service.processAction(game.meta.id, {
       playerId: nextPlayer,
       actionId: '550e8400-e29b-41d4-a716-446655440012',
       baseSeq: 1,
-      action: { kind: 'DISCARD_FROM_HAND', cardId: nextHandCard.id, pileIndex: 0 },
+      action: {
+        kind: 'DISCARD_FROM_HAND',
+        cardId: nextHandCard.id,
+        pileIndex: 0,
+      },
     });
-    const retryAfterLaterAction = await service.processAction(game.meta.id, submission);
+    const retryAfterLaterAction = await service.processAction(
+      game.meta.id,
+      submission,
+    );
 
     expect(laterResult).toMatchObject({ accepted: true, seq: 2 });
     expect(retryAfterLaterAction).toMatchObject({
       accepted: true,
-      seq: 1,
+      seq: 2,
+      acceptedSeq: 1,
       state: laterResult.state,
       duplicate: true,
     });

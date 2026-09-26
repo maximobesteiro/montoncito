@@ -31,6 +31,7 @@ export type ActionOutcome =
       accepted: true;
       actionId: string;
       seq: number;
+      acceptedSeq?: number;
       state: GameState;
       duplicate?: true;
     }
@@ -53,6 +54,13 @@ type RetainedOutcome = {
   baseSeq: number;
   action: PlayerAction;
   outcome: ActionOutcome;
+};
+
+type ActionRequest = {
+  playerId: string;
+  actionId: string;
+  baseSeq: number;
+  action: PlayerAction;
 };
 
 @Injectable()
@@ -103,25 +111,14 @@ export class GameService {
     const g = this.get(gameId);
     const result = coreApplyMove(g.state, move);
     if (!result.accepted) return { ...result, game: g };
-    const next = result.state;
-    g.state = next;
-    g.meta.seq += 1;
-    g.meta.winnerId = next.winner ?? null;
-    if (next.phase === 'gameover' && !g.meta.finishedAt) {
-      g.meta.finishedAt = new Date().toISOString();
-    }
+    this.commitAcceptedState(g, result.state);
     this.games.set(gameId, g);
     return { ...result, game: g };
   }
 
   public processAction(
     gameId: GameId,
-    input: {
-      playerId: string;
-      actionId: string;
-      baseSeq: number;
-      action: PlayerAction;
-    },
+    input: ActionRequest,
   ): Promise<ActionOutcome> {
     const game = this.get(gameId);
     const previous = this.roomQueues.get(game.meta.roomId) ?? Promise.resolve();
@@ -139,15 +136,7 @@ export class GameService {
     return current;
   }
 
-  private applyAction(
-    game: StoredGame,
-    input: {
-      playerId: string;
-      actionId: string;
-      baseSeq: number;
-      action: PlayerAction;
-    },
-  ): ActionOutcome {
+  private applyAction(game: StoredGame, input: ActionRequest): ActionOutcome {
     const outcomeKey = `${game.meta.roomId}::${input.playerId}::${input.actionId}`;
     const retained = this.outcomes.get(outcomeKey);
     if (retained) {
@@ -158,7 +147,13 @@ export class GameService {
         return this.reject(input.actionId, game, 'ACTION_ID_CONFLICT');
       }
       return retained.outcome.accepted
-        ? { ...retained.outcome, state: game.state, duplicate: true }
+        ? {
+            ...retained.outcome,
+            acceptedSeq: retained.outcome.seq,
+            seq: game.meta.seq,
+            state: game.state,
+            duplicate: true,
+          }
         : {
             ...retained.outcome,
             seq: game.meta.seq,
@@ -184,12 +179,7 @@ export class GameService {
           applied.reason,
         );
       } else {
-        game.state = applied.state;
-        game.meta.seq += 1;
-        game.meta.winnerId = applied.state.winner ?? null;
-        if (applied.state.phase === 'gameover' && !game.meta.finishedAt) {
-          game.meta.finishedAt = new Date().toISOString();
-        }
+        this.commitAcceptedState(game, applied.state);
         outcome = {
           accepted: true,
           actionId: input.actionId,
@@ -205,6 +195,15 @@ export class GameService {
       outcome,
     });
     return outcome;
+  }
+
+  private commitAcceptedState(game: StoredGame, state: GameState): void {
+    game.state = state;
+    game.meta.seq += 1;
+    game.meta.winnerId = state.winner ?? null;
+    if (state.phase === 'gameover' && !game.meta.finishedAt) {
+      game.meta.finishedAt = new Date().toISOString();
+    }
   }
 
   private reject(
