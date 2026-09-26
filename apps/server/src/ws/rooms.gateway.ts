@@ -12,7 +12,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
 import { WsJoinClaims } from './auth';
-import { assertServerEvent, ChatHistory } from './events';
+import { assertServerEvent } from './events';
 import { RoomsService } from '../rooms/rooms.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import { randomUUID } from 'crypto';
@@ -21,6 +21,8 @@ import {
   ActionSubmissionSchema,
   SyncRequestSchema,
   SyncSnapshotSchema,
+  ChatHistoryRequestSchema,
+  ChatHistorySchema,
   type ProtocolFailure,
 } from '@mont/game-room';
 import { GameService } from '../game/game.service';
@@ -40,6 +42,7 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private conns = new Map<string, Conn>(); // socket.id -> claims
   private byPlayer = new Map<string, Set<string>>(); // "roomId::playerId" -> Set<socket.id>
+  private pendingLeaves = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly configService: ConfigService,
@@ -68,6 +71,9 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.conns.set(client.id, claims);
 
       const k = key(claims.roomId, claims.playerId);
+      const pendingLeave = this.pendingLeaves.get(k);
+      if (pendingLeave) clearTimeout(pendingLeave);
+      this.pendingLeaves.delete(k);
       if (!this.byPlayer.has(k)) this.byPlayer.set(k, new Set());
       this.byPlayer.get(k)!.add(client.id);
 
@@ -91,20 +97,28 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       set.delete(client.id);
       if (set.size === 0) {
         this.byPlayer.delete(k);
-        try {
-          const room = this.rooms.getById(claims.roomId);
-          if (room.gameId) return;
-
-          const result = this.rooms.leave({
-            roomId: claims.roomId,
-            clientId: claims.playerId,
-          });
-          if (!result.deleted && result.room) {
-            this.emitRoomUpdated(claims.roomId, this.rooms.toView(result.room));
+        const timer = setTimeout(() => {
+          this.pendingLeaves.delete(k);
+          if (this.byPlayer.has(k)) return;
+          try {
+            const room = this.rooms.getById(claims.roomId);
+            if (room.gameId) return;
+            const result = this.rooms.leave({
+              roomId: claims.roomId,
+              clientId: claims.playerId,
+            });
+            if (!result.deleted && result.room) {
+              this.emitRoomUpdated(
+                claims.roomId,
+                this.rooms.toView(result.room),
+              );
+            }
+          } catch {
+            // An absent room or explicitly departed player needs no cleanup.
           }
-        } catch {
-          // A Game room retains membership; an absent room needs no cleanup.
-        }
+        }, 5000);
+        timer.unref();
+        this.pendingLeaves.set(k, timer);
         return;
       }
     }
@@ -201,14 +215,35 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('chat.history.request')
-  public sendChatHistory(@ConnectedSocket() client: Socket) {
+  public sendChatHistory(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
     const claims = this.conns.get(client.id);
     if (!claims) return;
+    if (!ChatHistoryRequestSchema.safeParse(payload).success) {
+      const version =
+        typeof payload === 'object' && payload !== null && 'version' in payload
+          ? (payload as { version?: unknown }).version
+          : undefined;
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code:
+          version !== undefined && version !== GAME_ROOM_PROTOCOL_VERSION
+            ? 'UNSUPPORTED_VERSION'
+            : 'MALFORMED_MESSAGE',
+        message: 'Invalid chat history request',
+      });
+      return;
+    }
     const room = this.getCurrentMemberRoom(client, claims);
     if (!room) return;
     client.emit(
       'chat.history',
-      ChatHistory.parse({ messages: room.chatMessages }),
+      ChatHistorySchema.parse({
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        messages: room.chatMessages,
+      }),
     );
   }
 

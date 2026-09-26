@@ -464,7 +464,7 @@ describe("useGameRoom reconnect behavior", () => {
     const socket = harness.socket!;
     expect(socket.emitted).toContainEqual({
       event: "chat.history.request",
-      payload: undefined,
+      payload: { version: 1 },
     });
     socket.fire("room.sync.snapshot", snapshot);
     const earlier = {
@@ -482,7 +482,7 @@ describe("useGameRoom reconnect behavior", () => {
       timestamp: 11,
     };
     socket.fire("event", overlap);
-    socket.fire("chat.history", { messages: [earlier, overlap] });
+    socket.fire("chat.history", { version: 1, messages: [earlier, overlap] });
     expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
       "one",
       "two",
@@ -495,7 +495,10 @@ describe("useGameRoom reconnect behavior", () => {
     const missed = { ...earlier, id: "three", text: "Missed", timestamp: 12 };
     const latest = { ...earlier, id: "four", text: "Live", timestamp: 13 };
     socket.fire("event", latest);
-    socket.fire("chat.history", { messages: [overlap, missed, latest] });
+    socket.fire("chat.history", {
+      version: 1,
+      messages: [overlap, missed, latest],
+    });
     expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
       "two",
       "three",

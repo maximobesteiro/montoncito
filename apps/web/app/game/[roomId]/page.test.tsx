@@ -55,7 +55,7 @@ it("keeps the game-page chat draft through disconnect and reconnect until the pl
   expect(draft.value).toBe("");
 });
 
-it("shows recovered waiting-room and live chat on the Game room page", () => {
+it("shows recovered Lobby and live chat on the Game room page", () => {
   gameRoom.view = {
     state: createStartedGame({ players: ["player-1", "player-2"], seed: 1 }),
     seq: 0,

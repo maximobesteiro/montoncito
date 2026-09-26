@@ -73,6 +73,22 @@ export const SyncRequestSchema = z
   })
   .strict();
 
+export const ChatHistoryRequestSchema = SyncRequestSchema;
+
+export const ChatMessageSchema = z.object({
+  type: z.literal("CHAT_MESSAGE"),
+  id: z.string().min(1),
+  playerId: z.string().min(1),
+  playerName: z.string().min(1),
+  text: z.string().min(1).max(500),
+  timestamp: z.number().int().nonnegative(),
+});
+
+export const ChatHistorySchema = z.object({
+  version: z.literal(GAME_ROOM_PROTOCOL_VERSION),
+  messages: z.array(ChatMessageSchema).max(100),
+});
+
 export const PlayerActionSchema = z.discriminatedUnion("kind", [
   z
     .object({

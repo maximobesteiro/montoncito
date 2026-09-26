@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-it("shows recovered waiting-room chat with sender names and current-player highlighting", async () => {
+it("shows recovered Lobby chat with sender names and current-player highlighting", async () => {
   render(<WaitingRoomPage />);
   await waitFor(() => expect(harness.handler).toBeDefined());
   harness.handler?.({

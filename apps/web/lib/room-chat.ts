@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./socket-client";
+import { ChatHistorySchema } from "@mont/game-room";
 
 export function isChatMessage(
   payload: unknown,
@@ -21,16 +22,8 @@ export function isChatMessage(
 }
 
 export function readChatHistory(payload: unknown): ChatMessage[] | null {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("messages" in payload) ||
-    !Array.isArray(payload.messages) ||
-    payload.messages.length > 100 ||
-    !payload.messages.every(isChatMessage)
-  )
-    return null;
-  return payload.messages;
+  const parsed = ChatHistorySchema.safeParse(payload);
+  return parsed.success ? parsed.data.messages : null;
 }
 
 export function appendChatMessage(
@@ -48,4 +41,27 @@ export function reconcileChatHistory(
   liveSinceRequest: ChatMessage[],
 ): ChatMessage[] {
   return liveSinceRequest.reduce(appendChatMessage, history);
+}
+
+export function createChatRecovery() {
+  let liveSinceRequest: ChatMessage[] = [];
+  let awaitingHistory = false;
+  return {
+    begin() {
+      liveSinceRequest = [];
+      awaitingHistory = true;
+    },
+    receiveLive(message: ChatMessage) {
+      if (awaitingHistory)
+        liveSinceRequest = appendChatMessage(liveSinceRequest, message);
+    },
+    receiveHistory(payload: unknown): ChatMessage[] | null {
+      const history = readChatHistory(payload);
+      if (!history) return null;
+      const messages = reconcileChatHistory(history, liveSinceRequest);
+      liveSinceRequest = [];
+      awaitingHistory = false;
+      return messages;
+    },
+  };
 }

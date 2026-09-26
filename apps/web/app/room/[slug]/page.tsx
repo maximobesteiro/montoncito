@@ -154,6 +154,7 @@ export default function WaitingRoomPage() {
             router.push(`/game/${ev.roomId}`);
           }
           if (ev.type === "KICKED") {
+            sock.disconnect();
             showToast("You have been kicked from the room", "warning");
             router.push("/");
           }
@@ -166,7 +167,14 @@ export default function WaitingRoomPage() {
           // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
           // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
         });
-        sock.connect(wsJoinToken);
+        sock.connect(wsJoinToken, async () => {
+          const joined = await apiFetch<RoomView & { wsJoinToken: string }>(
+            `/rooms/${view.id}/join`,
+            { method: "POST", clientId },
+          );
+          if (!cancelled) setRoom(joined);
+          return joined.wsJoinToken;
+        });
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load room");
