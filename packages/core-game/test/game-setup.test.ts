@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createStartedGame } from "../src";
+import { applyMove, createStartedGame } from "../src";
 
 describe("createStartedGame", () => {
   it("creates a playable game with a complete card pack per player", () => {
@@ -10,14 +10,14 @@ describe("createStartedGame", () => {
     });
 
     expect(state.phase).toBe("turn");
+    expect(state.rulesetVersion).toBe(1);
     expect(state.turn.number).toBe(1);
     expect(state.players).toEqual(["P1", "P2"]);
     expect(state.players).toContain(state.turn.activePlayer);
-    expect(state.rules).toMatchObject({
+    expect(state.rules).toEqual({
       handSize: 5,
       stockSize: 20,
       discardPiles: 3,
-      useJokers: true,
     });
     expect(state.rng).toMatchObject({ algorithm: "mulberry32-v1", seed: 42 });
     expect(state.rng.cursor).toBeGreaterThan(0);
@@ -38,6 +38,7 @@ describe("createStartedGame", () => {
     expect(state.deck.recyclePile).toEqual([]);
 
     const completePack = [...dealtCards, ...state.deck.drawPile];
+    expect(completePack.every((card) => !("baseWild" in card))).toBe(true);
     expect(completePack.filter((card) => card.kind === "standard")).toHaveLength(
       104,
     );
@@ -46,6 +47,46 @@ describe("createStartedGame", () => {
       expect(
         completePack.filter((card) => card.id.startsWith(`${playerId}-`)),
       ).toHaveLength(54);
+    }
+  });
+
+  it("plays Kings and Jokers from either Card pack as wild throughout a match", () => {
+    const started = createStartedGame({
+      players: ["P1", "P2"],
+      seed: 42,
+      discardPiles: 1,
+    });
+    const active = started.turn.activePlayer;
+    const cards = [
+      ...started.deck.drawPile,
+      ...started.players.flatMap((id) => [
+        ...started.byId[id]!.hand.cards,
+        ...started.byId[id]!.stock.faceDown,
+      ]),
+    ];
+    const wildCards = cards.filter(
+      (card) => card.kind === "joker" || (card.kind === "standard" && card.rank === 13),
+    );
+    let state = {
+      ...started,
+      byId: {
+        ...started.byId,
+        [active]: { ...started.byId[active]!, hand: { cards: wildCards } },
+      },
+    };
+
+    expect(state.byId[active]!.discards).toHaveLength(1);
+    expect(wildCards).toHaveLength(12);
+    for (const card of wildCards) {
+      const result = applyMove(state, {
+        kind: "PLAY_HAND_TO_BUILD",
+        cardId: card.id,
+        target: "new",
+      });
+      expect(result.accepted, card.id).toBe(true);
+      state = result.state;
+      expect(state.rulesetVersion).toBe(1);
+      expect(state.center.buildPiles.at(-1)?.nextRank).toBe(2);
     }
   });
 

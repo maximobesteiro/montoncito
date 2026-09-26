@@ -29,7 +29,7 @@ The deck consists of one **Card pack per player**. Each Card pack contains:
 
 - **52 standard suited cards**, ranks 1–13.
 - **2 Jokers**.
-- Kings (rank 13) and Jokers are wild and may represent any required Build pile rank.
+- Every King (rank 13) and Joker from every Card pack is wild and may represent any required Build pile rank. Card-level flags and room settings cannot change this policy.
 
 ---
 

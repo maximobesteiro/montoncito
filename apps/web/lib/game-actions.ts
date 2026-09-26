@@ -14,16 +14,15 @@ import { isWild } from "@mont/core-game";
 function matchesRequired(
   card: Card,
   required: Rank | null,
-  rules: GameState["rules"],
 ): boolean {
   if (required === null) return false; // pile just completed
-  if (isWild(card, rules)) return true;
+  if (isWild(card)) return true;
   if (card.kind !== "standard") return false;
   return card.rank === required;
 }
 
-function canStartBuildPile(card: Card, rules: GameState["rules"]): boolean {
-  return (card.kind === "standard" && card.rank === 1) || isWild(card, rules);
+function canStartBuildPile(card: Card): boolean {
+  return (card.kind === "standard" && card.rank === 1) || isWild(card);
 }
 
 /**
@@ -58,12 +57,12 @@ export function getValidMoves(
 
   // Check hand cards to build piles
   for (const card of player.hand.cards) {
-    if (canStartBuildPile(card, gameState.rules)) {
+    if (canStartBuildPile(card)) {
       result.handToBuild.push({ cardId: card.id, buildId: "new" });
     }
     for (const pile of gameState.center.buildPiles) {
       if (pile.nextRank === null) continue; // completed pile
-      if (matchesRequired(card, pile.nextRank, gameState.rules)) {
+      if (matchesRequired(card, pile.nextRank)) {
         result.handToBuild.push({ cardId: card.id, buildId: pile.id });
       }
     }
@@ -72,12 +71,12 @@ export function getValidMoves(
   // Check stock top card
   const stockTop = player.stock.faceDown[player.stock.faceDown.length - 1];
   if (stockTop) {
-    if (canStartBuildPile(stockTop, gameState.rules)) {
+    if (canStartBuildPile(stockTop)) {
       result.stockToBuild.push({ buildId: "new" });
     }
     for (const pile of gameState.center.buildPiles) {
       if (pile.nextRank === null) continue;
-      if (matchesRequired(stockTop, pile.nextRank, gameState.rules)) {
+      if (matchesRequired(stockTop, pile.nextRank)) {
         result.stockToBuild.push({ buildId: pile.id });
       }
     }
@@ -90,13 +89,13 @@ export function getValidMoves(
     const topCard = discardPile[discardPile.length - 1];
     if (!topCard) continue;
 
-    if (canStartBuildPile(topCard, gameState.rules)) {
+    if (canStartBuildPile(topCard)) {
       result.discardToBuild.push({ pileIndex: i, buildId: "new" });
     }
 
     for (const pile of gameState.center.buildPiles) {
       if (pile.nextRank === null) continue;
-      if (matchesRequired(topCard, pile.nextRank, gameState.rules)) {
+      if (matchesRequired(topCard, pile.nextRank)) {
         result.discardToBuild.push({ pileIndex: i, buildId: pile.id });
       }
     }

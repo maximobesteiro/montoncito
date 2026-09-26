@@ -30,8 +30,6 @@ const baseRules: Partial<RulesConfig> = {
   handSize: 2,
   stockSize: 1, // <-- avoid immediate gameover
   discardPiles: 3,
-  kingsAreWild: true,
-  useJokers: false,
 };
 
 const players = [{ id: "P1" }, { id: "P2" }];

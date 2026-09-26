@@ -32,12 +32,12 @@ describe('RoomsService.start', () => {
     expect(started.status).toBe('in_progress');
     expect(game.meta.seq).toBe(0);
     expect(game.state.phase).toBe('turn');
+    expect(game.state.rulesetVersion).toBe(1);
     expect(game.state.rng.algorithm).toBe('mulberry32-v1');
     expect(game.state.rules).toMatchObject({
       handSize: 5,
       stockSize: 20,
       discardPiles: 3,
-      useJokers: true,
     });
     for (const playerId of ['P1', 'P2']) {
       expect(game.state.byId[playerId]?.stock.faceDown).toHaveLength(20);

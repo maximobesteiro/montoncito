@@ -133,6 +133,7 @@
 ## 10) Versioning & Compatibility
 
 - **Protocol version 1** is required by the shared Game room schemas.
+- **Ruleset version 1** identifies the fixed King-and-Joker wild policy in Authoritative state and Game room snapshots. It remains fixed for a match, independently of the game-state version and protocol version. Discard pile count remains configurable.
 - Server advertises supported versions in `GET /version`.
 - Unsupported protocol versions fail before Action processing.
 

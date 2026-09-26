@@ -4,15 +4,14 @@ import { hasRefillSource } from "../state/selectors";
 
 /**
  * Returns true if `card` can satisfy the `required` rank for a build pile
- * under the current wildness rules.
+ * under the current ruleset.
  */
 function cardMatchesRequired(
   card: Card,
   required: Rank | null,
-  rules: GameState["rules"],
 ): boolean {
   if (required === null) return false; // pile already completed and should be cleared/reset
-  if (isWild(card, rules)) return true;
+  if (isWild(card)) return true;
   return card.kind === "standard" && card.rank === required;
 }
 
@@ -48,7 +47,7 @@ export function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean 
     candidates.some(
       (card) =>
         (card.kind === "standard" && card.rank === 1) ||
-        isWild(card, state.rules),
+        isWild(card),
     )
   )
     return true;
@@ -58,7 +57,7 @@ export function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean 
     const req = pile.nextRank;
     if (req === null) continue; // completed and (possibly) awaiting clear
     for (const card of candidates) {
-      if (cardMatchesRequired(card, req, state.rules)) return true;
+      if (cardMatchesRequired(card, req)) return true;
     }
   }
 

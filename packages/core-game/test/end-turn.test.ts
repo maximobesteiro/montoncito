@@ -9,7 +9,7 @@ function blockedState() {
   const initial = createInitialState(
     [{ id: "P1" }, { id: "P2" }],
     [],
-    { handSize: 2, stockSize: 1, discardPiles: 1, kingsAreWild: false },
+    { handSize: 2, stockSize: 1, discardPiles: 1 },
   );
   return {
     ...initial,

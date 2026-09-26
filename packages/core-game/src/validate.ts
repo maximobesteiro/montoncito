@@ -11,10 +11,9 @@ import { playerHasAnyPlacement } from "./rules/win";
 function matchesRequired(
   card: Card,
   required: Rank | null,
-  rules: GameState["rules"],
 ): boolean {
   if (required === null) return false; // pile just completed; should be cleared before receiving more
-  if (isWild(card, rules)) return true;
+  if (isWild(card)) return true;
   if (card.kind === "standard") {
     return card.rank === required;
   }
@@ -54,11 +53,11 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const target = move.target;
       if (target === "new")
         return (card.kind === "standard" && card.rank === 1) ||
-          isWild(card, state.rules)
+          isWild(card)
           ? null
           : "Card does not match build requirement";
       const pile = getBuildPile(state, target);
-      if (!matchesRequired(card, pile.nextRank, state.rules)) {
+      if (!matchesRequired(card, pile.nextRank)) {
         return "Card does not match build requirement";
       }
       return null;
@@ -72,11 +71,11 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const target = move.target;
       if (target === "new")
         return (top.kind === "standard" && top.rank === 1) ||
-          isWild(top, state.rules)
+          isWild(top)
           ? null
           : "Stock card does not match build requirement";
       const pile = getBuildPile(state, target);
-      if (!matchesRequired(top, pile.nextRank, state.rules)) {
+      if (!matchesRequired(top, pile.nextRank)) {
         return "Stock card does not match build requirement";
       }
       return null;
@@ -97,11 +96,11 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const target = move.target;
       if (target === "new")
         return (top.kind === "standard" && top.rank === 1) ||
-          isWild(top, state.rules)
+          isWild(top)
           ? null
           : "Discard card does not match build requirement";
       const pile = getBuildPile(state, target);
-      if (!matchesRequired(top, pile.nextRank, state.rules)) {
+      if (!matchesRequired(top, pile.nextRank)) {
         return "Discard card does not match build requirement";
       }
       return null;

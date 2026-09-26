@@ -5,10 +5,10 @@ export type PlayerId = string;
 export type Rank = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 export type Suit = "Clubs" | "Diamonds" | "Hearts" | "Spades";
 
-/** Card model: standard cards + Jokers. Wildness is decided by rules + optional per-card flag. */
+/** Card model: standard cards + Jokers. Every King and Joker is wild. */
 export type Card =
-  | { kind: "standard"; id: string; rank: Rank; suit: Suit; baseWild?: boolean }
-  | { kind: "joker"; id: string; baseWild?: boolean };
+  | { kind: "standard"; id: string; rank: Rank; suit: Suit }
+  | { kind: "joker"; id: string };
 
 // --- Deck / board ------------------------------------------------------------
 export interface Deck {
@@ -69,24 +69,13 @@ export interface RulesConfig {
   handSize: number;
   stockSize: number;
   discardPiles: number;
-
-  // ---- Wildness policy (hybrid: rules + optional per-card flag) -------------
-  /** Include jokers in deck construction. */
-  useJokers?: boolean;
-  /** If true (default when jokers are used), jokers behave as wild. */
-  jokersAreWild?: boolean;
-  /** Treat Kings (rank=13) as wild. */
-  kingsAreWild?: boolean;
-  /** Additional ranks that are wild (e.g., [2] if deuces-wild). */
-  additionalWildRanks?: Rank[];
-  /** Respect per-card `baseWild` flags (useful for custom decks). */
-  enableCardWildFlag?: boolean;
-
 }
 
 // --- Full game state ---------------------------------------------------------
 export interface GameState {
   version: 1;
+  /** Fixed gameplay policy, independent of state and transport versions. */
+  rulesetVersion: 1;
   id: string;
 
   phase: Phase;
