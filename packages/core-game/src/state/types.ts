@@ -134,6 +134,7 @@ export type RuleReason =
   | "Hand can still be refilled"
   | "A legal placement remains"
   | "Card not in hand"
+  | "Wild cards cannot be discarded"
   | "Card does not match build requirement"
   | "No stock card to play"
   | "Stock card does not match build requirement"

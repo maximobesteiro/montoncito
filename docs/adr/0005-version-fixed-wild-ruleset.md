@@ -1,6 +1,6 @@
 # Version the fixed King and Joker ruleset
 
-The Authoritative state carries `rulesetVersion: 1`, identifying the current gameplay policy independently of the state serialization and Game room transport versions. All Kings and Jokers from every Card pack are wild. Neither card-level flags nor room-level settings can change their wildness. The Discard pile count remains configurable.
+The Authoritative state carries `rulesetVersion: 1`, identifying the current gameplay policy independently of the state serialization and Game room transport versions. All Kings and Jokers from every Card pack are wild. Neither card-level flags nor room-level settings can change their wildness. Under this ruleset, neither can be discarded from the Hand; they can be played onto Build piles, including new ones. The Discard pile count remains configurable.
 
 ## Considered options
 

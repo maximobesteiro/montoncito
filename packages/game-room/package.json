@@ -21,7 +21,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts --sourcemap",
     "dev": "tsup src/index.ts --format esm,cjs --dts --watch",
-    "test": "vitest run --root ../.. apps/web/lib/use-game-room.test.ts packages/game-room/test",
+    "test": "vitest run --root ../.. apps/web/lib/use-game-room.test.ts apps/web/lib/game-actions.test.ts packages/game-room/test",
     "check-types": "tsc --noEmit"
   },
   "dependencies": {

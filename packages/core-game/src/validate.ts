@@ -114,6 +114,7 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
         return "Invalid discard pile index";
       const card = active.hand.cards.find((c) => c.id === move.cardId);
       if (!card) return "Card not in hand";
+      if (isWild(card)) return "Wild cards cannot be discarded";
       return null; // an accepted discard ends the Turn immediately
     }
   }
