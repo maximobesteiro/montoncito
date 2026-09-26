@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { ChatMessage } from "@/lib/socket-client";
 
-interface WaitingRoomChatProps {
+interface RoomChatProps {
   messages: ChatMessage[];
   currentPlayerId: string | null;
   onSendMessage: (text: string) => boolean | void;
@@ -11,13 +11,13 @@ interface WaitingRoomChatProps {
   className?: string;
 }
 
-export function WaitingRoomChat({
+export function RoomChat({
   messages,
   currentPlayerId,
   onSendMessage,
   canSend = true,
   className = "",
-}: WaitingRoomChatProps) {
+}: RoomChatProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);

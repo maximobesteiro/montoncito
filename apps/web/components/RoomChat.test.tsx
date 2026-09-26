@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { WaitingRoomChat } from "./WaitingRoomChat";
+import { RoomChat } from "./RoomChat";
 
 afterEach(cleanup);
 beforeEach(() => {
@@ -12,7 +12,7 @@ describe("Game room chat panel", () => {
   it("keeps a draft while disconnected and sends it only when the player clicks after reconnecting", () => {
     const onSendMessage = vi.fn(() => true);
     const { rerender } = render(
-      <WaitingRoomChat
+      <RoomChat
         messages={[]}
         currentPlayerId="p1"
         onSendMessage={onSendMessage}
@@ -22,7 +22,7 @@ describe("Game room chat panel", () => {
     const draft = screen.getByPlaceholderText("Type a message...");
     fireEvent.change(draft, { target: { value: "Saved for later" } });
     rerender(
-      <WaitingRoomChat
+      <RoomChat
         messages={[]}
         currentPlayerId="p1"
         onSendMessage={onSendMessage}
@@ -37,7 +37,7 @@ describe("Game room chat panel", () => {
     expect(onSendMessage).not.toHaveBeenCalled();
 
     rerender(
-      <WaitingRoomChat
+      <RoomChat
         messages={[]}
         currentPlayerId="p1"
         onSendMessage={onSendMessage}
@@ -54,7 +54,7 @@ describe("Game room chat panel", () => {
   it("retains the draft when sending loses the connection", () => {
     const onSendMessage = vi.fn(() => false);
     render(
-      <WaitingRoomChat
+      <RoomChat
         messages={[]}
         currentPlayerId="p1"
         onSendMessage={onSendMessage}

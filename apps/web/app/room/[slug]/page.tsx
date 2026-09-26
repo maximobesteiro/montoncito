@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient, type ChatMessage } from "@/lib/socket-client";
 import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
-import { WaitingRoomChat } from "@/components/WaitingRoomChat";
+import { RoomChat } from "@/components/RoomChat";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 
@@ -564,7 +564,7 @@ export default function WaitingRoomPage() {
             )}
           </div>
 
-          <WaitingRoomChat
+          <RoomChat
             messages={chatMessages}
             currentPlayerId={clientId}
             onSendMessage={sendChatMessage}
