@@ -31,7 +31,13 @@ describe('Game room synchronization over Socket.IO', () => {
     });
     gameId = game.meta.id;
     roomPlayers = [{ id: 'P1' }, { id: 'P2' }];
-    const rooms = { getById: () => ({ players: roomPlayers, gameId }) };
+    const rooms = {
+      getById: () => ({ players: roomPlayers, gameId }),
+      leave: jest.fn(({ clientId }: { clientId: string }) => {
+        roomPlayers = roomPlayers.filter((player) => player.id !== clientId);
+        return { room: { players: roomPlayers, gameId } };
+      }),
+    };
     gateway = new RoomsGateway(
       { get: () => secret } as never,
       rooms as never,
@@ -42,6 +48,7 @@ describe('Game room synchronization over Socket.IO', () => {
     gateway.server = namespace as unknown as Server;
     namespace.on('connection', (client) => {
       gateway.handleConnection(client);
+      client.on('disconnect', () => gateway.handleDisconnect(client));
       client.on('room.sync.request', (payload: unknown) => {
         gateway.synchronizeRoom(client, payload);
       });
@@ -231,6 +238,15 @@ describe('Game room synchronization over Socket.IO', () => {
       code: 'NOT_A_MEMBER',
     });
     expect(gameService.get(gameId).meta.seq).toBe(0);
+  });
+
+  it('retains Game room membership when a socket disconnects for recovery', async () => {
+    const client = await connectAs('P1');
+
+    client.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(roomPlayers).toContainEqual({ id: 'P1' });
   });
 
   it('synchronizes finished games as read-only and rejects new Actions consistently', async () => {
