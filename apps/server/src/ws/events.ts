@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { RoomViewSchema } from '../rooms/rooms.dto';
+import { ChatMessageSchema } from '@mont/game-room';
 
 export const RoomView = RoomViewSchema;
 
@@ -28,14 +29,8 @@ export const Kicked = z.object({
   type: z.literal('KICKED'),
 });
 
-export const ChatMessage = z.object({
-  type: z.literal('CHAT_MESSAGE'),
-  id: z.string().min(1),
-  playerId: z.string().min(1),
-  playerName: z.string().min(1),
-  text: z.string().min(1).max(500),
-  timestamp: z.number().int().nonnegative(),
-});
+export const ChatMessage = ChatMessageSchema;
+export type RoomChatMessage = z.infer<typeof ChatMessage>;
 
 /** Optional utility events */
 export const Pong = z.object({

@@ -19,6 +19,13 @@ describe('Game room synchronization over Socket.IO', () => {
   let clients: ClientSocket[];
   let roomPlayers: { id: string }[];
   let roomGameId: string | undefined;
+  let chatMessages: {
+    id: string;
+    playerId: string;
+    playerName: string;
+    text: string;
+    timestamp: number;
+  }[];
   let leaveRoom: jest.Mock;
 
   beforeEach(async () => {
@@ -34,12 +41,18 @@ describe('Game room synchronization over Socket.IO', () => {
     gameId = game.meta.id;
     roomPlayers = [{ id: 'P1' }, { id: 'P2' }];
     roomGameId = gameId;
+    chatMessages = [];
     leaveRoom = jest.fn(({ clientId }: { clientId: string }) => {
       roomPlayers = roomPlayers.filter((player) => player.id !== clientId);
       return { room: { players: roomPlayers, gameId: roomGameId } };
     });
     const rooms = {
-      getById: () => ({ players: roomPlayers, gameId: roomGameId }),
+      getById: () => ({
+        id: 'room-1',
+        players: roomPlayers,
+        gameId: roomGameId,
+        chatMessages,
+      }),
       leave: leaveRoom,
       toView: () => ({}),
     };
@@ -65,6 +78,9 @@ describe('Game room synchronization over Socket.IO', () => {
       client.on('chat', (payload: unknown) =>
         gateway.handleChat(client, payload as { text: string }),
       );
+      client.on('chat.history.request', (payload: unknown) =>
+        gateway.sendChatHistory(client, payload),
+      );
     });
     await new Promise<void>((resolve) => httpServer.listen(0, resolve));
     const address = httpServer.address();
@@ -78,6 +94,7 @@ describe('Game room synchronization over Socket.IO', () => {
     jest.restoreAllMocks();
     clients.forEach((client) => client.disconnect());
     await new Promise<void>((resolve) => socketServer.close(() => resolve()));
+    gateway.onModuleDestroy();
   });
 
   it('sends a full authoritative snapshot to a current member', async () => {
@@ -134,6 +151,155 @@ describe('Game room synchronization over Socket.IO', () => {
     sender.emit('chat', { text: 'No longer seated' });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(received).toBe(false);
+  });
+
+  it('recovers Lobby chat after start and after a Game room reconnect', async () => {
+    roomGameId = undefined;
+    const sender = await connectAs('P1');
+    const first = waitForChat(sender);
+    sender.emit('chat', { text: 'Before the match' });
+    const message = (await first) as { id: string };
+
+    const joiningPlayer = await connectAs('P2');
+    const waitingHistory = waitForEvent(joiningPlayer, 'chat.history');
+    joiningPlayer.emit('chat.history.request', { version: 1 });
+    await expect(waitingHistory).resolves.toMatchObject({
+      messages: [{ id: message.id, text: 'Before the match' }],
+    });
+
+    roomGameId = gameId;
+    joiningPlayer.disconnect();
+    const reconnected = await connectAs('P2');
+    const gameHistory = waitForEvent(reconnected, 'chat.history');
+    reconnected.emit('chat.history.request', { version: 1 });
+    await expect(gameHistory).resolves.toMatchObject({
+      messages: [{ id: message.id, text: 'Before the match' }],
+    });
+    gameService.get(gameId).state = {
+      ...gameService.get(gameId).state,
+      phase: 'gameover',
+      winner: 'P1',
+    };
+    const finishedHistory = waitForEvent(reconnected, 'chat.history');
+    reconnected.emit('chat.history.request', { version: 1 });
+    await expect(finishedHistory).resolves.toMatchObject({
+      messages: [{ id: message.id }],
+    });
+  });
+
+  it('keeps an open Lobby member and chat across a brief socket refresh', async () => {
+    roomGameId = undefined;
+    const sender = await connectAs('P1');
+    const delivered = waitForChat(sender);
+    sender.emit('chat', { text: 'Before refresh' });
+    await delivered;
+    sender.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const refreshed = await connectAs('P1');
+    const history = waitForEvent(refreshed, 'chat.history');
+    refreshed.emit('chat.history.request', { version: 1 });
+    await expect(history).resolves.toMatchObject({
+      messages: [{ text: 'Before refresh' }],
+    });
+    expect(leaveRoom).not.toHaveBeenCalled();
+  });
+
+  it('recovers Lobby history after a longer interruption while another member remains online', async () => {
+    roomGameId = undefined;
+    const sender = await connectAs('P1');
+    const other = await connectAs('P2');
+    const delivered = waitForChat(sender);
+    sender.emit('chat', { text: 'Still here' });
+    await delivered;
+    sender.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 5100));
+    expect(other.connected).toBe(true);
+    expect(leaveRoom).not.toHaveBeenCalled();
+
+    const reconnected = await connectAs('P1');
+    const history = waitForEvent(reconnected, 'chat.history');
+    reconnected.emit('chat.history.request', { version: 1 });
+    await expect(history).resolves.toMatchObject({
+      messages: [{ text: 'Still here' }],
+    });
+  }, 10000);
+
+  it('retains only the last 100 chat messages in delivery order', async () => {
+    const sender = await connectAs('P1');
+    for (let index = 0; index < 105; index++) {
+      const delivered = waitForChat(sender);
+      sender.emit('chat', { text: `message-${index}` });
+      await delivered;
+    }
+    const receiver = await connectAs('P2');
+    const history = waitForEvent(receiver, 'chat.history');
+    receiver.emit('chat.history.request', { version: 1 });
+    const result = (await history) as { messages: { text: string }[] };
+    expect(result.messages).toHaveLength(100);
+    expect(result.messages.map(({ text }) => text)).toEqual(
+      Array.from({ length: 100 }, (_, index) => `message-${index + 5}`),
+    );
+  });
+
+  it('refuses history to a removed member and does not broadcast the history to other players', async () => {
+    const member = await connectAs('P1');
+    const other = await connectAs('P2');
+    const message = waitForChat(member);
+    member.emit('chat', { text: 'Private room' });
+    await message;
+    let leaked = false;
+    other.on('chat.history', () => {
+      leaked = true;
+    });
+    const history = waitForEvent(member, 'chat.history');
+    member.emit('chat.history.request', { version: 1 });
+    await expect(history).resolves.toMatchObject({
+      messages: [{ text: 'Private room' }],
+    });
+    roomPlayers = [{ id: 'P2' }];
+    const rejection = waitForEvent(member, 'protocol.error');
+    member.emit('chat.history.request', { version: 1 });
+    await expect(rejection).resolves.toMatchObject({ code: 'NOT_A_MEMBER' });
+    expect(leaked).toBe(false);
+    const outsider = await connectAs('outsider');
+    if (outsider.connected) await waitForEvent(outsider, 'disconnect');
+    expect(outsider.connected).toBe(false);
+  });
+
+  it('includes a message posted during history recovery once across live and history', async () => {
+    const sender = await connectAs('P1');
+    const receiver = await connectAs('P2');
+    const earlier = waitForChat(receiver);
+    sender.emit('chat', { text: 'Before request' });
+    const first = (await earlier) as { id: string };
+    const sendHistory = gateway.sendChatHistory.bind(gateway);
+    let releaseHistory: (() => void) | undefined;
+    jest
+      .spyOn(gateway, 'sendChatHistory')
+      .mockImplementation((client, payload) => {
+        releaseHistory = () => sendHistory(client, payload);
+      });
+    const history = waitForEvent(receiver, 'chat.history');
+    receiver.emit('chat.history.request', { version: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(releaseHistory).toBeDefined();
+    const live = waitForChat(receiver);
+    sender.emit('chat', { text: 'In flight' });
+    const broadcast = (await live) as { id: string };
+    releaseHistory!();
+    await expect(history).resolves.toMatchObject({
+      messages: [{ id: first.id }, { id: broadcast.id }],
+    });
+  });
+
+  it('rejects unsupported chat history protocol versions', async () => {
+    const client = await connectAs('P1');
+    const failure = waitForEvent(client, 'protocol.error');
+    client.emit('chat.history.request', { version: 2 });
+    await expect(failure).resolves.toMatchObject({
+      code: 'UNSUPPORTED_VERSION',
+    });
   });
 
   it('broadcasts one Accepted Action result with the full Authoritative state', async () => {
@@ -454,14 +620,14 @@ describe('Game room synchronization over Socket.IO', () => {
     const client = await connectAs('P1');
 
     client.disconnect();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 5100));
 
     expect(roomPlayers).not.toContainEqual({ id: 'P1' });
     expect(leaveRoom).toHaveBeenCalledWith({
       roomId: 'room-1',
       clientId: 'P1',
     });
-  });
+  }, 10000);
 
   it('synchronizes finished games as read-only and rejects new Actions consistently', async () => {
     const game = gameService.get(gameId);

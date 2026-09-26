@@ -83,6 +83,8 @@
 - `presence.update` `{ players[] }`
 - `chat.message` `{ message }`
 
+The current Socket.IO room chat uses the existing `chat` / `CHAT_MESSAGE` live contract. Members request the latest room conversation with `chat.history.request` `{ version: 1 }` and receive a targeted `chat.history` `{ version: 1, messages }` response. The server keeps the last 100 messages in delivery order on the in-memory room, including across the Lobby-to-Game room transition. The history vanishes when the room is removed or the process restarts; it never advances the gameplay Sequence number.
+
 > **Ordering & idempotency:** the server serializes Actions per Game room. It assigns `seq` only to Accepted Actions and retains every outcome by `(roomId, playerId, actionId)` for the in-memory Game room lifetime. Duplicate lookup occurs before stale-sequence validation.
 
 ## 6) Room Lifecycle (Happy Path)
@@ -95,6 +97,8 @@
 6. A player submits an Action with a random Action ID and Base sequence number.
 7. The server checks membership, deduplication, staleness, and `core-game` validation, then atomically commits state, Sequence number, and outcome before delivery.
 8. A finished Game room remains connected and read-only for gameplay Actions; seated players can continue chatting.
+
+A Lobby retains disconnected members while another member remains online. When no one is connected, it removes the Lobby after a five-second grace period so a page refresh can recover room chat. A reconnect cancels the pending departure. The Lobby page renews a member's WebSocket token through the room token flow; removed players cannot renew membership automatically.
 
 ## 7) State, Persistence & Scaling
 

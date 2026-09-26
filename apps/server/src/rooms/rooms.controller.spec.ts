@@ -31,6 +31,7 @@ describe('RoomsController', () => {
     players: [{ id: 'client-1', isOwner: true, ready: false }],
     createdAt: '2024-01-01T00:00:00.000Z',
     gameConfig: { discardPiles: 3 },
+    chatMessages: [],
   };
 
   const mockRoomView = {

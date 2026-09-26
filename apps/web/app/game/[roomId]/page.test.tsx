@@ -33,12 +33,16 @@ it("keeps the game-page chat draft through disconnect and reconnect until the pl
     sendChat,
   };
   const { rerender } = render(<GameRoomPage />);
-  const draft = screen.getByPlaceholderText("Type a message...") as HTMLInputElement;
+  const draft = screen.getByPlaceholderText(
+    "Type a message...",
+  ) as HTMLInputElement;
   fireEvent.change(draft, { target: { value: "After reconnect" } });
 
   gameRoom.view = { ...gameRoom.view, connectionStatus: "connecting" };
   rerender(<GameRoomPage />);
-  expect(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled")).toBe(true);
+  expect(
+    screen.getByRole("button", { name: "Send" }).hasAttribute("disabled"),
+  ).toBe(true);
   expect(draft.value).toBe("After reconnect");
   expect(sendChat).not.toHaveBeenCalled();
 
@@ -49,4 +53,38 @@ it("keeps the game-page chat draft through disconnect and reconnect until the pl
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   expect(sendChat).toHaveBeenCalledExactlyOnceWith("After reconnect");
   expect(draft.value).toBe("");
+});
+
+it("shows recovered Lobby and live chat on the Game room page", () => {
+  gameRoom.view = {
+    state: createStartedGame({ players: ["player-1", "player-2"], seed: 1 }),
+    seq: 0,
+    currentPlayerId: "player-1",
+    connectionStatus: "connected",
+    problem: null,
+    pendingAction: null,
+    lastActionResult: null,
+    submitAction: vi.fn(),
+    sendChat: vi.fn(),
+    chatMessages: [
+      {
+        id: "old",
+        playerId: "player-2",
+        playerName: "Bob",
+        text: "Before play",
+        timestamp: 1,
+      },
+      {
+        id: "new",
+        playerId: "player-1",
+        playerName: "Alice",
+        text: "During play",
+        timestamp: 2,
+      },
+    ],
+  };
+  render(<GameRoomPage />);
+  expect(screen.getByText("Before play")).toBeTruthy();
+  expect(screen.getByText("During play")).toBeTruthy();
+  expect(screen.getByText("Alice (you):")).toBeTruthy();
 });

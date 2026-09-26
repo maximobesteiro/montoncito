@@ -12,6 +12,7 @@ import { ProfilesService } from '../profiles/profiles.service';
 import { GameService } from '../game/game.service';
 import { RoomView } from './rooms.dto';
 import { generateReadableRoomSlug } from '../utils/names';
+import type { RoomChatMessage } from '../ws/events';
 
 export type Visibility = 'public' | 'private';
 export type RoomStatus = 'open' | 'in_progress' | 'finished';
@@ -39,6 +40,7 @@ export type Room = {
   createdAt: string;
   gameId?: string;
   gameConfig: GameConfig;
+  chatMessages: RoomChatMessage[];
 };
 
 @Injectable()
@@ -81,6 +83,7 @@ export class RoomsService {
       players: [{ id: params.clientId, isOwner: true, ready: false }],
       createdAt: now,
       gameConfig: { discardPiles: 3 },
+      chatMessages: [],
     };
 
     this.roomsById.set(id, room);
@@ -115,6 +118,7 @@ export class RoomsService {
       players: [{ id: params.clientId, isOwner: true, ready: false }],
       createdAt: now,
       gameConfig: { discardPiles: 3 },
+      chatMessages: [],
     };
 
     this.roomsById.set(id, room);
@@ -382,7 +386,9 @@ export class RoomsService {
     if (room.status === 'in_progress' && room.gameId) return room;
     if (room.status !== 'open') throw new ConflictException('Room is not open');
     if (room.players.length < 2 || room.players.length > 4) {
-      throw new ConflictException('Between two and four players are required to start');
+      throw new ConflictException(
+        'Between two and four players are required to start',
+      );
     }
 
     if (room.gameConfig.discardPiles < 1 || room.gameConfig.discardPiles > 4) {

@@ -33,6 +33,7 @@ import {
   getServerUrl,
 } from "./api";
 import type { ChatMessage } from "./socket-client";
+import { appendChatMessage, isChatMessage, readChatHistory } from "./room-chat";
 
 export type GameRoomConnectionStatus =
   | "connecting"
@@ -142,6 +143,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       clearPendingAction(roomId);
       pendingActionRef.current = null;
       chatReadyRef.current = false;
+      setChatMessages([]);
       socket?.disconnect();
       updateGameRoomSession(sessionRef, setSession, removeGameRoomSession);
       setConnectionStatus("removed");
@@ -199,6 +201,9 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
+          socket?.emit("chat.history.request", {
+            version: GAME_ROOM_PROTOCOL_VERSION,
+          });
           chatReadyRef.current = false;
           requestedFreshSnapshot = false;
           updateGameRoomSession(sessionRef, setSession, markGameRoomConnected);
@@ -292,7 +297,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socket.on("event", (payload: unknown) => {
           if (isChatMessage(payload)) {
-            setChatMessages((previous) => [...previous, payload]);
+            setChatMessages((previous) => appendChatMessage(previous, payload));
           }
           if (
             typeof payload === "object" &&
@@ -302,6 +307,10 @@ export function useGameRoom(roomId: string): GameRoomView {
           ) {
             markRemoved();
           }
+        });
+        socket.on("chat.history", (payload: unknown) => {
+          const messages = readChatHistory(payload);
+          if (messages) setChatMessages(messages);
         });
         socket.on("connect_error", () => {
           chatReadyRef.current = false;
@@ -368,26 +377,6 @@ export function useGameRoom(roomId: string): GameRoomView {
     chatMessages,
     sendChat,
   };
-}
-
-function isChatMessage(
-  payload: unknown,
-): payload is ChatMessage & { type: "CHAT_MESSAGE" } {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("type" in payload) ||
-    payload.type !== "CHAT_MESSAGE"
-  )
-    return false;
-  const message = payload as Record<string, unknown>;
-  return (
-    typeof message.id === "string" &&
-    typeof message.playerId === "string" &&
-    typeof message.playerName === "string" &&
-    typeof message.text === "string" &&
-    typeof message.timestamp === "number"
-  );
 }
 
 function updateGameRoomSession(

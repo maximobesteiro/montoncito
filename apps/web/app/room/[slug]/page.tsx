@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch, getOrCreateClientId } from "@/lib/api";
+import { apiFetch, ApiHttpError, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient, type ChatMessage } from "@/lib/socket-client";
 import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
 import { RoomChat } from "@/components/RoomChat";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { appendChatMessage } from "@/lib/room-chat";
 
 type RoomView = {
   id: string;
@@ -144,7 +145,6 @@ export default function WaitingRoomPage() {
 
         // 3) Connect to Socket.IO to receive presence + GAME_STARTED
         const sock = getSocketClient();
-        sock.connect(wsJoinToken);
         unsub = sock.on((ev) => {
           if (ev.type === "ROOM_UPDATED") {
             // Update room state (including player list) in real-time
@@ -154,14 +154,40 @@ export default function WaitingRoomPage() {
             router.push(`/game/${ev.roomId}`);
           }
           if (ev.type === "KICKED") {
+            sock.disconnect();
             showToast("You have been kicked from the room", "warning");
             router.push("/");
           }
           if (ev.type === "CHAT_MESSAGE") {
-            setChatMessages((prev) => [...prev, ev]);
+            setChatMessages((prev) => appendChatMessage(prev, ev));
+          }
+          if (ev.type === "CHAT_HISTORY") {
+            setChatMessages(ev.messages);
           }
           // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
           // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
+        });
+        sock.connect(wsJoinToken, async () => {
+          try {
+            const { wsJoinToken: renewed } = await apiFetch<{
+              wsJoinToken: string;
+            }>(`/rooms/${view.id}/socket-token`, { method: "POST", clientId });
+            const current = await apiFetch<RoomView>(
+              `/rooms/by-slug/${sanitizedSlug}`,
+              { method: "GET", clientId },
+            );
+            if (!cancelled) setRoom(current);
+            return renewed;
+          } catch (error) {
+            if (
+              error instanceof ApiHttpError &&
+              (error.status === 403 || error.status === 404)
+            ) {
+              sock.disconnect();
+              if (!cancelled) router.push("/");
+            }
+            throw error;
+          }
         });
       } catch (e) {
         if (cancelled) return;
@@ -182,7 +208,7 @@ export default function WaitingRoomPage() {
 
   useEffect(() => {
     if (!room) return;
-    if (room.status === "in_progress") {
+    if (room.status !== "open" && room.gameId) {
       router.push(`/game/${room.id}`);
     }
   }, [room, router]);

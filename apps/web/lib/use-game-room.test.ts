@@ -457,6 +457,86 @@ describe("useGameRoom reconnect behavior", () => {
     expect(renderHook().sendChat("draft")).toBe(true);
   });
 
+  it("recovers chat on entry and reconnect, reconciling live messages received before history", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    expect(socket.emitted).toContainEqual({
+      event: "chat.history.request",
+      payload: { version: 1 },
+    });
+    socket.fire("room.sync.snapshot", snapshot);
+    const earlier = {
+      type: "CHAT_MESSAGE",
+      id: "one",
+      playerId: "player-2",
+      playerName: "Bob",
+      text: "Waiting",
+      timestamp: 10,
+    };
+    const overlap = {
+      ...earlier,
+      id: "two",
+      text: "During recovery",
+      timestamp: 11,
+    };
+    socket.fire("event", overlap);
+    socket.fire("chat.history", { version: 1, messages: [earlier, overlap] });
+    expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
+      "one",
+      "two",
+    ]);
+
+    socket.connected = false;
+    socket.fire("disconnect", "transport close");
+    socket.connected = true;
+    socket.fire("connect");
+    const missed = { ...earlier, id: "three", text: "Missed", timestamp: 12 };
+    const latest = { ...earlier, id: "four", text: "Live", timestamp: 13 };
+    socket.fire("event", latest);
+    socket.fire("chat.history", {
+      version: 1,
+      messages: [overlap, missed, latest],
+    });
+    expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
+      "two",
+      "three",
+      "four",
+    ]);
+    socket.fire("event", { ...latest, id: "five", text: "After recovery" });
+    expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
+      "two",
+      "three",
+      "four",
+      "five",
+    ]);
+    expect(
+      socket.emitted.filter(({ event }) => event === "chat.history.request"),
+    ).toHaveLength(2);
+  });
+
+  it("keeps delivery order when recovery crosses the 100-message window", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    const messages = Array.from({ length: 105 }, (_, index) => ({
+      type: "CHAT_MESSAGE" as const,
+      id: `chat-${index}`,
+      playerId: "player-2",
+      playerName: "Bob",
+      text: `message-${index}`,
+      timestamp: 1,
+    }));
+    for (const message of messages) socket.fire("event", message);
+    socket.fire("chat.history", { version: 1, messages: messages.slice(5) });
+
+    expect(renderHook().chatMessages.map(({ id }) => id)).toEqual(
+      messages.slice(5).map(({ id }) => id),
+    );
+  });
+
   it("stops reconnecting and clears state when credential renewal confirms removal", async () => {
     renderHook();
     harness.effect?.();

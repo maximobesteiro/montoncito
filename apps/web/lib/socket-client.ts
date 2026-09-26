@@ -1,5 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import { getServerUrl } from "./api";
+import { GAME_ROOM_PROTOCOL_VERSION } from "@mont/game-room";
+import { readChatHistory } from "./room-chat";
 
 export type ChatMessage = {
   id: string;
@@ -16,6 +18,7 @@ export type ServerEvent =
   | { type: "ROOM_UPDATED"; room: unknown }
   | { type: "KICKED" }
   | ({ type: "CHAT_MESSAGE" } & ChatMessage)
+  | { type: "CHAT_HISTORY"; messages: ChatMessage[] }
   | { type: "PONG"; ts: number };
 
 export type ServerEventHandler = (event: ServerEvent) => void;
@@ -23,16 +26,58 @@ export type ServerEventHandler = (event: ServerEvent) => void;
 class SocketClient {
   private socket: Socket | null = null;
   private handlers = new Set<ServerEventHandler>();
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  connect(token: string) {
+  connect(token: string, renewToken?: () => Promise<string>) {
     // Namespace is /ws (see server WebSocketGateway config)
     this.socket = io(`${getServerUrl()}/ws`, {
       transports: ["websocket"],
       auth: { token },
+      reconnection: !renewToken,
     });
+    const socket = this.socket;
+    let recoveryInFlight = false;
+    const recover = async () => {
+      if (!renewToken || recoveryInFlight || this.socket !== socket) return;
+      recoveryInFlight = true;
+      try {
+        const refreshed = await renewToken();
+        if (this.socket !== socket) return;
+        socket.auth = { token: refreshed };
+        socket.connect();
+      } catch {
+        if (this.socket !== socket) return;
+        this.retryTimer = setTimeout(() => {
+          this.retryTimer = null;
+          void recover();
+        }, 1000);
+      } finally {
+        recoveryInFlight = false;
+      }
+    };
 
     this.socket.on("connect_error", (err) => {
       console.error("Socket.IO connect_error:", err);
+      void recover();
+    });
+
+    this.socket.on("disconnect", (reason) => {
+      if (reason !== "io client disconnect") void recover();
+    });
+
+    this.socket.on("connect", () => {
+      this.socket?.emit("chat.history.request", {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+      });
+    });
+
+    this.socket.on("chat.history", (payload: unknown) => {
+      const messages = readChatHistory(payload);
+      if (!messages) return;
+      this.emit({
+        type: "CHAT_HISTORY",
+        messages,
+      });
     });
 
     this.socket.on("event", (payload: unknown) => {
@@ -53,6 +98,8 @@ class SocketClient {
   }
 
   disconnect() {
+    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
     this.socket?.disconnect();
     this.socket = null;
     this.handlers.clear();
