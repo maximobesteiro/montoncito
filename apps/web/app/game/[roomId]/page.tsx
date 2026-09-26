@@ -5,7 +5,7 @@ import type { Card } from "@mont/core-game";
 import { useGameRoom } from "@/lib/use-game-room";
 import { formatCardName } from "@/lib/format-card-name";
 import { ActionPanel } from "@/components/game/ActionPanel";
-import { RoomChat } from "@/components/RoomChat";
+import { GameRoomChat } from "@/components/game/GameRoomChat";
 
 export default function GameRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -19,6 +19,7 @@ export default function GameRoomPage() {
     lastActionResult,
     submitAction,
     chatMessages,
+    liveChatCount,
     sendChat,
   } = useGameRoom(roomId);
 
@@ -156,9 +157,11 @@ export default function GameRoomPage() {
             {state.turn.activePlayer}&apos;s turn
           </p>
         </section>
-        <RoomChat
-          className="max-h-[400px] lg:col-span-2"
+        <GameRoomChat
+          key={roomId}
+          roomId={roomId}
           messages={chatMessages}
+          liveChatCount={liveChatCount}
           currentPlayerId={currentPlayerId}
           canSend={connectionStatus === "connected"}
           onSendMessage={sendChat}
