@@ -52,6 +52,7 @@ export type GameRoomView = {
   lastActionResult: ActionAccepted | ActionRejected | null;
   submitAction: (action: PlayerAction) => boolean;
   chatMessages: ChatMessage[];
+  liveChatCount: number;
   sendChat: (text: string) => boolean;
 };
 
@@ -63,6 +64,8 @@ export function useGameRoom(roomId: string): GameRoomView {
     useState<GameRoomConnectionStatus>("connecting");
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [liveChatCount, setLiveChatCount] = useState(0);
+  const seenChatIds = useRef(new Set<string>());
   const socketRef = useRef<Socket | null>(null);
   const chatReadyRef = useRef(false);
   const pendingActionRef = useRef<ActionSubmission | null>(null);
@@ -131,6 +134,8 @@ export function useGameRoom(roomId: string): GameRoomView {
     socketRef.current = null;
     chatReadyRef.current = false;
     setChatMessages([]);
+    seenChatIds.current = new Set();
+    setLiveChatCount(0);
     pendingActionRef.current = null;
 
     const isRemovedError = (error: unknown) =>
@@ -144,6 +149,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       pendingActionRef.current = null;
       chatReadyRef.current = false;
       setChatMessages([]);
+      seenChatIds.current = new Set();
       socket?.disconnect();
       updateGameRoomSession(sessionRef, setSession, removeGameRoomSession);
       setConnectionStatus("removed");
@@ -297,7 +303,13 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socket.on("event", (payload: unknown) => {
           if (isChatMessage(payload)) {
-            setChatMessages((previous) => appendChatMessage(previous, payload));
+            if (!seenChatIds.current.has(payload.id)) {
+              seenChatIds.current.add(payload.id);
+              setChatMessages((previous) =>
+                appendChatMessage(previous, payload),
+              );
+              setLiveChatCount((count) => count + 1);
+            }
           }
           if (
             typeof payload === "object" &&
@@ -310,7 +322,10 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socket.on("chat.history", (payload: unknown) => {
           const messages = readChatHistory(payload);
-          if (messages) setChatMessages(messages);
+          if (messages) {
+            seenChatIds.current = new Set(messages.map(({ id }) => id));
+            setChatMessages(messages);
+          }
         });
         socket.on("connect_error", () => {
           chatReadyRef.current = false;
@@ -375,6 +390,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         : null,
     submitAction,
     chatMessages,
+    liveChatCount,
     sendChat,
   };
 }

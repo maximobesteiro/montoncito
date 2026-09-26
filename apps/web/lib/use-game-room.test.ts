@@ -482,7 +482,9 @@ describe("useGameRoom reconnect behavior", () => {
       timestamp: 11,
     };
     socket.fire("event", overlap);
+    expect(renderHook().liveChatCount).toBe(1);
     socket.fire("chat.history", { version: 1, messages: [earlier, overlap] });
+    expect(renderHook().liveChatCount).toBe(1);
     expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
       "one",
       "two",
@@ -499,12 +501,15 @@ describe("useGameRoom reconnect behavior", () => {
       version: 1,
       messages: [overlap, missed, latest],
     });
+    expect(renderHook().liveChatCount).toBe(2);
     expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
       "two",
       "three",
       "four",
     ]);
     socket.fire("event", { ...latest, id: "five", text: "After recovery" });
+    socket.fire("event", { ...latest, id: "five", text: "After recovery" });
+    expect(renderHook().liveChatCount).toBe(3);
     expect(renderHook().chatMessages.map(({ id }) => id)).toEqual([
       "two",
       "three",
