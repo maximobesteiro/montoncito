@@ -73,13 +73,13 @@ export function useGameRoom(roomId: string): GameRoomView {
       ) {
         return false;
       }
-      const currentSession = sessionRef.current;
-      if (currentSession.status !== "synchronized") return false;
-      if (currentSession.state.phase === "gameover") return false;
+      const currentGameRoomSession = sessionRef.current;
+      if (currentGameRoomSession.status !== "synchronized") return false;
+      if (currentGameRoomSession.state.phase === "gameover") return false;
       const pending: ActionSubmission = {
         version: GAME_ROOM_PROTOCOL_VERSION,
         actionId: crypto.randomUUID(),
-        baseSeq: currentSession.seq,
+        baseSeq: currentGameRoomSession.seq,
         action,
       };
       try {
@@ -186,17 +186,20 @@ export function useGameRoom(roomId: string): GameRoomView {
           });
         });
         socket.on("room.sync.snapshot", (payload: unknown) => {
-          const currentSession = sessionRef.current;
-          const synchronized = receiveGameRoomSnapshot(currentSession, payload);
+          const currentGameRoomSession = sessionRef.current;
+          const synchronized = receiveGameRoomSnapshot(
+            currentGameRoomSession,
+            payload,
+          );
           if (synchronized.status !== "synchronized") {
             updateGameRoomSession(sessionRef, setSession, () => synchronized);
             setConnectionStatus("failed");
             return;
           }
           if (
-            currentSession.status === "synchronized" &&
-            synchronized === currentSession &&
-            (payload as SyncSnapshot).seq < currentSession.seq
+            currentGameRoomSession.status === "synchronized" &&
+            synchronized === currentGameRoomSession &&
+            (payload as SyncSnapshot).seq < currentGameRoomSession.seq
           ) {
             setConnectionStatus("synchronizing");
             if (!requestedFreshSnapshot) {
