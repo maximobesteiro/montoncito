@@ -206,6 +206,28 @@ describe("explicit core outcomes", () => {
     });
   });
 
+  it("ends the Turn by discarding even when a legal play remains", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [standard("discard", 7), ace("playable")];
+    const before = structuredClone(state);
+    freeze(state);
+
+    const result = applyMove(state, {
+      kind: "DISCARD_FROM_HAND",
+      cardId: "discard",
+      pileIndex: 0,
+    });
+
+    expect(result.accepted).toBe(true);
+    expect(result.state.turn.activePlayer).toBe("P2");
+    expect(result.state.byId.P1!.hand.cards.map(({ id }) => id)).toEqual([
+      "playable",
+    ]);
+    expect(result.state.byId.P1!.discards[0]?.at(-1)?.id).toBe("discard");
+    expect(result.events.map(({ type }) => type)).toContain("TurnEnded");
+    expect(state).toEqual(before);
+  });
+
   it("keeps a partial Hand when an automatic refill exhausts the shared piles", () => {
     const state = turn();
     state.byId.P1!.hand.cards = [standard("discard", 7)];

@@ -62,10 +62,11 @@ A turn consists of the following steps:
    - An Ace, King, or Joker may target `new` to start a new Build pile; the core assigns its identifier.
    - After playing a `12`, the pile is **cleared** into the Recycle pile and removed.
    - If the player empties their Hand, the server automatically refills it to 5 and the Play phase continues.
-   - The player may continue playing as long as they have valid moves.
+   - The player may continue playing while valid moves remain, or choose to discard instead.
 
-2. **Draw Phase**  
-   When no more plays are possible, the player must **discard** one card from their Hand onto one of their configured Discard piles (top visible).
+2. **Discard**
+
+   At any point during their Turn, the player may **discard** one card from their Hand onto one of their configured Discard piles (top visible), even if a legal play remains.
 
 3. **End of Turn**  
    The accepted discard ends the Turn. The server advances to the next player and automatically refills that player's Hand to 5 cards.

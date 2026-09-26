@@ -55,9 +55,9 @@ export function ActionPanel({
           Action pending: {pendingAction.action.kind}
         </p>
       )}
-      {!canPlay && !canEndTurn && (
+      {validMoves.canDiscard.length > 0 && (
         <p className="mb-3 text-text-muted">
-          No legal plays. Discard a Hand card to end your Turn.
+          Discard a Hand card at any time to end your Turn.
         </p>
       )}
       <div className="flex flex-wrap gap-2">
@@ -111,24 +111,23 @@ export function ActionPanel({
             {move.buildId === "new" ? "new Build pile" : `pile ${move.buildId}`}
           </button>
         ))}
-        {!canPlay &&
-          validMoves.canDiscard.map((move) => (
-            <button
-              key={`end-${move.cardId}-${move.pileIndex}`}
-              className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
-              disabled={disabled}
-              onClick={() =>
-                submitAction?.({
-                  kind: "DISCARD_FROM_HAND",
-                  cardId: move.cardId,
-                  pileIndex: move.pileIndex,
-                })
-              }
-            >
-              Discard {describeHandCard(move.cardId, handCards)} to pile{" "}
-              {move.pileIndex + 1}
-            </button>
-          ))}
+        {validMoves.canDiscard.map((move) => (
+          <button
+            key={`end-${move.cardId}-${move.pileIndex}`}
+            className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
+            disabled={disabled}
+            onClick={() =>
+              submitAction?.({
+                kind: "DISCARD_FROM_HAND",
+                cardId: move.cardId,
+                pileIndex: move.pileIndex,
+              })
+            }
+          >
+            Discard {describeHandCard(move.cardId, handCards)} to pile{" "}
+            {move.pileIndex + 1}
+          </button>
+        ))}
         {canEndTurn && (
           <button
             className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
