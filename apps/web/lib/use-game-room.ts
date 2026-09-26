@@ -5,6 +5,8 @@ import { io, type Socket } from "socket.io-client";
 import type { GameState } from "@mont/core-game";
 import {
   GAME_ROOM_PROTOCOL_VERSION,
+  ActionAcceptedSchema,
+  ActionRejectedSchema,
   ActionSubmissionSchema,
   ProtocolFailureSchema,
   createGameRoomSession,
@@ -140,13 +142,19 @@ export function useGameRoom(roomId: string): GameRoomView {
           setSession((previous) => receiveGameRoomUpdate(previous, payload));
         });
         socket.on("room.action.accepted", (payload: unknown) => {
-          clearMatchingPendingAction(roomId, payload, pendingActionRef);
+          const result = ActionAcceptedSchema.safeParse(payload);
+          if (result.success) {
+            clearMatchingPendingAction(roomId, result.data, pendingActionRef);
+          }
           setSession((previous) =>
             receiveGameRoomActionAccepted(previous, payload),
           );
         });
         socket.on("room.action.rejected", (payload: unknown) => {
-          clearMatchingPendingAction(roomId, payload, pendingActionRef);
+          const result = ActionRejectedSchema.safeParse(payload);
+          if (result.success) {
+            clearMatchingPendingAction(roomId, result.data, pendingActionRef);
+          }
           setSession((previous) =>
             receiveGameRoomActionRejected(previous, payload),
           );

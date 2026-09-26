@@ -17,6 +17,13 @@ const ace = (id: string): Card => ({
   suit: "Hearts",
 });
 
+const standard = (id: string, rank: Rank): Card => ({
+  kind: "standard",
+  id,
+  rank,
+  suit: "Hearts",
+});
+
 function lobby(): GameState {
   return createInitialState(
     [{ id: "P1" }, { id: "P2" }],
@@ -29,6 +36,13 @@ function turn(): GameState {
   const state = applyMove(lobby(), { kind: "START_GAME" }).state;
   state.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
   state.nextBuildPileId = 2;
+  return state;
+}
+
+function blockedTurn(): GameState {
+  const state = turn();
+  state.byId.P1!.hand.cards = [standard("H7", 7), standard("H8", 8)];
+  state.byId.P1!.stock.faceDown = [standard("S9", 9)];
   return state;
 }
 
@@ -66,16 +80,16 @@ describe("explicit core outcomes", () => {
     },
     {
       name: "discard",
-      setup: turn,
-      move: { kind: "DISCARD_FROM_HAND", cardId: "H1", pileIndex: 0 },
+      setup: blockedTurn,
+      move: { kind: "DISCARD_FROM_HAND", cardId: "H7", pileIndex: 0 },
       event: "TurnEnded",
     },
     {
       name: "draw",
       setup: () =>
-        applyMove(turn(), {
+        applyMove(blockedTurn(), {
           kind: "DISCARD_FROM_HAND",
-          cardId: "H1",
+          cardId: "H7",
           pileIndex: 0,
         }).state,
       move: { kind: "DRAW_TO_HAND" },
@@ -169,7 +183,8 @@ describe("explicit core outcomes", () => {
 
   it("automatically refills the next player's Hand after a discard", () => {
     const state = turn();
-    state.byId.P1!.hand.cards = [ace("discard")];
+    state.byId.P1!.hand.cards = [standard("discard", 7)];
+    state.byId.P1!.stock.faceDown = [standard("stock", 8)];
     state.byId.P2!.hand.cards = [ace("held")];
     state.deck.drawPile = [ace("refill")];
 
@@ -193,7 +208,8 @@ describe("explicit core outcomes", () => {
 
   it("keeps a partial Hand when an automatic refill exhausts the shared piles", () => {
     const state = turn();
-    state.byId.P1!.hand.cards = [ace("discard")];
+    state.byId.P1!.hand.cards = [standard("discard", 7)];
+    state.byId.P1!.stock.faceDown = [standard("stock", 8)];
     state.byId.P2!.hand.cards = [];
     state.deck.drawPile = [ace("last-draw")];
     state.deck.recyclePile = [];
@@ -236,7 +252,9 @@ describe("explicit core outcomes", () => {
       "recycle-3",
       "recycle-1",
     ]);
-    expect(first.state.deck.drawPile.map(({ id }) => id)).toEqual(["recycle-2"]);
+    expect(first.state.deck.drawPile.map(({ id }) => id)).toEqual([
+      "recycle-2",
+    ]);
     expect(first.state.deck.recyclePile).toEqual([]);
     expect(first.state.rng).toMatchObject({
       algorithm: "mulberry32-v1",

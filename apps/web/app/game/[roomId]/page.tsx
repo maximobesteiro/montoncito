@@ -153,5 +153,8 @@ function describeDiscard(pile: Card[], index: number): string {
 
 function describeCard(card: Card | undefined): string {
   if (!card) return "empty";
-  return card.kind === "joker" ? "Joker" : `${card.rank} of ${card.suit}`;
+  if (card.kind === "joker") return "Joker";
+  return card.rank === 13
+    ? `King of ${card.suit}`
+    : `${card.rank} of ${card.suit}`;
 }

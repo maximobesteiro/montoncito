@@ -145,5 +145,8 @@ function describeHandCard(
 ): string {
   const card = handCards.find((candidate) => candidate.id === cardId);
   if (!card) return "card";
-  return card.kind === "joker" ? "Joker" : `${card.rank} of ${card.suit}`;
+  if (card.kind === "joker") return "Joker";
+  return card.rank === 13
+    ? `King of ${card.suit}`
+    : `${card.rank} of ${card.suit}`;
 }
