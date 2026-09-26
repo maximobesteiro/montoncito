@@ -17,6 +17,9 @@ describe('Game room synchronization over Socket.IO', () => {
   let gameId: string;
   let baseUrl: string;
   let clients: ClientSocket[];
+  let roomPlayers: { id: string }[];
+  let roomGameId: string | undefined;
+  let leaveRoom: jest.Mock;
 
   beforeEach(async () => {
     httpServer = createServer();
@@ -29,8 +32,16 @@ describe('Game room synchronization over Socket.IO', () => {
       config: { seed: 1 },
     });
     gameId = game.meta.id;
+    roomPlayers = [{ id: 'P1' }, { id: 'P2' }];
+    roomGameId = gameId;
+    leaveRoom = jest.fn(({ clientId }: { clientId: string }) => {
+      roomPlayers = roomPlayers.filter((player) => player.id !== clientId);
+      return { room: { players: roomPlayers, gameId: roomGameId } };
+    });
     const rooms = {
-      getById: () => ({ players: [{ id: 'P1' }, { id: 'P2' }], gameId }),
+      getById: () => ({ players: roomPlayers, gameId: roomGameId }),
+      leave: leaveRoom,
+      toView: () => ({}),
     };
     gateway = new RoomsGateway(
       { get: () => secret } as never,
@@ -42,6 +53,7 @@ describe('Game room synchronization over Socket.IO', () => {
     gateway.server = namespace as unknown as Server;
     namespace.on('connection', (client) => {
       gateway.handleConnection(client);
+      client.on('disconnect', () => gateway.handleDisconnect(client));
       client.on('room.sync.request', (payload: unknown) => {
         gateway.synchronizeRoom(client, payload);
       });
@@ -210,6 +222,86 @@ describe('Game room synchronization over Socket.IO', () => {
       code: 'MALFORMED_MESSAGE',
     });
     client.disconnect();
+  });
+
+  it('rechecks membership for every synchronization and Action', async () => {
+    const client = await connectAs('P1');
+    roomPlayers = [{ id: 'P2' }];
+
+    const syncFailure = waitForEvent(client, 'protocol.error');
+    client.emit('room.sync.request', { version: 1 });
+    await expect(syncFailure).resolves.toMatchObject({ code: 'NOT_A_MEMBER' });
+
+    const actionFailure = waitForEvent(client, 'protocol.error');
+    client.emit('room.action.submit', {
+      version: 1,
+      actionId: '550e8400-e29b-41d4-a716-446655440020',
+      baseSeq: 0,
+      action: { kind: 'END_TURN' },
+    });
+    await expect(actionFailure).resolves.toMatchObject({
+      code: 'NOT_A_MEMBER',
+    });
+    expect(gameService.get(gameId).meta.seq).toBe(0);
+  });
+
+  it('retains active Game room membership when a socket disconnects for recovery', async () => {
+    const client = await connectAs('P1');
+
+    client.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(roomPlayers).toContainEqual({ id: 'P1' });
+    expect(leaveRoom).not.toHaveBeenCalled();
+  });
+
+  it('releases an open Lobby seat when its last socket disconnects', async () => {
+    roomGameId = undefined;
+    const client = await connectAs('P1');
+
+    client.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(roomPlayers).not.toContainEqual({ id: 'P1' });
+    expect(leaveRoom).toHaveBeenCalledWith({
+      roomId: 'room-1',
+      clientId: 'P1',
+    });
+  });
+
+  it('synchronizes finished games as read-only and rejects new Actions consistently', async () => {
+    const game = gameService.get(gameId);
+    game.state = { ...game.state, phase: 'gameover', winner: 'P1' };
+    const client = await connectAs('P1');
+
+    const snapshot = waitForEvent(client, 'room.sync.snapshot');
+    client.emit('room.sync.request', { version: 1 });
+    await expect(snapshot).resolves.toMatchObject({
+      seq: 0,
+      state: { phase: 'gameover', winner: 'P1' },
+    });
+
+    const rejection = waitForEvent(client, 'room.action.rejected');
+    client.emit('room.action.submit', {
+      version: 1,
+      actionId: '550e8400-e29b-41d4-a716-446655440021',
+      baseSeq: 0,
+      action: { kind: 'END_TURN' },
+    });
+    await expect(rejection).resolves.toMatchObject({ code: 'GAME_FINISHED' });
+
+    const nextRejection = waitForEvent(client, 'room.action.rejected');
+    client.emit('room.action.submit', {
+      version: 1,
+      actionId: '550e8400-e29b-41d4-a716-446655440022',
+      baseSeq: 0,
+      action: { kind: 'END_TURN' },
+    });
+    await expect(nextRejection).resolves.toMatchObject({
+      code: 'GAME_FINISHED',
+      seq: 0,
+    });
+    expect(game.meta.seq).toBe(0);
   });
 
   async function connectAs(playerId: string): Promise<ClientSocket> {

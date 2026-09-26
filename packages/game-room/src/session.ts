@@ -20,6 +20,7 @@ export type GameRoomSession =
       pendingAction?: ActionSubmission;
       lastActionResult?: ActionAccepted | ActionRejected;
     }
+  | { status: "removed" }
   | { status: "failed"; problem: ProtocolFailure };
 
 export function createGameRoomSession(): GameRoomSession {
@@ -29,7 +30,11 @@ export function createGameRoomSession(): GameRoomSession {
 export function markGameRoomConnected(
   session: GameRoomSession,
 ): GameRoomSession {
-  if (session.status === "synchronized" || session.status === "failed") {
+  if (
+    session.status === "synchronized" ||
+    session.status === "failed" ||
+    session.status === "removed"
+  ) {
     return session;
   }
   return { status: "awaiting_snapshot" };
@@ -39,7 +44,8 @@ export function receiveGameRoomSnapshot(
   session: GameRoomSession,
   input: unknown,
 ): GameRoomSession {
-  if (session.status === "failed") return session;
+  if (session.status === "failed" || session.status === "removed")
+    return session;
   const result = SyncSnapshotSchema.safeParse(input);
   if (!result.success) {
     return failMalformedMessage(
@@ -54,7 +60,8 @@ export function receiveGameRoomUpdate(
   session: GameRoomSession,
   input: unknown,
 ): GameRoomSession {
-  if (session.status === "failed") return session;
+  if (session.status === "failed" || session.status === "removed")
+    return session;
   const result = RoomStateUpdateSchema.safeParse(input);
   if (!result.success) {
     return failMalformedMessage(
@@ -112,10 +119,17 @@ function receiveActionResult(
 }
 
 export function failGameRoomSession(
-  _session: GameRoomSession,
+  session: GameRoomSession,
   problem: ProtocolFailure,
 ): GameRoomSession {
+  if (session.status === "removed") return session;
   return { status: "failed", problem };
+}
+
+export function removeGameRoomSession(
+  _session: GameRoomSession,
+): GameRoomSession {
+  return { status: "removed" };
 }
 
 function failMalformedMessage(
@@ -133,6 +147,7 @@ function applyAuthoritativeState(
   session: GameRoomSession,
   update: SyncSnapshot,
 ): GameRoomSession {
+  if (session.status === "removed") return session;
   if (session.status === "synchronized") {
     if (update.seq < session.seq) return session;
     if (update.seq === session.seq) {

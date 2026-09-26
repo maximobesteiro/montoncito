@@ -118,8 +118,6 @@ export class RoomsController {
     if (!room.players.some((player) => player.id === clientId)) {
       throw new ForbiddenException('Only room members can connect to the game');
     }
-    if (!room.gameId) throw new ConflictException('Game has not started');
-
     const wsJoinToken = this.createWsJoinToken(roomId, clientId);
     return { wsJoinToken };
   }
