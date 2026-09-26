@@ -19,7 +19,7 @@ export function GameRoomChat({
   canSend: boolean;
   onSendMessage: (text: string) => boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState<boolean | null>(null);
   const [unread, setUnread] = useState(0);
   const lastLiveCount = useRef(liveChatCount);
 
@@ -53,6 +53,8 @@ export function GameRoomChat({
       // The panel remains usable even if storage is disabled.
     }
   };
+
+  if (expanded === null) return null;
 
   return (
     <section className="min-w-0 lg:col-span-2">

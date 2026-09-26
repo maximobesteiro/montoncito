@@ -65,7 +65,7 @@ export function useGameRoom(roomId: string): GameRoomView {
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [liveChatCount, setLiveChatCount] = useState(0);
-  const seenChatIds = useRef(new Set<string>());
+  const chatMessagesRef = useRef<ChatMessage[]>([]);
   const chatHistoryReadyRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const chatReadyRef = useRef(false);
@@ -135,7 +135,7 @@ export function useGameRoom(roomId: string): GameRoomView {
     socketRef.current = null;
     chatReadyRef.current = false;
     setChatMessages([]);
-    seenChatIds.current = new Set();
+    chatMessagesRef.current = [];
     chatHistoryReadyRef.current = false;
     setLiveChatCount(0);
     pendingActionRef.current = null;
@@ -151,7 +151,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       pendingActionRef.current = null;
       chatReadyRef.current = false;
       setChatMessages([]);
-      seenChatIds.current = new Set();
+      chatMessagesRef.current = [];
       socket?.disconnect();
       updateGameRoomSession(sessionRef, setSession, removeGameRoomSession);
       setConnectionStatus("removed");
@@ -306,11 +306,13 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socket.on("event", (payload: unknown) => {
           if (isChatMessage(payload)) {
-            if (!seenChatIds.current.has(payload.id)) {
-              seenChatIds.current.add(payload.id);
-              setChatMessages((previous) =>
-                appendChatMessage(previous, payload),
-              );
+            const nextMessages = appendChatMessage(
+              chatMessagesRef.current,
+              payload,
+            );
+            if (nextMessages !== chatMessagesRef.current) {
+              chatMessagesRef.current = nextMessages;
+              setChatMessages(nextMessages);
               if (chatHistoryReadyRef.current) {
                 setLiveChatCount((count) => count + 1);
               }
@@ -328,7 +330,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         socket.on("chat.history", (payload: unknown) => {
           const messages = readChatHistory(payload);
           if (messages) {
-            seenChatIds.current = new Set(messages.map(({ id }) => id));
+            chatMessagesRef.current = messages;
             setChatMessages(messages);
             chatHistoryReadyRef.current = true;
           }
