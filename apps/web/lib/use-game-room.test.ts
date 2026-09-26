@@ -288,11 +288,24 @@ describe("useGameRoom reconnect behavior", () => {
       JSON.stringify(pendingAction),
     );
 
+    const syncRequestsBeforeStaleSnapshot = socket.emitted.filter(
+      (frame) => frame.event === "room.sync.request",
+    ).length;
     socket.fire("room.sync.snapshot", { ...snapshot, seq: 4 });
 
     expect(
       socket.emitted.some((frame) => frame.event === "room.action.submit"),
     ).toBe(false);
+    expect(
+      socket.emitted.filter((frame) => frame.event === "room.sync.request"),
+    ).toHaveLength(syncRequestsBeforeStaleSnapshot + 1);
+
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+
+    expect(
+      socket.emitted.find((frame) => frame.event === "room.action.submit")
+        ?.payload,
+    ).toEqual(pendingAction);
     expect(renderHook().seq).toBe(5);
   });
 

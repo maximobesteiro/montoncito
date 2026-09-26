@@ -9,7 +9,6 @@ import {
   ActionRejectedSchema,
   ActionSubmissionSchema,
   ProtocolFailureSchema,
-  SyncSnapshotSchema,
   createGameRoomSession,
   failGameRoomSession,
   markGameRoomConnected,
@@ -25,6 +24,7 @@ import {
   type ActionRejected,
   type ProtocolFailure,
   type GameRoomSession,
+  type SyncSnapshot,
 } from "@mont/game-room";
 import {
   apiFetch,
@@ -107,6 +107,7 @@ export function useGameRoom(roomId: string): GameRoomView {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let renewalInFlight = false;
     let renewalAttempt = 0;
+    let requestedFreshSnapshot = false;
     setSession(createGameRoomSession());
     setConnectionStatus("connecting");
     setConnectionProblem(null);
@@ -185,6 +186,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
+          requestedFreshSnapshot = false;
           setSession((previous) => markGameRoomConnected(previous));
           setConnectionStatus("synchronizing");
           setConnectionProblem(null);
@@ -201,16 +203,22 @@ export function useGameRoom(roomId: string): GameRoomView {
             setConnectionStatus("failed");
             return;
           }
-          const snapshot = SyncSnapshotSchema.safeParse(payload);
           if (
             currentSession.status === "synchronized" &&
-            snapshot.success &&
-            snapshot.data.seq < currentSession.seq
+            synchronized === currentSession &&
+            (payload as SyncSnapshot).seq < currentSession.seq
           ) {
             setConnectionStatus("synchronizing");
+            if (!requestedFreshSnapshot) {
+              requestedFreshSnapshot = true;
+              socket?.emit("room.sync.request", {
+                version: GAME_ROOM_PROTOCOL_VERSION,
+              });
+            }
             return;
           }
 
+          requestedFreshSnapshot = false;
           const restored = readPendingAction(roomId);
           if (restored) {
             pendingActionRef.current = restored;
