@@ -56,9 +56,6 @@ export function useGameRoom(roomId: string): GameRoomView {
   );
   const [connectionStatus, setConnectionStatus] =
     useState<GameRoomConnectionStatus>("connecting");
-  const [connectionProblem, setConnectionProblem] = useState<string | null>(
-    null,
-  );
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const pendingActionRef = useRef<ActionSubmission | null>(null);
@@ -108,7 +105,6 @@ export function useGameRoom(roomId: string): GameRoomView {
     let renewalAttempt = 0;
     setSession(createGameRoomSession());
     setConnectionStatus("connecting");
-    setConnectionProblem(null);
     socketRef.current = null;
     pendingActionRef.current = null;
 
@@ -124,7 +120,6 @@ export function useGameRoom(roomId: string): GameRoomView {
       socket?.disconnect();
       setSession((previous) => removeGameRoomSession(previous));
       setConnectionStatus("removed");
-      setConnectionProblem("You are no longer a member of this Game room");
     };
 
     const scheduleRenewal = () => {
@@ -150,11 +145,6 @@ export function useGameRoom(roomId: string): GameRoomView {
           }
           if (disposed) return;
           setConnectionStatus("connecting");
-          setConnectionProblem(
-            error instanceof Error
-              ? error.message
-              : "Unable to renew Game room credentials",
-          );
           const delay = Math.min(1000 * 2 ** renewalAttempt, 15000);
           renewalAttempt += 1;
           retryTimer = setTimeout(() => {
@@ -186,7 +176,6 @@ export function useGameRoom(roomId: string): GameRoomView {
         socket.on("connect", () => {
           setSession((previous) => markGameRoomConnected(previous));
           setConnectionStatus("synchronizing");
-          setConnectionProblem(null);
           socket?.emit("room.sync.request", {
             version: GAME_ROOM_PROTOCOL_VERSION,
           });
@@ -252,10 +241,8 @@ export function useGameRoom(roomId: string): GameRoomView {
             markRemoved();
           }
         });
-        socket.on("connect_error", (error: Error) => {
-          setConnectionProblem(
-            error.message || "Unable to connect to the Game room",
-          );
+        socket.on("connect_error", () => {
+          setConnectionStatus("connecting");
           scheduleRenewal();
         });
         socket.on("disconnect", (reason) => {
@@ -271,11 +258,6 @@ export function useGameRoom(roomId: string): GameRoomView {
           markRemoved();
         } else {
           setConnectionStatus("connecting");
-          setConnectionProblem(
-            error instanceof Error
-              ? error.message
-              : "Unable to connect to the Game room",
-          );
           retryTimer = setTimeout(() => {
             retryTimer = null;
             void connect();
@@ -308,7 +290,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         ? session.problem.message
         : session.status === "removed"
           ? "You are no longer a member of this Game room"
-          : connectionProblem,
+          : null,
     pendingAction:
       session.status === "synchronized"
         ? (session.pendingAction ?? null)
