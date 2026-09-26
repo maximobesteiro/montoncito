@@ -102,8 +102,8 @@ export function HowToPlayModal({
               Wild cards
             </h3>
             <p className="mt-2 text-text-primary">
-              Kings (rank <span className="font-bold">13</span>) and Jokers are
-              wild and can act as any needed value in a build pile sequence.
+              Kings and Jokers are wild and can act as any needed value in a
+              build pile sequence.
             </p>
           </section>
 
