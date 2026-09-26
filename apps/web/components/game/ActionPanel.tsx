@@ -1,76 +1,152 @@
 "use client";
 
 import type { GameState, PlayerId } from "@mont/core-game";
+import type { ActionSubmission, PlayerAction } from "@mont/game-room";
 import { getValidMoves } from "@/lib/game-actions";
 
 interface ActionPanelProps {
   gameState: GameState;
   currentPlayerId: PlayerId;
+  pendingAction?: ActionSubmission | null;
+  submitAction?: (action: PlayerAction) => boolean;
 }
 
-export function ActionPanel({ gameState, currentPlayerId }: ActionPanelProps) {
+export function ActionPanel({
+  gameState,
+  currentPlayerId,
+  pendingAction,
+  submitAction,
+}: ActionPanelProps) {
   const isMyTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
+  const disabled = !isMyTurn || pendingAction != null || !submitAction;
 
   if (!isMyTurn) {
     return (
-      <div className="brutal-border p-4 bg-surface brutal-shadow">
-        <h3 className="text-xl font-bold mb-2">Actions</h3>
-        <p className="text-text-muted font-semibold">Wait for your turn</p>
-      </div>
+      <section className="brutal-border brutal-shadow bg-surface p-4">
+        <h2 className="mb-2 text-xl font-bold">Actions</h2>
+        <p className="font-semibold text-text-muted">Wait for your turn</p>
+      </section>
     );
   }
 
   const validMoves = getValidMoves(gameState, currentPlayerId);
-  const hasAnyMoves =
+  const handCards = gameState.byId[currentPlayerId]?.hand.cards ?? [];
+  const canPlay =
     validMoves.handToBuild.length > 0 ||
     validMoves.stockToBuild.length > 0 ||
     validMoves.discardToBuild.length > 0;
+  const canEndTurn =
+    gameState.byId[currentPlayerId]?.hand.cards.length === 0 &&
+    gameState.deck.drawPile.length === 0 &&
+    gameState.deck.recyclePile.length === 0 &&
+    !canPlay;
 
   return (
-    <div className="brutal-border p-4 bg-card brutal-shadow">
-      <h3 className="text-xl font-bold mb-4">Available Moves</h3>
-
-      {!hasAnyMoves && (
-        <div className="text-text-muted font-semibold mb-4">
-          No valid plays. You must discard a card to end your turn.
-        </div>
+    <section className="brutal-border brutal-shadow bg-card p-4">
+      <h2 className="mb-3 text-xl font-bold">Available moves</h2>
+      {pendingAction && (
+        <p className="mb-3" role="status">
+          Action pending: {pendingAction.action.kind}
+        </p>
       )}
-
-      {validMoves.handToBuild.length > 0 && (
-        <div className="mb-4">
-          <h4 className="font-bold mb-2">Play from Hand:</h4>
-          <div className="text-sm text-text-primary">
-            {validMoves.handToBuild.length} card(s) can be played
-          </div>
-        </div>
+      {!canPlay && !canEndTurn && (
+        <p className="mb-3 text-text-muted">
+          No legal plays. Discard a Hand card to end your Turn.
+        </p>
       )}
-
-      {validMoves.stockToBuild.length > 0 && (
-        <div className="mb-4">
-          <h4 className="font-bold mb-2">Play from Stock:</h4>
-          <div className="text-sm text-text-primary">
-            Stock top can be played to {validMoves.stockToBuild.length} pile(s)
-          </div>
-        </div>
-      )}
-
-      {validMoves.discardToBuild.length > 0 && (
-        <div className="mb-4">
-          <h4 className="font-bold mb-2">Play from Discards:</h4>
-          <div className="text-sm text-text-primary">
-            {validMoves.discardToBuild.length} discard pile(s) can be played
-          </div>
-        </div>
-      )}
-
-      <div className="mt-4 pt-4 brutal-border-t">
-        <h4 className="font-bold mb-2">Discard Options:</h4>
-        <div className="text-sm text-text-primary">
-          You can discard any card from your hand to any discard pile
-        </div>
+      <div className="flex flex-wrap gap-2">
+        {validMoves.handToBuild.map((move) => (
+          <button
+            key={`hand-${move.cardId}-${move.buildId}`}
+            className="brutal-border bg-surface px-3 py-2 font-semibold disabled:opacity-50"
+            disabled={disabled}
+            onClick={() =>
+              submitAction?.({
+                kind: "PLAY_HAND_TO_BUILD",
+                cardId: move.cardId,
+                target: move.buildId,
+              })
+            }
+          >
+            Play {describeHandCard(move.cardId, handCards)} from Hand →{" "}
+            {move.buildId === "new" ? "new Build pile" : `pile ${move.buildId}`}
+          </button>
+        ))}
+        {validMoves.stockToBuild.map((move) => (
+          <button
+            key={`stock-${move.buildId}`}
+            className="brutal-border bg-surface px-3 py-2 font-semibold disabled:opacity-50"
+            disabled={disabled}
+            onClick={() =>
+              submitAction?.({
+                kind: "PLAY_STOCK_TO_BUILD",
+                target: move.buildId,
+              })
+            }
+          >
+            Play Stock top →{" "}
+            {move.buildId === "new" ? "new Build pile" : `pile ${move.buildId}`}
+          </button>
+        ))}
+        {validMoves.discardToBuild.map((move) => (
+          <button
+            key={`discard-${move.pileIndex}-${move.buildId}`}
+            className="brutal-border bg-surface px-3 py-2 font-semibold disabled:opacity-50"
+            disabled={disabled}
+            onClick={() =>
+              submitAction?.({
+                kind: "PLAY_DISCARD_TO_BUILD",
+                pileIndex: move.pileIndex,
+                target: move.buildId,
+              })
+            }
+          >
+            Play Discard {move.pileIndex + 1} →{" "}
+            {move.buildId === "new" ? "new Build pile" : `pile ${move.buildId}`}
+          </button>
+        ))}
+        {!canPlay &&
+          validMoves.canDiscard.map((move) => (
+            <button
+              key={`end-${move.cardId}-${move.pileIndex}`}
+              className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
+              disabled={disabled}
+              onClick={() =>
+                submitAction?.({
+                  kind: "DISCARD_FROM_HAND",
+                  cardId: move.cardId,
+                  pileIndex: move.pileIndex,
+                })
+              }
+            >
+              Discard {describeHandCard(move.cardId, handCards)} to pile{" "}
+              {move.pileIndex + 1}
+            </button>
+          ))}
+        {canEndTurn && (
+          <button
+            className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
+            disabled={disabled}
+            onClick={() => submitAction?.({ kind: "END_TURN" })}
+          >
+            End Turn
+          </button>
+        )}
       </div>
-    </div>
+    </section>
   );
+}
+
+function describeHandCard(
+  cardId: string,
+  handCards: GameState["byId"][string]["hand"]["cards"],
+): string {
+  const card = handCards.find((candidate) => candidate.id === cardId);
+  if (!card) return "card";
+  if (card.kind === "joker") return "Joker";
+  return card.rank === 13
+    ? `King of ${card.suit}`
+    : `${card.rank} of ${card.suit}`;
 }

@@ -15,7 +15,6 @@ import { RoomsService } from './rooms.service';
 import {
   UpdateRoomSchema,
   ListRoomsQuerySchema,
-  MoveSchema,
   SetReadySchema,
 } from './rooms.dto';
 import { GameService } from '../game/game.service';
@@ -233,46 +232,6 @@ export class RoomsController {
 
     const game = this.games.get(room.gameId);
     return { meta: game.meta, state: game.state };
-  }
-
-  @Post(':id/game/moves')
-  public applyMove(
-    @Param('id') roomId: string,
-    @Headers('x-client-id') clientId: string | undefined,
-    @Body() body: unknown,
-  ) {
-    if (!clientId) throw new Error('Missing X-Client-Id header');
-
-    const room = this.rooms.getById(roomId);
-
-    const isMember = room.players.some((p) => p.id === clientId);
-    if (!isMember) throw new ForbiddenException('Only room members can play');
-
-    if (!room.gameId) throw new ConflictException('Game has not started');
-
-    const move = MoveSchema.parse(body ?? {});
-
-    const result = this.games.applyMove(room.gameId, move);
-    const { game, events } = result;
-
-    if (!result.accepted) {
-      return {
-        accepted: false as const,
-        reason: result.reason,
-        meta: game.meta,
-        state: game.state,
-        events,
-      };
-    }
-
-    this.ws.emitStateUpdate(roomId, { meta: game.meta, state: game.state });
-
-    return {
-      accepted: true as const,
-      meta: game.meta,
-      state: game.state,
-      events,
-    };
   }
 
   private createWsJoinToken(roomId: string, playerId: string): string {

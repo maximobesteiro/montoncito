@@ -40,8 +40,7 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       if (state.phase !== "turn") return "Not your turn";
       const active = getActivePlayer(state);
       if (active.hand.cards.length > 0) return "Hand is not empty";
-      if (hasRefillSource(state))
-        return "Hand can still be refilled";
+      if (hasRefillSource(state)) return "Hand can still be refilled";
       if (playerHasAnyPlacement(state, active.id))
         return "A legal placement remains";
       return null;
@@ -53,15 +52,13 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const card = active.hand.cards.find((c) => c.id === move.cardId);
       if (!card) return "Card not in hand";
       const target = move.target;
-      if (target === "new") return card.kind === "standard" && card.rank === 1 || isWild(card, state.rules) ? null : "Card does not match build requirement";
+      if (target === "new")
+        return (card.kind === "standard" && card.rank === 1) ||
+          isWild(card, state.rules)
+          ? null
+          : "Card does not match build requirement";
       const pile = getBuildPile(state, target);
-      if (
-        !matchesRequired(
-          card,
-          pile.nextRank,
-          state.rules,
-        )
-      ) {
+      if (!matchesRequired(card, pile.nextRank, state.rules)) {
         return "Card does not match build requirement";
       }
       return null;
@@ -73,15 +70,13 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       const top = active.stock.faceDown[active.stock.faceDown.length - 1];
       if (!top) return "No stock card to play";
       const target = move.target;
-      if (target === "new") return top.kind === "standard" && top.rank === 1 || isWild(top, state.rules) ? null : "Stock card does not match build requirement";
+      if (target === "new")
+        return (top.kind === "standard" && top.rank === 1) ||
+          isWild(top, state.rules)
+          ? null
+          : "Stock card does not match build requirement";
       const pile = getBuildPile(state, target);
-      if (
-        !matchesRequired(
-          top,
-          pile.nextRank,
-          state.rules,
-        )
-      ) {
+      if (!matchesRequired(top, pile.nextRank, state.rules)) {
         return "Stock card does not match build requirement";
       }
       return null;
@@ -100,15 +95,13 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
       if (!top) return "Discard pile is empty";
 
       const target = move.target;
-      if (target === "new") return top.kind === "standard" && top.rank === 1 || isWild(top, state.rules) ? null : "Discard card does not match build requirement";
+      if (target === "new")
+        return (top.kind === "standard" && top.rank === 1) ||
+          isWild(top, state.rules)
+          ? null
+          : "Discard card does not match build requirement";
       const pile = getBuildPile(state, target);
-      if (
-        !matchesRequired(
-          top,
-          pile.nextRank,
-          state.rules,
-        )
-      ) {
+      if (!matchesRequired(top, pile.nextRank, state.rules)) {
         return "Discard card does not match build requirement";
       }
       return null;
@@ -122,6 +115,8 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
         return "Invalid discard pile index";
       const card = active.hand.cards.find((c) => c.id === move.cardId);
       if (!card) return "Card not in hand";
+      if (playerHasAnyPlacement(state, active.id))
+        return "A legal placement remains";
       return null; // an accepted discard ends the Turn immediately
     }
   }

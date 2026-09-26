@@ -3,11 +3,20 @@
 import { useParams } from "next/navigation";
 import type { Card } from "@mont/core-game";
 import { useGameRoom } from "@/lib/use-game-room";
+import { ActionPanel } from "@/components/game/ActionPanel";
 
 export default function GameRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
-  const { state, seq, currentPlayerId, connectionStatus, problem } =
-    useGameRoom(roomId);
+  const {
+    state,
+    seq,
+    currentPlayerId,
+    connectionStatus,
+    problem,
+    pendingAction,
+    lastActionResult,
+    submitAction,
+  } = useGameRoom(roomId);
 
   if (problem) {
     return (
@@ -57,6 +66,24 @@ export default function GameRoomPage() {
             <p>Recycle pile: {state.deck.recyclePile.length} cards</p>
           </div>
         </section>
+        {currentPlayerId && (
+          <div className="lg:col-span-2">
+            <ActionPanel
+              gameState={state}
+              currentPlayerId={currentPlayerId}
+              pendingAction={pendingAction}
+              submitAction={submitAction}
+            />
+            {lastActionResult && "code" in lastActionResult && (
+              <p className="mt-2 font-semibold" role="alert">
+                Action rejected: {lastActionResult.code}
+                {lastActionResult.message
+                  ? ` — ${lastActionResult.message}`
+                  : ""}
+              </p>
+            )}
+          </div>
+        )}
         <section className="brutal-border brutal-shadow bg-card p-4">
           <h2 className="mb-3 text-xl font-bold">Build piles</h2>
           {state.center.buildPiles.length === 0 ? (
@@ -69,7 +96,9 @@ export default function GameRoomPage() {
                   className="brutal-border min-w-24 bg-surface p-3"
                 >
                   <p className="font-mono text-sm">Pile {pile.id}</p>
-                  <p className="text-lg font-bold">Next: {pile.nextRank ?? "complete"}</p>
+                  <p className="text-lg font-bold">
+                    Next: {pile.nextRank ?? "complete"}
+                  </p>
                   <p className="text-xs">
                     Cards: {pile.cards.map(describeCard).join(" → ")}
                   </p>
@@ -90,14 +119,14 @@ export default function GameRoomPage() {
                     {playerId === currentPlayerId ? " (you)" : ""}
                   </p>
                   <p className="text-sm">
-                    Stock: {player?.stock.faceDown.length ?? 0} cards · Top: {" "}
+                    Stock: {player?.stock.faceDown.length ?? 0} cards · Top:{" "}
                     {describeCard(player?.stock.faceDown.at(-1))}
                   </p>
                   <p className="text-sm">
-                    Hand: {" "}
+                    Hand:{" "}
                     {playerId === currentPlayerId
-                      ? player?.hand.cards.map(describeCard).join(" · ") ??
-                        "unavailable"
+                      ? (player?.hand.cards.map(describeCard).join(" · ") ??
+                        "unavailable")
                       : `${player?.hand.cards.length ?? 0} concealed cards`}
                   </p>
                   <p className="text-sm">
@@ -110,7 +139,7 @@ export default function GameRoomPage() {
             })}
           </ul>
           <p className="mt-4 text-sm text-text-muted">
-            {state.turn.activePlayer}&apos;s turn · read-only view
+            {state.turn.activePlayer}&apos;s turn
           </p>
         </section>
       </div>
@@ -124,5 +153,8 @@ function describeDiscard(pile: Card[], index: number): string {
 
 function describeCard(card: Card | undefined): string {
   if (!card) return "empty";
-  return card.kind === "joker" ? "Joker" : `${card.rank} of ${card.suit}`;
+  if (card.kind === "joker") return "Joker";
+  return card.rank === 13
+    ? `King of ${card.suit}`
+    : `${card.rank} of ${card.suit}`;
 }

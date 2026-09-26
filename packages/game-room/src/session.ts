@@ -1,6 +1,11 @@
 import {
   RoomStateUpdateSchema,
+  ActionAcceptedSchema,
+  ActionRejectedSchema,
   SyncSnapshotSchema,
+  type ActionAccepted,
+  type ActionRejected,
+  type ActionSubmission,
   type ProtocolFailure,
   type SyncSnapshot,
 } from "./protocol.js";
@@ -8,7 +13,13 @@ import {
 export type GameRoomSession =
   | { status: "connecting" }
   | { status: "awaiting_snapshot" }
-  | { status: "synchronized"; seq: number; state: SyncSnapshot["state"] }
+  | {
+      status: "synchronized";
+      seq: number;
+      state: SyncSnapshot["state"];
+      pendingAction?: ActionSubmission;
+      lastActionResult?: ActionAccepted | ActionRejected;
+    }
   | { status: "failed"; problem: ProtocolFailure };
 
 export function createGameRoomSession(): GameRoomSession {
@@ -52,6 +63,52 @@ export function receiveGameRoomUpdate(
     );
   }
   return applyAuthoritativeState(session, result.data);
+}
+
+export function setPendingGameRoomAction(
+  session: GameRoomSession,
+  action: ActionSubmission,
+): GameRoomSession {
+  if (session.status !== "synchronized" || session.pendingAction)
+    return session;
+  return { ...session, pendingAction: action };
+}
+
+export function receiveGameRoomActionAccepted(
+  session: GameRoomSession,
+  input: unknown,
+): GameRoomSession {
+  const result = ActionAcceptedSchema.safeParse(input);
+  if (!result.success)
+    return failMalformedMessage(session, "Received an invalid Accepted Action");
+  return receiveActionResult(session, result.data);
+}
+
+export function receiveGameRoomActionRejected(
+  session: GameRoomSession,
+  input: unknown,
+): GameRoomSession {
+  const result = ActionRejectedSchema.safeParse(input);
+  if (!result.success)
+    return failMalformedMessage(session, "Received an invalid Rejected Action");
+  return receiveActionResult(session, result.data);
+}
+
+function receiveActionResult(
+  session: GameRoomSession,
+  result: ActionAccepted | ActionRejected,
+): GameRoomSession {
+  const updated = applyAuthoritativeState(session, result);
+  if (updated.status !== "synchronized") return updated;
+  const hasDifferentPending =
+    session.status === "synchronized" &&
+    session.pendingAction?.actionId !== result.actionId;
+  const { pendingAction: _pendingAction, ...updatedWithoutPending } = updated;
+  return {
+    ...updatedWithoutPending,
+    ...(hasDifferentPending ? { pendingAction: session.pendingAction } : {}),
+    lastActionResult: result,
+  };
 }
 
 export function failGameRoomSession(

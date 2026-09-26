@@ -19,6 +19,7 @@ import { randomUUID } from 'crypto';
 import {
   GAME_ROOM_PROTOCOL_VERSION,
   RoomStateUpdateSchema,
+  ActionSubmissionSchema,
   SyncRequestSchema,
   SyncSnapshotSchema,
   type ProtocolFailure,
@@ -257,25 +258,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    let room: ReturnType<RoomsService['getById']>;
-    try {
-      room = this.rooms.getById(claims.roomId);
-    } catch {
-      this.emitProtocolFailure(client, {
-        version: GAME_ROOM_PROTOCOL_VERSION,
-        code: 'NOT_A_MEMBER',
-        message: 'Game room is unavailable to this player',
-      });
-      return;
-    }
-    if (!room.players.some((player) => player.id === claims.playerId)) {
-      this.emitProtocolFailure(client, {
-        version: GAME_ROOM_PROTOCOL_VERSION,
-        code: 'NOT_A_MEMBER',
-        message: 'Player is no longer a member of this Game room',
-      });
-      return;
-    }
+    const room = this.getCurrentMemberRoom(client, claims);
+    if (!room) return;
     if (!room.gameId) {
       this.emitProtocolFailure(client, {
         version: GAME_ROOM_PROTOCOL_VERSION,
@@ -302,7 +286,113 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage('room.action.submit')
+  public async submitAction(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
+    const claims = this.conns.get(client.id);
+    if (!claims) return;
+
+    const submission = ActionSubmissionSchema.safeParse(payload);
+    if (!submission.success) {
+      const version =
+        typeof payload === 'object' && payload !== null && 'version' in payload
+          ? (payload as { version?: unknown }).version
+          : undefined;
+      this.emitProtocolFailure(
+        client,
+        version !== undefined && version !== GAME_ROOM_PROTOCOL_VERSION
+          ? {
+              version: GAME_ROOM_PROTOCOL_VERSION,
+              code: 'UNSUPPORTED_VERSION',
+              message: 'Unsupported Game room protocol version',
+            }
+          : {
+              version: GAME_ROOM_PROTOCOL_VERSION,
+              code: 'MALFORMED_MESSAGE',
+              message: 'Invalid Action submission',
+            },
+      );
+      return;
+    }
+
+    const room = this.getCurrentMemberRoom(client, claims);
+    if (!room) return;
+    if (!room.gameId) {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'GAME_NOT_STARTED',
+        message: 'Game has not started',
+      });
+      return;
+    }
+
+    try {
+      const outcome = await this.games.processAction(room.gameId, {
+        playerId: claims.playerId,
+        actionId: submission.data.actionId,
+        baseSeq: submission.data.baseSeq,
+        action: submission.data.action,
+      });
+      if (outcome.accepted) {
+        const result = {
+          version: GAME_ROOM_PROTOCOL_VERSION,
+          actionId: outcome.actionId,
+          seq: outcome.seq,
+          ...(outcome.acceptedSeq !== undefined
+            ? { acceptedSeq: outcome.acceptedSeq }
+            : {}),
+          state: outcome.state,
+        };
+        if (outcome.duplicate) {
+          client.emit('room.action.accepted', result);
+        } else {
+          this.server.to(claims.roomId).emit('room.action.accepted', result);
+        }
+      } else {
+        client.emit('room.action.rejected', {
+          version: GAME_ROOM_PROTOCOL_VERSION,
+          actionId: outcome.actionId,
+          code: outcome.code,
+          seq: outcome.seq,
+          state: outcome.state,
+          ...(outcome.message ? { message: outcome.message } : {}),
+        });
+      }
+    } catch {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'GAME_NOT_STARTED',
+        message: 'Game room Action could not be processed',
+      });
+    }
+  }
+
   private emitProtocolFailure(client: Socket, payload: ProtocolFailure) {
     client.emit('protocol.error', payload);
+  }
+
+  private getCurrentMemberRoom(client: Socket, claims: Conn) {
+    let room: ReturnType<RoomsService['getById']>;
+    try {
+      room = this.rooms.getById(claims.roomId);
+    } catch {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'NOT_A_MEMBER',
+        message: 'Game room is unavailable to this player',
+      });
+      return null;
+    }
+    if (!room.players.some((player) => player.id === claims.playerId)) {
+      this.emitProtocolFailure(client, {
+        version: GAME_ROOM_PROTOCOL_VERSION,
+        code: 'NOT_A_MEMBER',
+        message: 'Player is no longer a member of this Game room',
+      });
+      return null;
+    }
+    return room;
   }
 }

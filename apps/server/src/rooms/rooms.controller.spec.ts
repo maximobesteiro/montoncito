@@ -90,7 +90,7 @@ describe('RoomsController', () => {
       center: { buildPiles: [] },
       nextBuildPileId: 1,
       winner: null,
-      rng: { algorithm: "mulberry32-v1" as const, seed: 123456789, cursor: 0 },
+      rng: { algorithm: 'mulberry32-v1' as const, seed: 123456789, cursor: 0 },
       rules: {
         handSize: 5,
         stockSize: 20,
@@ -559,13 +559,19 @@ describe('RoomsController', () => {
         ],
       });
 
-      const result = controller.createGameRoomSocketToken('room-123', 'client-2');
+      const result = controller.createGameRoomSocketToken(
+        'room-123',
+        'client-2',
+      );
       const claims = jwt.verify(result.wsJoinToken, 'test-secret') as {
         roomId: string;
         playerId: string;
       };
 
-      expect(claims).toMatchObject({ roomId: 'room-123', playerId: 'client-2' });
+      expect(claims).toMatchObject({
+        roomId: 'room-123',
+        playerId: 'client-2',
+      });
     });
 
     it('rejects players who are no longer members', () => {
@@ -582,125 +588,6 @@ describe('RoomsController', () => {
       expect(() =>
         controller.createGameRoomSocketToken('room-123', 'client-1'),
       ).toThrow(ConflictException);
-    });
-  });
-
-  describe('applyMove', () => {
-    it('should apply move successfully', () => {
-      const roomWithGame = {
-        ...mockRoom,
-        gameId: 'game-123',
-        players: mockRoom.players,
-      };
-      const moveData = { kind: 'DRAW_TO_HAND' };
-      const updatedGame = { ...mockGame };
-      const events = [
-        {
-          type: 'DrewToHand' as const,
-          payload: { player: 'client-1', count: 1 },
-        },
-      ];
-
-      roomsService.getById.mockReturnValue(roomWithGame);
-      gameService.applyMove.mockReturnValue({
-        accepted: true,
-        state: updatedGame.state,
-        game: updatedGame,
-        events,
-      });
-
-      const result = controller.applyMove('room-123', 'client-1', moveData);
-
-      expect(mockRoomsService.getById).toHaveBeenCalledWith('room-123');
-      expect(mockGameService.applyMove).toHaveBeenCalledWith(
-        'game-123',
-        moveData,
-      );
-      expect(wsGateway.emitStateUpdate).toHaveBeenCalledWith('room-123', {
-        meta: updatedGame.meta,
-        state: updatedGame.state,
-      });
-      expect(result).toEqual({
-        accepted: true,
-        meta: updatedGame.meta,
-        state: updatedGame.state,
-        events,
-      });
-    });
-
-    it('returns a rejected outcome without broadcasting a state update', () => {
-      roomsService.getById.mockReturnValue({ ...mockRoom, gameId: 'game-123' });
-      gameService.applyMove.mockReturnValue({
-        accepted: false,
-        reason: 'Hand already full',
-        state: mockGame.state,
-        game: mockGame,
-        events: [],
-      });
-
-      expect(
-        controller.applyMove('room-123', 'client-1', { kind: 'DRAW_TO_HAND' }),
-      ).toEqual({
-        accepted: false,
-        reason: 'Hand already full',
-        meta: mockGame.meta,
-        state: mockGame.state,
-        events: [],
-      });
-      expect(wsGateway.emitStateUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should throw ForbiddenException when user is not a room member', () => {
-      const roomWithGame = {
-        ...mockRoom,
-        gameId: 'game-123',
-        players: mockRoom.players,
-      };
-      roomsService.getById.mockReturnValue(roomWithGame);
-
-      expect(() =>
-        controller.applyMove('room-123', 'client-2', { type: 'draw' }),
-      ).toThrow(ForbiddenException);
-      expect(() =>
-        controller.applyMove('room-123', 'client-2', { type: 'draw' }),
-      ).toThrow('Only room members can play');
-      expect(mockGameService.applyMove).not.toHaveBeenCalled();
-    });
-
-    it('should throw ConflictException when game has not started', () => {
-      const roomWithoutGame = {
-        ...mockRoom,
-        gameId: undefined,
-        players: mockRoom.players,
-      };
-      roomsService.getById.mockReturnValue(roomWithoutGame);
-
-      expect(() =>
-        controller.applyMove('room-123', 'client-1', { type: 'draw' }),
-      ).toThrow(ConflictException);
-      expect(() =>
-        controller.applyMove('room-123', 'client-1', { type: 'draw' }),
-      ).toThrow('Game has not started');
-      expect(mockGameService.applyMove).not.toHaveBeenCalled();
-    });
-
-    it('should throw ZodError when move type is missing', () => {
-      const roomWithGame = {
-        ...mockRoom,
-        gameId: 'game-123',
-        players: mockRoom.players,
-      };
-      roomsService.getById.mockReturnValue(roomWithGame);
-
-      expect(() => controller.applyMove('room-123', 'client-1', {})).toThrow();
-      expect(mockGameService.applyMove).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when clientId is missing', () => {
-      expect(() =>
-        controller.applyMove('room-123', undefined, { type: 'draw' }),
-      ).toThrow('Missing X-Client-Id header');
-      expect(mockRoomsService.getById).not.toHaveBeenCalled();
     });
   });
 });
