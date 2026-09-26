@@ -76,7 +76,25 @@ describe('GameService core outcomes', () => {
       seq: 1,
       state: accepted.state,
     });
-    expect(service.get(game.meta.id).meta.seq).toBe(1);
+
+    const nextPlayer = service.get(game.meta.id).state.turn.activePlayer;
+    const nextHandCard = service.get(game.meta.id).state.byId[nextPlayer]!.hand.cards[0]!;
+    const laterResult = await service.processAction(game.meta.id, {
+      playerId: nextPlayer,
+      actionId: '550e8400-e29b-41d4-a716-446655440012',
+      baseSeq: 1,
+      action: { kind: 'DISCARD_FROM_HAND', cardId: nextHandCard.id, pileIndex: 0 },
+    });
+    const retryAfterLaterAction = await service.processAction(game.meta.id, submission);
+
+    expect(laterResult).toMatchObject({ accepted: true, seq: 2 });
+    expect(retryAfterLaterAction).toMatchObject({
+      accepted: true,
+      seq: 1,
+      state: laterResult.state,
+      duplicate: true,
+    });
+    expect(service.get(game.meta.id).meta.seq).toBe(2);
   });
 
   it('rejects a stale Action without advancing authoritative state or sequence', async () => {

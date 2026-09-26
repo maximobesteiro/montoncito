@@ -106,7 +106,8 @@ export function ActionPanel({
             {move.buildId === "new" ? "new Build pile" : `pile ${move.buildId}`}
           </button>
         ))}
-        {validMoves.canDiscard.map((move) => (
+        {!canPlay &&
+          validMoves.canDiscard.map((move) => (
           <button
             key={`end-${move.cardId}-${move.pileIndex}`}
             className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
@@ -121,7 +122,7 @@ export function ActionPanel({
           >
             Discard {move.cardId} to pile {move.pileIndex + 1}
           </button>
-        ))}
+          ))}
         {canEndTurn && (
           <button
             className="brutal-border bg-accent px-3 py-2 font-semibold disabled:opacity-50"
