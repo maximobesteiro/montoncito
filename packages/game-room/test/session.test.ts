@@ -215,6 +215,55 @@ describe("Game room session transitions", () => {
     ).toEqual({ status: "synchronized", seq: 1, state: updatedState });
   });
 
+  it("ignores an older snapshot without replacing newer Authoritative state", () => {
+    const newerState = {
+      ...snapshot.state,
+      turn: { ...snapshot.state.turn, number: 2 },
+    };
+    const synchronized = receiveGameRoomUpdate(
+      receiveGameRoomSnapshot(
+        markGameRoomConnected(createGameRoomSession()),
+        snapshot,
+      ),
+      { version: 1, seq: 2, state: newerState },
+    );
+
+    expect(receiveGameRoomSnapshot(synchronized, snapshot)).toEqual({
+      status: "synchronized",
+      seq: 2,
+      state: newerState,
+    });
+  });
+
+  it("restores a persisted Pending Action only after installing a full snapshot", () => {
+    const pendingAction = {
+      version: 1 as const,
+      actionId: "550e8400-e29b-41d4-a716-446655440007",
+      baseSeq: 4,
+      action: { kind: "END_TURN" as const },
+    };
+    const awaitingSnapshot = markGameRoomConnected(createGameRoomSession());
+
+    expect(setPendingGameRoomAction(awaitingSnapshot, pendingAction)).toBe(
+      awaitingSnapshot,
+    );
+
+    const restored = setPendingGameRoomAction(
+      receiveGameRoomSnapshot(awaitingSnapshot, {
+        ...snapshot,
+        seq: 4,
+      }),
+      pendingAction,
+    );
+
+    expect(restored).toMatchObject({
+      status: "synchronized",
+      seq: 4,
+      state: snapshot.state,
+      pendingAction,
+    });
+  });
+
   it("fails when the same sequence number carries different state", () => {
     const session = receiveGameRoomSnapshot(
       markGameRoomConnected(createGameRoomSession()),

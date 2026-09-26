@@ -142,6 +142,81 @@ describe('Game room synchronization over Socket.IO', () => {
     expect(gameService.get(gameId).meta.seq).toBe(1);
   });
 
+  it('recovers a lost Accepted Action delivery without rebroadcasting', async () => {
+    const game = gameService.get(gameId);
+    const activePlayer = game.state.turn.activePlayer;
+    const nextPlayer = activePlayer === 'P1' ? 'P2' : 'P1';
+    const sender = await connectAs(activePlayer);
+    const observer = await connectAs(nextPlayer);
+    let acceptedBroadcasts = 0;
+    observer.on('room.action.accepted', () => {
+      acceptedBroadcasts += 1;
+    });
+    const actionId = '550e8400-e29b-41d4-a716-446655440017';
+    const submission = {
+      version: 1,
+      actionId,
+      baseSeq: 0,
+      action: {
+        kind: 'DISCARD_FROM_HAND',
+        cardId: game.state.byId[activePlayer]!.hand.cards[0]!.id,
+        pileIndex: 0,
+      },
+    };
+    const processAction = gameService.processAction.bind(gameService);
+    let releaseAction: (() => void) | undefined;
+    const delayedProcessing = jest
+      .spyOn(gameService, 'processAction')
+      .mockImplementation(
+        (id, input) =>
+          new Promise((resolve) => {
+            releaseAction = () => {
+              void processAction(id, input).then(resolve);
+            };
+          }),
+      );
+
+    const firstBroadcast = waitForEvent(observer, 'room.action.accepted');
+    sender.emit('room.action.submit', submission);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    sender.disconnect();
+    expect(releaseAction).toBeDefined();
+    releaseAction!();
+    await expect(firstBroadcast).resolves.toMatchObject({
+      actionId,
+      seq: 1,
+    });
+    delayedProcessing.mockRestore();
+    expect(game.state.turn.activePlayer).toBe(nextPlayer);
+
+    const laterBroadcast = waitForEvent(observer, 'room.action.accepted');
+    observer.emit('room.action.submit', {
+      version: 1,
+      actionId: '550e8400-e29b-41d4-a716-446655440018',
+      baseSeq: 1,
+      action: {
+        kind: 'DISCARD_FROM_HAND',
+        cardId: game.state.byId[nextPlayer]!.hand.cards[0]!.id,
+        pileIndex: 0,
+      },
+    });
+    await expect(laterBroadcast).resolves.toMatchObject({ seq: 2 });
+
+    const reconnectedSender = await connectAs(activePlayer);
+    const retryResult = waitForEvent(reconnectedSender, 'room.action.accepted');
+    reconnectedSender.emit('room.action.submit', submission);
+
+    await expect(retryResult).resolves.toMatchObject({
+      actionId,
+      seq: 2,
+      acceptedSeq: 1,
+      state: JSON.parse(JSON.stringify(game.state)),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(acceptedBroadcasts).toBe(2);
+    expect(game.meta.seq).toBe(2);
+  });
+
   it('targets a wrong-Turn rejection only to the submitting player', async () => {
     const activePlayer = gameService.get(gameId).state.turn.activePlayer;
     const rejectedClient = await connectAs(activePlayer === 'P1' ? 'P2' : 'P1');
