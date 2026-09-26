@@ -94,7 +94,9 @@ export function useGameRoom(roomId: string): GameRoomView {
         return false;
       }
       pendingActionRef.current = pending;
-      setSession((previous) => setPendingGameRoomAction(previous, pending));
+      updateGameRoomSession(sessionRef, setSession, (previous) =>
+        setPendingGameRoomAction(previous, pending),
+      );
       activeSocket.emit("room.action.submit", pending);
       return true;
     },
@@ -108,7 +110,7 @@ export function useGameRoom(roomId: string): GameRoomView {
     let renewalInFlight = false;
     let renewalAttempt = 0;
     let requestedFreshSnapshot = false;
-    setSession(createGameRoomSession());
+    updateGameRoomSession(sessionRef, setSession, createGameRoomSession);
     setConnectionStatus("connecting");
     setConnectionProblem(null);
     socketRef.current = null;
@@ -124,7 +126,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       clearPendingAction(roomId);
       pendingActionRef.current = null;
       socket?.disconnect();
-      setSession((previous) => removeGameRoomSession(previous));
+      updateGameRoomSession(sessionRef, setSession, removeGameRoomSession);
       setConnectionStatus("removed");
       setConnectionProblem("You are no longer a member of this Game room");
     };
@@ -187,7 +189,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         socketRef.current = socket;
         socket.on("connect", () => {
           requestedFreshSnapshot = false;
-          setSession((previous) => markGameRoomConnected(previous));
+          updateGameRoomSession(sessionRef, setSession, markGameRoomConnected);
           setConnectionStatus("synchronizing");
           setConnectionProblem(null);
           socket?.emit("room.sync.request", {
@@ -232,14 +234,16 @@ export function useGameRoom(roomId: string): GameRoomView {
           if (restored) socket?.emit("room.action.submit", restored);
         });
         socket.on("room.state", (payload: unknown) => {
-          setSession((previous) => receiveGameRoomUpdate(previous, payload));
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
+            receiveGameRoomUpdate(previous, payload),
+          );
         });
         socket.on("room.action.accepted", (payload: unknown) => {
           const result = ActionAcceptedSchema.safeParse(payload);
           if (result.success) {
             clearMatchingPendingAction(roomId, result.data, pendingActionRef);
           }
-          setSession((previous) =>
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
             receiveGameRoomActionAccepted(previous, payload),
           );
         });
@@ -248,7 +252,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           if (result.success) {
             clearMatchingPendingAction(roomId, result.data, pendingActionRef);
           }
-          setSession((previous) =>
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
             receiveGameRoomActionRejected(previous, payload),
           );
         });
@@ -265,7 +269,9 @@ export function useGameRoom(roomId: string): GameRoomView {
             markRemoved();
             return;
           }
-          setSession((previous) => failGameRoomSession(previous, failure));
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
+            failGameRoomSession(previous, failure),
+          );
           setConnectionStatus("failed");
         });
         socket.on("event", (payload: unknown) => {
@@ -345,6 +351,17 @@ export function useGameRoom(roomId: string): GameRoomView {
         : null,
     submitAction,
   };
+}
+
+function updateGameRoomSession(
+  sessionRef: { current: GameRoomSession },
+  setSession: (session: GameRoomSession) => void,
+  transition: (session: GameRoomSession) => GameRoomSession,
+): GameRoomSession {
+  const updated = transition(sessionRef.current);
+  sessionRef.current = updated;
+  setSession(updated);
+  return updated;
 }
 
 const pendingStorageKey = (roomId: string) =>

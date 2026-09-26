@@ -309,6 +309,43 @@ describe("useGameRoom reconnect behavior", () => {
     expect(renderHook().seq).toBe(5);
   });
 
+  it("preserves a newer broadcast that has not rendered before a snapshot arrives", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.connect();
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+    renderHook();
+
+    const newerState = {
+      ...snapshot.state,
+      turn: { ...snapshot.state.turn, number: 6 },
+    };
+    socket.fire("room.state", {
+      version: 1,
+      seq: 6,
+      state: newerState,
+    });
+    const pendingAction = {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440023",
+      baseSeq: 4,
+      action: { kind: "END_TURN" },
+    };
+    window.sessionStorage.setItem(
+      `montoncito:${roomId}:pending-action`,
+      JSON.stringify(pendingAction),
+    );
+
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+
+    expect(
+      socket.emitted.some((frame) => frame.event === "room.action.submit"),
+    ).toBe(false);
+    expect(renderHook()).toMatchObject({ seq: 6, state: newerState });
+  });
+
   it("clears pending storage and Authoritative state when membership is removed", async () => {
     renderHook();
     harness.effect?.();
