@@ -134,33 +134,6 @@ describe("invalid moves validations", () => {
     expectRejected(r, s, "Card does not match build requirement");
   });
 
-  it("rejects DISCARD_FROM_HAND while a legal placement remains", () => {
-    const deck: Card[] = [
-      mkStd("S9", 9),
-      mkStd("S8", 8),
-      mkStd("H5", 5),
-      mkStd("H6", 6),
-      mkStd("H1", 1),
-      mkStd("H2", 2),
-    ];
-    let s = createInitialState(players, deck, { ...baseRules, seed: 1 });
-    s = applyMove(s, { kind: "START_GAME" }).state;
-    s.center.buildPiles.push({ id: "B1", cards: [], nextRank: 1 });
-    const activePlayer = s.byId[s.turn.activePlayer]!;
-    activePlayer.hand.cards.push(mkStd("LEGAL-ACE", 1));
-    const discardCard = activePlayer.hand.cards.find(
-      (card) => card.kind === "standard" && card.rank === 5,
-    )!;
-
-    const result = applyMove(s, {
-      kind: "DISCARD_FROM_HAND",
-      cardId: discardCard.id,
-      pileIndex: 0,
-    });
-
-    expectRejected(result, s, "A legal placement remains");
-  });
-
   it("PLAY_STOCK_TO_BUILD with no stock card (game already over)", () => {
     const rules: Partial<RulesConfig> = { ...baseRules, stockSize: 0 };
     const deck: Card[] = [mkStd("H1", 1), mkStd("H2", 2)];

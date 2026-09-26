@@ -115,8 +115,6 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
         return "Invalid discard pile index";
       const card = active.hand.cards.find((c) => c.id === move.cardId);
       if (!card) return "Card not in hand";
-      if (playerHasAnyPlacement(state, active.id))
-        return "A legal placement remains";
       return null; // an accepted discard ends the Turn immediately
     }
   }
