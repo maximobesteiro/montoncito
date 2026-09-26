@@ -3,6 +3,7 @@
 import { useParams } from "next/navigation";
 import type { Card } from "@mont/core-game";
 import { useGameRoom } from "@/lib/use-game-room";
+import { formatCardName } from "@/lib/format-card-name";
 import { ActionPanel } from "@/components/game/ActionPanel";
 
 export default function GameRoomPage() {
@@ -162,9 +163,5 @@ function describeDiscard(pile: Card[], index: number): string {
 }
 
 function describeCard(card: Card | undefined): string {
-  if (!card) return "empty";
-  if (card.kind === "joker") return "Joker";
-  return card.rank === 13
-    ? `King of ${card.suit}`
-    : `${card.rank} of ${card.suit}`;
+  return card ? formatCardName(card) : "empty";
 }
