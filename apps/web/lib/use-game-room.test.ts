@@ -161,8 +161,11 @@ describe("useGameRoom reconnect behavior", () => {
     await flushPromises();
     expect(harness.apiFetch).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBeGreaterThan(0);
-    expect(renderHook().state).toEqual(snapshot.state);
-    expect(renderHook().pendingAction).toMatchObject({ actionId });
+    const reconnecting = renderHook();
+    expect(reconnecting.state).toEqual(snapshot.state);
+    expect(reconnecting.pendingAction).toMatchObject({ actionId });
+    expect(reconnecting.connectionStatus).toBe("connecting");
+    expect(reconnecting.problem).toBeNull();
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(socket.auth).toEqual({ token: "renewed-token" });
