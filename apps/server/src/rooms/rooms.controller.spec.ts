@@ -1,17 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
-import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
 import { RoomsGateway } from '../ws/rooms.gateway';
-import { GameService } from '../game/game.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 
 let wsGateway: {
-  emitStateUpdate: jest.Mock;
   emitGameStarted: jest.Mock;
   emitRoomUpdated: jest.Mock;
   disconnectPlayer: jest.Mock;
@@ -20,9 +18,7 @@ let wsGateway: {
 describe('RoomsController', () => {
   let controller: RoomsController;
   let roomsService: jest.Mocked<RoomsService>;
-  let gameService: jest.Mocked<GameService>;
   let mockRoomsService: jest.Mocked<Partial<RoomsService>>;
-  let mockGameService: jest.Mocked<Partial<GameService>>;
   let testingModule: TestingModule;
 
   const mockRoom = {
@@ -57,62 +53,10 @@ describe('RoomsController', () => {
     gameConfig: { discardPiles: 3 },
   };
 
-  const mockGame = {
-    meta: {
-      id: 'game-123',
-      roomId: 'room-123',
-      players: ['client-1', 'client-2'],
-      startedAt: '2024-01-01T00:00:00.000Z',
-      seq: 0,
-    },
-    state: {
-      version: 1 as const,
-      id: 'game-123',
-      phase: 'turn' as const,
-      turn: {
-        number: 1,
-        activePlayer: 'client-1',
-        hasDiscarded: false,
-      },
-      players: ['client-1', 'client-2'],
-      byId: {
-        'client-1': {
-          id: 'client-1',
-          hand: { cards: [] },
-          discards: [[], [], []],
-          stock: { faceDown: [] },
-        },
-        'client-2': {
-          id: 'client-2',
-          hand: { cards: [] },
-          discards: [[], [], []],
-          stock: { faceDown: [] },
-        },
-      },
-      deck: { drawPile: [], recyclePile: [] },
-      center: { buildPiles: [] },
-      nextBuildPileId: 1,
-      winner: null,
-      rng: { algorithm: 'mulberry32-v1' as const, seed: 123456789, cursor: 0 },
-      rules: {
-        handSize: 5,
-        stockSize: 20,
-        discardPiles: 3,
-        useJokers: false,
-        jokersAreWild: true,
-        kingsAreWild: true,
-        additionalWildRanks: [],
-        enableCardWildFlag: true,
-      },
-      data: {},
-    },
-  };
-
   beforeEach(async () => {
     process.env.WS_SECRET = 'test-secret';
 
     wsGateway = {
-      emitStateUpdate: jest.fn(),
       emitGameStarted: jest.fn(),
       emitRoomUpdated: jest.fn(),
       disconnectPlayer: jest.fn(),
@@ -131,11 +75,6 @@ describe('RoomsController', () => {
       start: jest.fn(),
     };
 
-    mockGameService = {
-      get: jest.fn(),
-      applyMove: jest.fn(),
-    };
-
     testingModule = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvVars: false })],
       controllers: [RoomsController],
@@ -143,10 +82,6 @@ describe('RoomsController', () => {
         {
           provide: RoomsService,
           useValue: mockRoomsService,
-        },
-        {
-          provide: GameService,
-          useValue: mockGameService,
         },
         {
           provide: ProfilesService,
@@ -161,7 +96,6 @@ describe('RoomsController', () => {
 
     controller = testingModule.get<RoomsController>(RoomsController);
     roomsService = testingModule.get(RoomsService);
-    gameService = testingModule.get(GameService);
   });
 
   describe('create', () => {
@@ -458,7 +392,6 @@ describe('RoomsController', () => {
       expect(mockRoomsService.toView).toHaveBeenCalledWith(startedRoom);
       expect(result).toEqual(startedRoomView);
       expect(wsGateway.emitGameStarted).toHaveBeenCalledWith('room-123');
-      expect(gameService.get).not.toHaveBeenCalled();
     });
 
     it('does not notify clients again when the start is retried', () => {
@@ -488,66 +421,18 @@ describe('RoomsController', () => {
     });
   });
 
-  describe('getGame', () => {
-    it('should get game successfully for room member', () => {
-      const roomWithGame = {
-        ...mockRoom,
-        gameId: 'game-123',
-        players: [
-          { id: 'client-1', isOwner: true, ready: false },
-          { id: 'client-2', isOwner: false, ready: false },
-        ],
-      };
-      roomsService.getById.mockReturnValue(roomWithGame);
-      gameService.get.mockReturnValue(mockGame);
+  it('does not expose Authoritative game state through REST', async () => {
+    const app: INestApplication = testingModule.createNestApplication();
+    await app.init();
 
-      const result = controller.getGame('room-123', 'client-1');
-
-      expect(mockRoomsService.getById).toHaveBeenCalledWith('room-123');
-      expect(mockGameService.get).toHaveBeenCalledWith('game-123');
-      expect(result).toEqual({ meta: mockGame.meta, state: mockGame.state });
-    });
-
-    it('should throw ForbiddenException when user is not a room member', () => {
-      const roomWithGame = {
-        ...mockRoom,
-        gameId: 'game-123',
-        players: mockRoom.players,
-      };
-      roomsService.getById.mockReturnValue(roomWithGame);
-
-      expect(() => controller.getGame('room-123', 'client-2')).toThrow(
-        ForbiddenException,
-      );
-      expect(() => controller.getGame('room-123', 'client-2')).toThrow(
-        'Only room members can view the game',
-      );
-      expect(mockGameService.get).not.toHaveBeenCalled();
-    });
-
-    it('should throw ConflictException when game has not started', () => {
-      const roomWithoutGame = {
-        ...mockRoom,
-        gameId: undefined,
-        players: mockRoom.players,
-      };
-      roomsService.getById.mockReturnValue(roomWithoutGame);
-
-      expect(() => controller.getGame('room-123', 'client-1')).toThrow(
-        ConflictException,
-      );
-      expect(() => controller.getGame('room-123', 'client-1')).toThrow(
-        'Game has not started',
-      );
-      expect(mockGameService.get).not.toHaveBeenCalled();
-    });
-
-    it('should throw error when clientId is missing', () => {
-      expect(() => controller.getGame('room-123', undefined)).toThrow(
-        'Missing X-Client-Id header',
-      );
-      expect(mockRoomsService.getById).not.toHaveBeenCalled();
-    });
+    try {
+      await request(app.getHttpServer())
+        .get('/rooms/room-123/game')
+        .set('x-client-id', 'client-1')
+        .expect(404);
+    } finally {
+      await app.close();
+    }
   });
 
   describe('createGameRoomSocketToken', () => {

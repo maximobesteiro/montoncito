@@ -1,14 +1,11 @@
 import type {
   GameState,
-  Move,
   PlayerId,
   Rank,
   Card,
   BuildPile,
   BuildPileTarget,
 } from "@mont/core-game";
-import { validateMove } from "@mont/core-game";
-import { getActivePlayer, getBuildPile } from "@mont/core-game";
 import { isWild } from "@mont/core-game";
 
 /**
@@ -113,114 +110,4 @@ export function getValidMoves(
   }
 
   return result;
-}
-
-/**
- * Get set of playable hand card IDs
- */
-export function getPlayableHandCards(
-  gameState: GameState,
-  playerId: PlayerId,
-): Set<string> {
-  const moves = getValidMoves(gameState, playerId);
-  return new Set(moves.handToBuild.map((m) => m.cardId));
-}
-
-/**
- * Get set of playable discard pile indices
- */
-export function getPlayableDiscardPiles(
-  gameState: GameState,
-  playerId: PlayerId,
-): Set<number> {
-  const moves = getValidMoves(gameState, playerId);
-  return new Set(moves.discardToBuild.map((m) => m.pileIndex));
-}
-
-/**
- * Check if stock top card is playable
- */
-export function isStockPlayable(
-  gameState: GameState,
-  playerId: PlayerId,
-): boolean {
-  const moves = getValidMoves(gameState, playerId);
-  return moves.stockToBuild.length > 0;
-}
-
-/**
- * Get set of playable build pile IDs
- */
-export function getPlayableBuildPiles(
-  gameState: GameState,
-  playerId: PlayerId,
-): Set<BuildPileTarget> {
-  const moves = getValidMoves(gameState, playerId);
-  const buildPileIds = new Set<BuildPileTarget>();
-  moves.handToBuild.forEach((m) => buildPileIds.add(m.buildId));
-  moves.stockToBuild.forEach((m) => buildPileIds.add(m.buildId));
-  moves.discardToBuild.forEach((m) => buildPileIds.add(m.buildId));
-  return buildPileIds;
-}
-
-/**
- * Create a move from user action
- */
-export function createMove(
-  gameState: GameState,
-  playerId: PlayerId,
-  action: {
-    type: "play-hand" | "play-stock" | "play-discard" | "discard";
-    cardId?: string;
-    pileIndex?: number;
-    buildId?: BuildPileTarget;
-  },
-): Move | null {
-  if (gameState.phase !== "turn" || gameState.turn.activePlayer !== playerId) {
-    return null;
-  }
-
-  switch (action.type) {
-    case "play-hand":
-      if (!action.cardId || !action.buildId) return null;
-      return {
-        kind: "PLAY_HAND_TO_BUILD",
-        cardId: action.cardId,
-        target: action.buildId,
-      };
-
-    case "play-stock":
-      if (!action.buildId) return null;
-      return {
-        kind: "PLAY_STOCK_TO_BUILD",
-        target: action.buildId,
-      };
-
-    case "play-discard":
-      if (action.pileIndex === undefined || !action.buildId) return null;
-      return {
-        kind: "PLAY_DISCARD_TO_BUILD",
-        pileIndex: action.pileIndex,
-        target: action.buildId,
-      };
-
-    case "discard":
-      if (!action.cardId || action.pileIndex === undefined) return null;
-      return {
-        kind: "DISCARD_FROM_HAND",
-        cardId: action.cardId,
-        pileIndex: action.pileIndex,
-      };
-
-    default:
-      return null;
-  }
-}
-
-/**
- * Validate a move before sending to server
- */
-export function isValidMove(gameState: GameState, move: Move): boolean {
-  const error = validateMove(gameState, move);
-  return error === null;
 }

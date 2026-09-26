@@ -12,11 +12,10 @@ export type ChatMessage = {
 export type ServerEvent =
   | { type: "PLAYER_JOINED"; playerId: string }
   | { type: "PLAYER_LEFT"; playerId: string }
-  | { type: "STATE_UPDATE"; meta?: unknown; state: unknown }
   | { type: "GAME_STARTED"; roomId: string }
   | { type: "ROOM_UPDATED"; room: unknown }
   | { type: "KICKED" }
-  | { type: "CHAT_MESSAGE" } & ChatMessage
+  | ({ type: "CHAT_MESSAGE" } & ChatMessage)
   | { type: "PONG"; ts: number };
 
 export type ServerEventHandler = (event: ServerEvent) => void;

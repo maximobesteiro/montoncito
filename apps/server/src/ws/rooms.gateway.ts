@@ -18,14 +18,12 @@ import { ProfilesService } from '../profiles/profiles.service';
 import { randomUUID } from 'crypto';
 import {
   GAME_ROOM_PROTOCOL_VERSION,
-  RoomStateUpdateSchema,
   ActionSubmissionSchema,
   SyncRequestSchema,
   SyncSnapshotSchema,
   type ProtocolFailure,
 } from '@mont/game-room';
 import { GameService } from '../game/game.service';
-import type { GameState } from '@mont/core-game';
 
 type Conn = WsJoinClaims; // { roomId, playerId }
 
@@ -113,22 +111,6 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // Player still has other sockets connected, just close this one
     // No need to broadcast anything
-  }
-
-  /** Broadcast fresh view (state/meta) to everyone in the room */
-  public emitStateUpdate(
-    roomId: string,
-    payload: { meta: { seq: number }; state: GameState },
-  ) {
-    const ev = { type: 'STATE_UPDATE', ...payload } as const;
-    assertServerEvent(ev);
-    this.server.to(roomId).emit('event', ev);
-    const update = RoomStateUpdateSchema.parse({
-      version: GAME_ROOM_PROTOCOL_VERSION,
-      seq: payload.meta.seq,
-      state: payload.state,
-    });
-    this.server.to(roomId).emit('room.state', update);
   }
 
   /** Notify room members that this room has become a Game room. */
@@ -334,6 +316,15 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
         baseSeq: submission.data.baseSeq,
         action: submission.data.action,
       });
+      console.info(
+        JSON.stringify({
+          roomId: claims.roomId,
+          playerId: claims.playerId,
+          actionId: outcome.actionId,
+          seq: outcome.seq,
+          outcome: outcome.accepted ? 'accepted' : 'rejected',
+        }),
+      );
       if (outcome.accepted) {
         const result = {
           version: GAME_ROOM_PROTOCOL_VERSION,

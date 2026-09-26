@@ -6,10 +6,8 @@ import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient, type ChatMessage } from "@/lib/socket-client";
 import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
 import { WaitingRoomChat } from "@/components/WaitingRoomChat";
-import { useGameStore } from "@/stores/game-store";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
-import type { GameState } from "@mont/core-game";
 
 type RoomView = {
   id: string;
@@ -34,8 +32,6 @@ export default function WaitingRoomPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const sanitizedSlug = useMemo(() => slug.slice(0, 15).toLowerCase(), [slug]);
-
-  const { setRoomId, setCurrentPlayerId, setGameState } = useGameStore();
 
   const clientId = useMemo(() => {
     try {
@@ -73,7 +69,7 @@ export default function WaitingRoomPage() {
   }, [room, clientId]);
 
   const canStart = Boolean(
-    room && isHost && room.players.length >= 2 && allNonHostReady
+    room && isHost && room.players.length >= 2 && allNonHostReady,
   );
 
   const roomTitle = `Room #${(room?.slug ?? sanitizedSlug).slice(-4)}`;
@@ -92,10 +88,8 @@ export default function WaitingRoomPage() {
       clientId,
     });
     setRoom(view);
-    setRoomId(view.id);
-    setCurrentPlayerId(clientId);
     return view;
-  }, [clientId, sanitizedSlug, setCurrentPlayerId, setRoomId]);
+  }, [clientId, sanitizedSlug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -114,8 +108,6 @@ export default function WaitingRoomPage() {
 
         if (cancelled) return;
         setRoom(view);
-        setRoomId(view.id);
-        setCurrentPlayerId(clientId);
 
         // 1b) If we're the host, re-apply locally saved settings (best-effort).
         // This mitigates room recreation/reset after everyone leaves.
@@ -142,7 +134,7 @@ export default function WaitingRoomPage() {
         // Note: response includes updated room view (including *you* in players list).
         const joinRes = await apiFetch<RoomView & { wsJoinToken: string }>(
           `/rooms/${view.id}/join`,
-          { method: "POST", clientId }
+          { method: "POST", clientId },
         );
         if (cancelled) return;
 
@@ -165,10 +157,6 @@ export default function WaitingRoomPage() {
             showToast("You have been kicked from the room", "warning");
             router.push("/");
           }
-          if (ev.type === "STATE_UPDATE") {
-            // Keep store up to date if you ever render game state here
-            setGameState(ev.state as GameState);
-          }
           if (ev.type === "CHAT_MESSAGE") {
             setChatMessages((prev) => [...prev, ev]);
           }
@@ -190,16 +178,7 @@ export default function WaitingRoomPage() {
       // Disconnect so server can treat this as leaving (refresh/navigation/tab close).
       getSocketClient().disconnect();
     };
-  }, [
-    clientId,
-    refetchRoom,
-    router,
-    setCurrentPlayerId,
-    setGameState,
-    setRoomId,
-    sanitizedSlug,
-    showToast,
-  ]);
+  }, [clientId, refetchRoom, router, sanitizedSlug, showToast]);
 
   useEffect(() => {
     if (!room) return;
@@ -211,7 +190,7 @@ export default function WaitingRoomPage() {
   const patchRoom = async (
     patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
       gameConfig?: Partial<RoomView["gameConfig"]>;
-    }
+    },
   ) => {
     if (!clientId || !room) return;
     setSaving(true);
@@ -252,7 +231,7 @@ export default function WaitingRoomPage() {
     } catch (e) {
       showToast(
         e instanceof Error ? e.message : "Failed to update ready state",
-        "error"
+        "error",
       );
     }
   };
@@ -264,7 +243,7 @@ export default function WaitingRoomPage() {
     if (!allNonHostReady) {
       showToast(
         "All players must be ready before starting the game",
-        "warning"
+        "warning",
       );
       return;
     }
@@ -300,7 +279,7 @@ export default function WaitingRoomPage() {
     } catch (e) {
       showToast(
         e instanceof Error ? e.message : "Failed to kick player",
-        "error"
+        "error",
       );
     } finally {
       setKickingPlayerId(null);
@@ -326,7 +305,7 @@ export default function WaitingRoomPage() {
     } catch (e) {
       showToast(
         e instanceof Error ? e.message : "Failed to leave room",
-        "error"
+        "error",
       );
     } finally {
       setIsLeaveModalOpen(false);

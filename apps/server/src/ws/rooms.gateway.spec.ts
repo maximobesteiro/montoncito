@@ -70,6 +70,7 @@ describe('Game room synchronization over Socket.IO', () => {
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     clients.forEach((client) => client.disconnect());
     await new Promise<void>((resolve) => socketServer.close(() => resolve()));
   });
@@ -84,19 +85,11 @@ describe('Game room synchronization over Socket.IO', () => {
       seq: 0,
       state: { id: gameId, players: ['P1', 'P2'] },
     });
-    const current = gameService.get(gameId).state;
-    const nextState = { ...current, turn: { ...current.turn, number: 2 } };
-    const update = waitForEvent(client, 'room.state');
-    gateway.emitStateUpdate('room-1', { meta: { seq: 1 }, state: nextState });
-    await expect(update).resolves.toMatchObject({
-      version: 1,
-      seq: 1,
-      state: { id: gameId, turn: { number: 2 } },
-    });
     client.disconnect();
   });
 
   it('broadcasts one Accepted Action result with the full Authoritative state', async () => {
+    const actionLog = jest.spyOn(console, 'info').mockImplementation();
     const game = gameService.get(gameId);
     const activePlayer = game.state.turn.activePlayer;
     const submittingClient = await connectAs(activePlayer);
@@ -135,6 +128,13 @@ describe('Game room synchronization over Socket.IO', () => {
       actionId,
       seq: 1,
     });
+    expect(JSON.parse(actionLog.mock.calls[0]![0] as string)).toEqual({
+      roomId: 'room-1',
+      playerId: activePlayer,
+      actionId,
+      seq: 1,
+      outcome: 'accepted',
+    });
 
     let duplicateBroadcast = false;
     observingClient.on('room.action.accepted', () => {
@@ -152,6 +152,7 @@ describe('Game room synchronization over Socket.IO', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(duplicateBroadcast).toBe(false);
     expect(gameService.get(gameId).meta.seq).toBe(1);
+    actionLog.mockRestore();
   });
 
   it('recovers a lost Accepted Action delivery without rebroadcasting', async () => {
@@ -230,8 +231,10 @@ describe('Game room synchronization over Socket.IO', () => {
   });
 
   it('targets a wrong-Turn rejection only to the submitting player', async () => {
+    const actionLog = jest.spyOn(console, 'info').mockImplementation();
     const activePlayer = gameService.get(gameId).state.turn.activePlayer;
     const rejectedClient = await connectAs(activePlayer === 'P1' ? 'P2' : 'P1');
+    const rejectedPlayer = activePlayer === 'P1' ? 'P2' : 'P1';
     const otherClient = await connectAs(activePlayer);
     const rejected = waitForEvent(rejectedClient, 'room.action.rejected');
     let leakedToOther = false;
@@ -239,9 +242,10 @@ describe('Game room synchronization over Socket.IO', () => {
       leakedToOther = true;
     });
 
+    const actionId = '550e8400-e29b-41d4-a716-446655440011';
     rejectedClient.emit('room.action.submit', {
       version: 1,
-      actionId: '550e8400-e29b-41d4-a716-446655440011',
+      actionId,
       baseSeq: 0,
       action: { kind: 'END_TURN' },
     });
@@ -249,6 +253,13 @@ describe('Game room synchronization over Socket.IO', () => {
     await expect(rejected).resolves.toMatchObject({
       code: 'NOT_YOUR_TURN',
       seq: 0,
+    });
+    expect(JSON.parse(actionLog.mock.calls[0]![0] as string)).toEqual({
+      roomId: 'room-1',
+      playerId: rejectedPlayer,
+      actionId,
+      seq: 0,
+      outcome: 'rejected',
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(leakedToOther).toBe(false);
