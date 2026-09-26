@@ -516,6 +516,27 @@ describe("useGameRoom reconnect behavior", () => {
     ).toHaveLength(2);
   });
 
+  it("keeps delivery order when recovery crosses the 100-message window", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    const messages = Array.from({ length: 105 }, (_, index) => ({
+      type: "CHAT_MESSAGE" as const,
+      id: `chat-${index}`,
+      playerId: "player-2",
+      playerName: "Bob",
+      text: `message-${index}`,
+      timestamp: 1,
+    }));
+    for (const message of messages) socket.fire("event", message);
+    socket.fire("chat.history", { version: 1, messages: messages.slice(5) });
+
+    expect(renderHook().chatMessages.map(({ id }) => id)).toEqual(
+      messages.slice(5).map(({ id }) => id),
+    );
+  });
+
   it("stops reconnecting and clears state when credential renewal confirms removal", async () => {
     renderHook();
     harness.effect?.();

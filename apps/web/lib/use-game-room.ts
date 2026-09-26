@@ -33,11 +33,7 @@ import {
   getServerUrl,
 } from "./api";
 import type { ChatMessage } from "./socket-client";
-import {
-  appendChatMessage,
-  createChatRecovery,
-  isChatMessage,
-} from "./room-chat";
+import { appendChatMessage, isChatMessage, readChatHistory } from "./room-chat";
 
 export type GameRoomConnectionStatus =
   | "connecting"
@@ -130,7 +126,6 @@ export function useGameRoom(roomId: string): GameRoomView {
     let renewalInFlight = false;
     let renewalAttempt = 0;
     let requestedFreshSnapshot = false;
-    const chatRecovery = createChatRecovery();
     updateGameRoomSession(sessionRef, setSession, createGameRoomSession);
     setConnectionStatus("connecting");
     socketRef.current = null;
@@ -206,7 +201,6 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
-          chatRecovery.begin();
           socket?.emit("chat.history.request", {
             version: GAME_ROOM_PROTOCOL_VERSION,
           });
@@ -303,7 +297,6 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socket.on("event", (payload: unknown) => {
           if (isChatMessage(payload)) {
-            chatRecovery.receiveLive(payload);
             setChatMessages((previous) => appendChatMessage(previous, payload));
           }
           if (
@@ -316,7 +309,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           }
         });
         socket.on("chat.history", (payload: unknown) => {
-          const messages = chatRecovery.receiveHistory(payload);
+          const messages = readChatHistory(payload);
           if (messages) setChatMessages(messages);
         });
         socket.on("connect_error", () => {

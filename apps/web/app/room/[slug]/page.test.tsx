@@ -18,6 +18,14 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/api", () => ({
   getOrCreateClientId: () => "player-1",
   apiFetch: harness.apiFetch,
+  ApiHttpError: class ApiHttpError extends Error {
+    constructor(
+      public status: number,
+      message: string,
+    ) {
+      super(message);
+    }
+  },
 }));
 vi.mock("@/lib/room-settings-storage", () => ({
   getRoomSettings: () => null,
@@ -41,6 +49,7 @@ vi.mock("@/components/ToastProvider", () => ({
 }));
 
 import WaitingRoomPage from "./page";
+import { ApiHttpError } from "@/lib/api";
 
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -96,4 +105,52 @@ it("shows recovered Lobby chat with sender names and current-player highlighting
     timestamp: 2,
   });
   expect(screen.getAllByText("Here now")).toHaveLength(1);
+});
+
+it("renews only an existing member and navigates to the Game room if play starts during reconnection", async () => {
+  render(<WaitingRoomPage />);
+  await waitFor(() => expect(harness.connect).toHaveBeenCalled());
+  harness.apiFetch.mockImplementation(async (url: string) => ({
+    id: "room-1",
+    slug: "sample-room",
+    ownerId: "player-1",
+    status: "in_progress",
+    gameId: "game-1",
+    visibility: "public",
+    maxPlayers: 4,
+    players: [
+      { id: "player-1", displayName: "Alice", isOwner: true, isReady: false },
+    ],
+    gameConfig: { discardPiles: 3 },
+    createdAt: "2024-01-01",
+    wsJoinToken: "renewed",
+  }));
+  const renew = harness.connect.mock.calls.at(-1)?.[1] as () => Promise<string>;
+  expect(await renew()).toBe("renewed");
+  await waitFor(() =>
+    expect(harness.router.push).toHaveBeenCalledWith("/game/room-1"),
+  );
+  expect(harness.apiFetch.mock.calls.map(([url]) => url)).toContain(
+    "/rooms/room-1/socket-token",
+  );
+  expect(
+    harness.apiFetch.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url === "/rooms/room-1/join"),
+  ).toHaveLength(1);
+});
+
+it("does not silently rejoin after membership has been removed", async () => {
+  render(<WaitingRoomPage />);
+  await waitFor(() => expect(harness.connect).toHaveBeenCalled());
+  harness.apiFetch.mockRejectedValueOnce(new ApiHttpError(403, "Not a member"));
+  const renew = harness.connect.mock.calls.at(-1)?.[1] as () => Promise<string>;
+  await expect(renew()).rejects.toThrow("Not a member");
+  expect(harness.disconnect).toHaveBeenCalled();
+  expect(harness.router.push).toHaveBeenCalledWith("/");
+  expect(
+    harness.apiFetch.mock.calls
+      .map(([url]) => url)
+      .filter((url) => url === "/rooms/room-1/join"),
+  ).toHaveLength(1);
 });

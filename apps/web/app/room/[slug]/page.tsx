@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { apiFetch, getOrCreateClientId } from "@/lib/api";
+import { apiFetch, ApiHttpError, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient, type ChatMessage } from "@/lib/socket-client";
 import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
 import { RoomChat } from "@/components/RoomChat";
@@ -168,12 +168,26 @@ export default function WaitingRoomPage() {
           // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
         });
         sock.connect(wsJoinToken, async () => {
-          const joined = await apiFetch<RoomView & { wsJoinToken: string }>(
-            `/rooms/${view.id}/join`,
-            { method: "POST", clientId },
-          );
-          if (!cancelled) setRoom(joined);
-          return joined.wsJoinToken;
+          try {
+            const { wsJoinToken: renewed } = await apiFetch<{
+              wsJoinToken: string;
+            }>(`/rooms/${view.id}/socket-token`, { method: "POST", clientId });
+            const current = await apiFetch<RoomView>(
+              `/rooms/by-slug/${sanitizedSlug}`,
+              { method: "GET", clientId },
+            );
+            if (!cancelled) setRoom(current);
+            return renewed;
+          } catch (error) {
+            if (
+              error instanceof ApiHttpError &&
+              (error.status === 403 || error.status === 404)
+            ) {
+              sock.disconnect();
+              if (!cancelled) router.push("/");
+            }
+            throw error;
+          }
         });
       } catch (e) {
         if (cancelled) return;
@@ -194,7 +208,7 @@ export default function WaitingRoomPage() {
 
   useEffect(() => {
     if (!room) return;
-    if (room.status === "in_progress") {
+    if (room.status !== "open" && room.gameId) {
       router.push(`/game/${room.id}`);
     }
   }, [room, router]);

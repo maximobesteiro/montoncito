@@ -1,7 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import { getServerUrl } from "./api";
 import { GAME_ROOM_PROTOCOL_VERSION } from "@mont/game-room";
-import { createChatRecovery, isChatMessage } from "./room-chat";
+import { readChatHistory } from "./room-chat";
 
 export type ChatMessage = {
   id: string;
@@ -26,7 +26,6 @@ export type ServerEventHandler = (event: ServerEvent) => void;
 class SocketClient {
   private socket: Socket | null = null;
   private handlers = new Set<ServerEventHandler>();
-  private chatRecovery = createChatRecovery();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   connect(token: string, renewToken?: () => Promise<string>) {
@@ -67,14 +66,13 @@ class SocketClient {
     });
 
     this.socket.on("connect", () => {
-      this.chatRecovery.begin();
       this.socket?.emit("chat.history.request", {
         version: GAME_ROOM_PROTOCOL_VERSION,
       });
     });
 
     this.socket.on("chat.history", (payload: unknown) => {
-      const messages = this.chatRecovery.receiveHistory(payload);
+      const messages = readChatHistory(payload);
       if (!messages) return;
       this.emit({
         type: "CHAT_HISTORY",
@@ -89,7 +87,6 @@ class SocketClient {
         payload !== null &&
         "type" in payload
       ) {
-        if (isChatMessage(payload)) this.chatRecovery.receiveLive(payload);
         this.emit(payload as ServerEvent);
       }
     });
@@ -106,7 +103,6 @@ class SocketClient {
     this.socket?.disconnect();
     this.socket = null;
     this.handlers.clear();
-    this.chatRecovery = createChatRecovery();
   }
 
   get isConnected(): boolean {

@@ -22,6 +22,8 @@ export function isChatMessage(
 }
 
 export function readChatHistory(payload: unknown): ChatMessage[] | null {
+  // A room serializes the snapshot and broadcasts on one Socket.IO connection.
+  // Replacing earlier live frames with this bounded snapshot preserves delivery order.
   const parsed = ChatHistorySchema.safeParse(payload);
   return parsed.success ? parsed.data.messages : null;
 }
@@ -32,36 +34,4 @@ export function appendChatMessage(
 ): ChatMessage[] {
   if (messages.some(({ id }) => id === message.id)) return messages;
   return [...messages, message].slice(-100);
-}
-
-// The server sends history in delivery order. Live frames received while the
-// request is in flight may also be present in that history; IDs resolve overlap.
-export function reconcileChatHistory(
-  history: ChatMessage[],
-  liveSinceRequest: ChatMessage[],
-): ChatMessage[] {
-  return liveSinceRequest.reduce(appendChatMessage, history);
-}
-
-export function createChatRecovery() {
-  let liveSinceRequest: ChatMessage[] = [];
-  let awaitingHistory = false;
-  return {
-    begin() {
-      liveSinceRequest = [];
-      awaitingHistory = true;
-    },
-    receiveLive(message: ChatMessage) {
-      if (awaitingHistory)
-        liveSinceRequest = appendChatMessage(liveSinceRequest, message);
-    },
-    receiveHistory(payload: unknown): ChatMessage[] | null {
-      const history = readChatHistory(payload);
-      if (!history) return null;
-      const messages = reconcileChatHistory(history, liveSinceRequest);
-      liveSinceRequest = [];
-      awaitingHistory = false;
-      return messages;
-    },
-  };
 }
