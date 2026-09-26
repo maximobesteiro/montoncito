@@ -31,11 +31,11 @@ _Avoid_: Discard pile, waste pile
 ## Cards
 
 **King**:
-A standard rank-13 Card that acts as a wild card and may represent the next required rank on a Build pile.
+A standard rank-13 Card that always acts as a wild card, regardless of Card pack, and may represent the next required rank on a Build pile.
 _Avoid_: Joker
 
 **Joker**:
-A separate wild Card included at two per Card pack. A Joker may represent the next required rank on a Build pile.
+A separate always-wild Card included at two per Card pack. A Joker may represent the next required rank on a Build pile.
 _Avoid_: King, rank 13
 
 **Card pack**:
@@ -69,6 +69,10 @@ A player wins immediately when their Stock pile is empty. If the Draw pile and R
 _Avoid_: victory state, end condition
 
 ## Technical domain terms
+
+**Ruleset version (`rulesetVersion`)**:
+The fixed gameplay policy governing a match. It is set when the game starts and does not change during the match; it is distinct from the game-state serialization version and Game room protocol version.
+_Avoid_: state version, protocol version
 
 **Action**:
 A player command that requests one state transition, such as playing a card or discarding. An Action remains pending until the server accepts or rejects it.

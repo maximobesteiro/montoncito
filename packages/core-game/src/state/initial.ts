@@ -16,11 +16,6 @@ export function createInitialState(
     handSize: opts?.handSize ?? 5,
     stockSize: opts?.stockSize ?? 20,
     discardPiles: opts?.discardPiles ?? 3,
-    useJokers: opts?.useJokers ?? false,
-    jokersAreWild: opts?.jokersAreWild ?? true,
-    kingsAreWild: opts?.kingsAreWild ?? true,
-    additionalWildRanks: opts?.additionalWildRanks ?? [],
-    enableCardWildFlag: opts?.enableCardWildFlag ?? true,
   };
 
   const seed = (opts?.seed ?? 123456789) >>> 0;
@@ -40,6 +35,7 @@ export function createInitialState(
 
   return {
     version: 1,
+    rulesetVersion: 1,
     id: opts?.id ?? "match",
     phase: "lobby",
     turn: {

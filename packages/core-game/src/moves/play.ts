@@ -16,7 +16,7 @@ function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { 
   const created = target === "new";
 
   if (created) {
-    const canStart = card.kind === "standard" && card.rank === 1 || isWild(card, state.rules);
+    const canStart = card.kind === "standard" && card.rank === 1 || isWild(card);
     if (!canStart) return rejectMove(state, "Card does not match build requirement");
     buildId = newBuildId(state);
     pile = { id: buildId, cards: [], nextRank: 1 };
@@ -30,11 +30,11 @@ function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { 
     }
   }
 
-  if (pile.nextRank === null || (!isWild(card, state.rules) && (card.kind !== "standard" || card.rank !== pile.nextRank))) {
+  if (pile.nextRank === null || (!isWild(card) && (card.kind !== "standard" || card.rank !== pile.nextRank))) {
     return rejectMove(state, "Card does not match build requirement");
   }
 
-  const rankOrNull: Rank | null = isWild(card, state.rules) ? pile.nextRank : (card as Extract<Card, { kind: "standard" }>).rank;
+  const rankOrNull: Rank | null = isWild(card) ? pile.nextRank : (card as Extract<Card, { kind: "standard" }>).rank;
   const updated: BuildPile = {
     ...pile,
     cards: [card, ...pile.cards],

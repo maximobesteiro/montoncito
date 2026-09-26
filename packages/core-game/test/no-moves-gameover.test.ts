@@ -12,8 +12,6 @@ describe("game over when deck is empty and no placements are available", () => {
       handSize: 2,
       stockSize: 2,
       discardPiles: 3,
-      kingsAreWild: false, // keep it simple: no wilds so we can control "no moves"
-      useJokers: false,
     };
 
     // We want:
@@ -23,7 +21,7 @@ describe("game over when deck is empty and no placements are available", () => {
     // Construction:
     // - First 4 cards → two stock cards per player (round-robin).
     // - Next few cards → draws for P1 to fill hand (ranks that are NOT 1).
-    // - No rank 1 anywhere; no jokers; no kings-as-wild.
+    // - No Ace, King, or Joker anywhere.
     // - Deck should end up empty after the first draw by P1.
     const deck: Card[] = [
       // stock (round-robin): P1,S7 ; P2,S8 ; P1,S9 ; P2,S10
@@ -49,7 +47,7 @@ describe("game over when deck is empty and no placements are available", () => {
     // - P1 draws to hand (2 cards), exhausts draw pile
     expect(s.deck.drawPile.length).toBe(0);
 
-    // No rank 1 in any hand/stock/discards; no wilds → nobody can play.
+    // No Ace or wild card in any Hand, Stock pile, or Discard pile → nobody can play.
     // checkGameOver should detect deck empty + no placements and pick winner by
     // fewest Stock cards, then Hand cards, then Discard pile cards.
     //

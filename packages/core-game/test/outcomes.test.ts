@@ -420,7 +420,6 @@ describe("explicit core outcomes", () => {
     let state = turn();
     state.center.buildPiles = [];
     state.nextBuildPileId = 1;
-    state.rules.useJokers = true;
     state.byId.P1!.hand.cards = Array.from({ length: 12 }, (_, index) =>
       index === 4
         ? {

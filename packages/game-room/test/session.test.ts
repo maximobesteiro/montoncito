@@ -11,7 +11,7 @@ import {
   receiveGameRoomActionRejected,
   setPendingGameRoomAction,
 } from "../src/session.js";
-import { ActionSubmissionSchema } from "../src/protocol.js";
+import { ActionSubmissionSchema, SyncSnapshotSchema } from "../src/protocol.js";
 
 const snapshot = {
   version: 1,
@@ -20,6 +20,34 @@ const snapshot = {
 };
 
 describe("Game room session transitions", () => {
+  it("parses the fixed ruleset version in a Game room snapshot", () => {
+    expect(SyncSnapshotSchema.parse(snapshot).state.rulesetVersion).toBe(1);
+    expect(
+      SyncSnapshotSchema.safeParse({
+        ...snapshot,
+        state: { ...snapshot.state, rulesetVersion: 2 },
+      }).success,
+    ).toBe(false);
+    expect(
+      SyncSnapshotSchema.safeParse({
+        ...snapshot,
+        state: { ...snapshot.state, rules: { ...snapshot.state.rules, kingsAreWild: false } },
+      }).success,
+    ).toBe(false);
+    expect(
+      SyncSnapshotSchema.safeParse({
+        ...snapshot,
+        state: {
+          ...snapshot.state,
+          deck: {
+            ...snapshot.state.deck,
+            drawPile: [{ kind: "joker", id: "flagged", baseWild: false }],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts protocol-v1 player actions without room or player identity", () => {
     expect(
       ActionSubmissionSchema.safeParse({

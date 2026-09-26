@@ -50,9 +50,6 @@ export function createStartedGame(options: StartedGameOptions): GameState {
       handSize: 5,
       stockSize: 20,
       discardPiles,
-      useJokers: true,
-      jokersAreWild: true,
-      kingsAreWild: true,
     } satisfies Partial<RulesConfig> & { seed?: number; id?: string },
   );
 

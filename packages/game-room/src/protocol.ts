@@ -10,25 +10,18 @@ const CardSchema = z.discriminatedUnion("kind", [
     id: z.string().min(1),
     rank: RankSchema,
     suit: z.enum(["Clubs", "Diamonds", "Hearts", "Spades"]),
-    baseWild: z.boolean().optional(),
-  }),
+  }).strict(),
   z.object({
     kind: z.literal("joker"),
     id: z.string().min(1),
-    baseWild: z.boolean().optional(),
-  }),
+  }).strict(),
 ]);
 
 const RulesConfigSchema = z.object({
   handSize: z.number().int().positive(),
   stockSize: z.number().int().positive(),
   discardPiles: z.number().int().min(1).max(4),
-  useJokers: z.boolean().optional(),
-  jokersAreWild: z.boolean().optional(),
-  kingsAreWild: z.boolean().optional(),
-  additionalWildRanks: z.array(RankSchema).optional(),
-  enableCardWildFlag: z.boolean().optional(),
-});
+}).strict();
 
 const PlayerStateSchema = z.object({
   id: z.string().min(1),
@@ -40,6 +33,7 @@ const PlayerStateSchema = z.object({
 
 export const AuthoritativeStateSchema = z.object({
   version: z.literal(1),
+  rulesetVersion: z.literal(1),
   id: z.string().min(1),
   phase: z.enum(["lobby", "turn", "gameover"]),
   turn: z.object({

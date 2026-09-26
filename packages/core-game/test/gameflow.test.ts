@@ -5,8 +5,6 @@ const rules: Partial<RulesConfig> = {
   handSize: 5,
   stockSize: 3,
   discardPiles: 3,
-  kingsAreWild: true,
-  useJokers: false,
 };
 
 function mkStd(id: string, rank: number): Card {
@@ -19,8 +17,6 @@ describe("game flow (start → draw → discard auto-ends turn)", () => {
       handSize: 5,
       stockSize: 3,
       discardPiles: 3,
-      kingsAreWild: true,
-      useJokers: false,
     };
 
     // Enough cards for stock + some draws
@@ -77,13 +73,11 @@ describe("game flow (start → draw → discard auto-ends turn)", () => {
 
 describe("play to build flow (hand, wild king, stock)", () => {
   it("places 1, 2, K(wild) from hand, then 4 from stock onto B1 and ends game", () => {
-    // Rules: keep it simple and enable King as wild
+    // Kings are wild in the current ruleset.
     const rules: Partial<RulesConfig> = {
       handSize: 5,
       stockSize: 1, // each player gets 1 stock card
       discardPiles: 3,
-      kingsAreWild: true,
-      useJokers: false,
     };
 
     // Deck order matters:
