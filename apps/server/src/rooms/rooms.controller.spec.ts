@@ -615,32 +615,42 @@ describe('RoomsController', () => {
       ).not.toThrow();
     });
 
-    it('issues a renewed token through the REST route for a current member', async () => {
-      roomsService.getById.mockReturnValue({
-        ...mockRoom,
-        status: 'in_progress',
-        gameId: 'game-123',
-      });
-      const app: INestApplication = testingModule.createNestApplication();
-      await app.init();
-
-      try {
-        const response = await request(app.getHttpServer())
-          .post('/rooms/room-123/socket-token')
-          .set('x-client-id', 'client-1')
-          .expect(201);
-        const claims = jwt.verify(response.body.wsJoinToken, 'test-secret') as {
-          roomId: string;
-          playerId: string;
-        };
-
-        expect(claims).toMatchObject({
-          roomId: 'room-123',
-          playerId: 'client-1',
+    it.each([
+      { status: 'open' as const, gameId: undefined },
+      { status: 'in_progress' as const, gameId: 'game-123' },
+      { status: 'finished' as const, gameId: 'game-123' },
+    ])(
+      'issues a renewed token through REST for a current member in a $status room',
+      async ({ status, gameId }) => {
+        roomsService.getById.mockReturnValue({
+          ...mockRoom,
+          status,
+          gameId,
         });
-      } finally {
-        await app.close();
-      }
-    });
+        const app: INestApplication = testingModule.createNestApplication();
+        await app.init();
+
+        try {
+          const response = await request(app.getHttpServer())
+            .post('/rooms/room-123/socket-token')
+            .set('x-client-id', 'client-1')
+            .expect(201);
+          const claims = jwt.verify(
+            response.body.wsJoinToken,
+            'test-secret',
+          ) as {
+            roomId: string;
+            playerId: string;
+          };
+
+          expect(claims).toMatchObject({
+            roomId: 'room-123',
+            playerId: 'client-1',
+          });
+        } finally {
+          await app.close();
+        }
+      },
+    );
   });
 });

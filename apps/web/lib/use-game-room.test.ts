@@ -158,6 +158,8 @@ describe("useGameRoom reconnect behavior", () => {
     socket.connected = false;
     socket.fire("disconnect", "transport close");
     await flushPromises();
+    expect(harness.apiFetch).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
     expect(renderHook().state).toEqual(snapshot.state);
     expect(renderHook().pendingAction).toMatchObject({ actionId });
 
@@ -188,9 +190,7 @@ describe("useGameRoom reconnect behavior", () => {
     )?.payload;
     expect(originalSubmission).toBeDefined();
     expect(
-      window.sessionStorage.getItem(
-        `montoncito:${roomId}:pending-action`,
-      ),
+      window.sessionStorage.getItem(`montoncito:${roomId}:pending-action`),
     ).toBe(JSON.stringify(originalSubmission));
 
     firstSocket.disconnect();

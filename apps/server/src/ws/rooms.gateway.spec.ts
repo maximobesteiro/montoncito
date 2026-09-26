@@ -253,6 +253,18 @@ describe('Game room synchronization over Socket.IO', () => {
       action: { kind: 'END_TURN' },
     });
     await expect(rejection).resolves.toMatchObject({ code: 'GAME_FINISHED' });
+
+    const nextRejection = waitForEvent(client, 'room.action.rejected');
+    client.emit('room.action.submit', {
+      version: 1,
+      actionId: '550e8400-e29b-41d4-a716-446655440022',
+      baseSeq: 0,
+      action: { kind: 'END_TURN' },
+    });
+    await expect(nextRejection).resolves.toMatchObject({
+      code: 'GAME_FINISHED',
+      seq: 0,
+    });
     expect(game.meta.seq).toBe(0);
   });
 
