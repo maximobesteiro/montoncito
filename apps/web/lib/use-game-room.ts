@@ -192,16 +192,26 @@ export function useGameRoom(roomId: string): GameRoomView {
           });
         });
         socket.on("room.sync.snapshot", (payload: unknown) => {
+          const synchronized = receiveGameRoomSnapshot(
+            sessionRef.current,
+            payload,
+          );
+          if (synchronized.status !== "synchronized") {
+            sessionRef.current = synchronized;
+            setSession(synchronized);
+            setConnectionStatus("failed");
+            return;
+          }
+
           const restored = readPendingAction(roomId);
           if (restored) {
             pendingActionRef.current = restored;
           }
-          setSession((previous) => {
-            const synchronized = receiveGameRoomSnapshot(previous, payload);
-            return restored
-              ? setPendingGameRoomAction(synchronized, restored)
-              : synchronized;
-          });
+          const recovered = restored
+            ? setPendingGameRoomAction(synchronized, restored)
+            : synchronized;
+          sessionRef.current = recovered;
+          setSession(recovered);
           setConnectionStatus("connected");
           if (restored) socket?.emit("room.action.submit", restored);
         });
