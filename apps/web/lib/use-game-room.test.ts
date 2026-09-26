@@ -92,6 +92,7 @@ vi.mock("./api", () => ({
 }));
 
 import { useGameRoom } from "./use-game-room";
+import { ApiHttpError } from "./api";
 
 describe("useGameRoom reconnect behavior", () => {
   const roomId = "room-1";
@@ -283,6 +284,32 @@ describe("useGameRoom reconnect behavior", () => {
     expect(
       socket.emitted.some((frame) => frame.event === "room.action.submit"),
     ).toBe(false);
+  });
+
+  it("stops reconnecting and clears state when credential renewal confirms removal", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.connect();
+    socket.fire("room.sync.snapshot", snapshot);
+    renderHook().submitAction({ kind: "END_TURN" });
+    harness.tokenResponses.push(new ApiHttpError(403, "No longer a member"));
+
+    socket.connected = false;
+    socket.fire("disconnect", "transport close");
+    await flushPromises();
+
+    const removed = renderHook();
+    expect(removed.connectionStatus).toBe("removed");
+    expect(removed.state).toBeNull();
+    expect(removed.pendingAction).toBeNull();
+    expect(
+      window.sessionStorage.getItem(`montoncito:${roomId}:pending-action`),
+    ).toBeNull();
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(harness.apiFetch).toHaveBeenCalledTimes(2);
+    expect(socket.connected).toBe(false);
   });
 
   function renderHook() {
