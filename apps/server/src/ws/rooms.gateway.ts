@@ -7,7 +7,7 @@ import {
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
-import { Inject, forwardRef } from '@nestjs/common';
+import { Inject, forwardRef, type OnModuleDestroy } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { ConfigService } from '@nestjs/config';
@@ -37,7 +37,9 @@ function key(roomId: string, playerId: string) {
   namespace: '/ws',
   cors: { origin: true, credentials: true },
 })
-export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class RoomsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
+{
   @WebSocketServer() server!: Server;
 
   private conns = new Map<string, Conn>(); // socket.id -> claims
@@ -51,6 +53,11 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly profiles: ProfilesService,
     private readonly games: GameService,
   ) {}
+
+  public onModuleDestroy() {
+    for (const timer of this.pendingLeaves.values()) clearTimeout(timer);
+    this.pendingLeaves.clear();
+  }
 
   public handleConnection(client: Socket) {
     try {
@@ -103,11 +110,22 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
           try {
             const room = this.rooms.getById(claims.roomId);
             if (room.gameId) return;
-            const result = this.rooms.leave({
-              roomId: claims.roomId,
-              clientId: claims.playerId,
-            });
-            if (!result.deleted && result.room) {
+            // Keep disconnected Lobby members while another player is online.
+            // An explicit REST leave or kick still removes membership immediately.
+            if (
+              room.players.some((player) =>
+                this.byPlayer.has(key(room.id, player.id)),
+              )
+            )
+              return;
+            let result: ReturnType<RoomsService['leave']> | undefined;
+            for (const player of [...room.players]) {
+              result = this.rooms.leave({
+                roomId: room.id,
+                clientId: player.id,
+              });
+            }
+            if (result?.room) {
               this.emitRoomUpdated(
                 claims.roomId,
                 this.rooms.toView(result.room),

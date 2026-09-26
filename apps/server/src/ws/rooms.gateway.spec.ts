@@ -48,6 +48,7 @@ describe('Game room synchronization over Socket.IO', () => {
     });
     const rooms = {
       getById: () => ({
+        id: 'room-1',
         players: roomPlayers,
         gameId: roomGameId,
         chatMessages,
@@ -93,6 +94,7 @@ describe('Game room synchronization over Socket.IO', () => {
     jest.restoreAllMocks();
     clients.forEach((client) => client.disconnect());
     await new Promise<void>((resolve) => socketServer.close(() => resolve()));
+    gateway.onModuleDestroy();
   });
 
   it('sends a full authoritative snapshot to a current member', async () => {
@@ -202,6 +204,26 @@ describe('Game room synchronization over Socket.IO', () => {
     });
     expect(leaveRoom).not.toHaveBeenCalled();
   });
+
+  it('recovers Lobby history after a longer interruption while another member remains online', async () => {
+    roomGameId = undefined;
+    const sender = await connectAs('P1');
+    const other = await connectAs('P2');
+    const delivered = waitForChat(sender);
+    sender.emit('chat', { text: 'Still here' });
+    await delivered;
+    sender.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 5100));
+    expect(other.connected).toBe(true);
+    expect(leaveRoom).not.toHaveBeenCalled();
+
+    const reconnected = await connectAs('P1');
+    const history = waitForEvent(reconnected, 'chat.history');
+    reconnected.emit('chat.history.request', { version: 1 });
+    await expect(history).resolves.toMatchObject({
+      messages: [{ text: 'Still here' }],
+    });
+  }, 10000);
 
   it('retains only the last 100 chat messages in delivery order', async () => {
     const sender = await connectAs('P1');

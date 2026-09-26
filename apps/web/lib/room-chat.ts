@@ -1,24 +1,10 @@
 import type { ChatMessage } from "./socket-client";
-import { ChatHistorySchema } from "@mont/game-room";
+import { ChatHistorySchema, ChatMessageSchema } from "@mont/game-room";
 
 export function isChatMessage(
   payload: unknown,
 ): payload is ChatMessage & { type: "CHAT_MESSAGE" } {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !("type" in payload) ||
-    payload.type !== "CHAT_MESSAGE"
-  )
-    return false;
-  const message = payload as Record<string, unknown>;
-  return (
-    typeof message.id === "string" &&
-    typeof message.playerId === "string" &&
-    typeof message.playerName === "string" &&
-    typeof message.text === "string" &&
-    typeof message.timestamp === "number"
-  );
+  return ChatMessageSchema.safeParse(payload).success;
 }
 
 export function readChatHistory(payload: unknown): ChatMessage[] | null {

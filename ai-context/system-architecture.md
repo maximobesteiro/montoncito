@@ -98,7 +98,7 @@ The current Socket.IO room chat uses the existing `chat` / `CHAT_MESSAGE` live c
 7. The server checks membership, deduplication, staleness, and `core-game` validation, then atomically commits state, Sequence number, and outcome before delivery.
 8. A finished Game room remains connected and read-only for gameplay Actions; seated players can continue chatting.
 
-A Lobby briefly retains a disconnected member's seat for five seconds so a page refresh can recover room chat. A reconnect cancels the pending departure. The Lobby page renews a member's WebSocket token through the room token flow; removed players cannot renew membership automatically.
+A Lobby retains disconnected members while another member remains online. When no one is connected, it removes the Lobby after a five-second grace period so a page refresh can recover room chat. A reconnect cancels the pending departure. The Lobby page renews a member's WebSocket token through the room token flow; removed players cannot renew membership automatically.
 
 ## 7) State, Persistence & Scaling
 
