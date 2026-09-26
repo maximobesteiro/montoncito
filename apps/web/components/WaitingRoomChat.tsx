@@ -6,7 +6,8 @@ import type { ChatMessage } from "@/lib/socket-client";
 interface WaitingRoomChatProps {
   messages: ChatMessage[];
   currentPlayerId: string | null;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string) => boolean | void;
+  canSend?: boolean;
   className?: string;
 }
 
@@ -14,6 +15,7 @@ export function WaitingRoomChat({
   messages,
   currentPlayerId,
   onSendMessage,
+  canSend = true,
   className = "",
 }: WaitingRoomChatProps) {
   const [input, setInput] = useState("");
@@ -30,10 +32,9 @@ export function WaitingRoomChat({
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text || !canSend) return;
 
-    onSendMessage(text);
-    setInput("");
+    if (onSendMessage(text) !== false) setInput("");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -45,7 +46,7 @@ export function WaitingRoomChat({
 
   return (
     <div
-      className={`brutal-border p-6 bg-card brutal-shadow flex flex-col h-full min-h-[300px] ${className}`}
+      className={`brutal-border p-6 bg-card brutal-shadow flex flex-col h-full min-w-0 min-h-[300px] ${className}`}
     >
       <h2 className="text-2xl font-bold mb-3">Chat</h2>
 
@@ -85,13 +86,13 @@ export function WaitingRoomChat({
           onKeyDown={handleKeyDown}
           placeholder="Type a message..."
           maxLength={500}
-          className="flex-1 brutal-border px-3 py-2 bg-card text-sm"
+          className="min-w-0 flex-1 brutal-border px-3 py-2 bg-card text-sm"
         />
         <button
           onClick={handleSend}
-          disabled={!input.trim()}
+          disabled={!canSend || !input.trim()}
           className={`brutal-button text-text-on-dark text-sm ${
-            input.trim()
+            canSend && input.trim()
               ? "bg-btn-primary hover:bg-btn-primary-hover"
               : "bg-btn-disabled cursor-not-allowed"
           }`}

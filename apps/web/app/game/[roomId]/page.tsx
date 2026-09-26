@@ -5,6 +5,7 @@ import type { Card } from "@mont/core-game";
 import { useGameRoom } from "@/lib/use-game-room";
 import { formatCardName } from "@/lib/format-card-name";
 import { ActionPanel } from "@/components/game/ActionPanel";
+import { WaitingRoomChat } from "@/components/WaitingRoomChat";
 
 export default function GameRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -17,6 +18,8 @@ export default function GameRoomPage() {
     pendingAction,
     lastActionResult,
     submitAction,
+    chatMessages,
+    sendChat,
   } = useGameRoom(roomId);
 
   if (problem) {
@@ -153,6 +156,13 @@ export default function GameRoomPage() {
             {state.turn.activePlayer}&apos;s turn
           </p>
         </section>
+        <WaitingRoomChat
+          className="max-h-[400px] lg:col-span-2"
+          messages={chatMessages}
+          currentPlayerId={currentPlayerId}
+          canSend={connectionStatus === "connected"}
+          onSendMessage={sendChat}
+        />
       </div>
     </main>
   );
