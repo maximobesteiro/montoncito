@@ -3,6 +3,7 @@
 import type { GameState, PlayerId } from "@mont/core-game";
 import type { ActionSubmission, PlayerAction } from "@mont/game-room";
 import { getValidMoves } from "@/lib/game-actions";
+import { formatCardName } from "@/lib/format-card-name";
 
 interface ActionPanelProps {
   gameState: GameState;
@@ -147,9 +148,5 @@ function describeHandCard(
   handCards: GameState["byId"][string]["hand"]["cards"],
 ): string {
   const card = handCards.find((candidate) => candidate.id === cardId);
-  if (!card) return "card";
-  if (card.kind === "joker") return "Joker";
-  return card.rank === 13
-    ? `King of ${card.suit}`
-    : `${card.rank} of ${card.suit}`;
+  return card ? formatCardName(card) : "card";
 }
