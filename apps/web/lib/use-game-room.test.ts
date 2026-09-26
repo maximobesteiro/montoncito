@@ -396,6 +396,67 @@ describe("useGameRoom reconnect behavior", () => {
     ).toBe(false);
   });
 
+  it.each(["turn", "gameover"] as const)(
+    "sends and receives chat while %s without submitting an Action",
+    async (phase) => {
+      renderHook();
+      harness.effect?.();
+      await flushPromises();
+      const socket = harness.socket!;
+      socket.connect();
+      socket.fire("room.sync.snapshot", {
+        ...snapshot,
+        state: {
+          ...snapshot.state,
+          phase,
+          ...(phase === "gameover" ? { winner: "player-1" } : {}),
+        },
+      });
+      const view = renderHook();
+
+      expect(view.sendChat("Hello")).toBe(true);
+      expect(socket.emitted).toContainEqual({
+        event: "chat",
+        payload: { text: "Hello" },
+      });
+      socket.fire("event", {
+        type: "CHAT_MESSAGE",
+        id: "chat-1",
+        playerId: "player-2",
+        playerName: "Bob",
+        text: "Hi",
+        timestamp: 123,
+      });
+      expect(renderHook().chatMessages).toMatchObject([
+        { playerId: "player-2", playerName: "Bob", text: "Hi" },
+      ]);
+      expect(renderHook().seq).toBe(0);
+      expect(
+        socket.emitted.some((frame) => frame.event === "room.action.submit"),
+      ).toBe(false);
+    },
+  );
+
+  it("does not send chat while disconnected or before synchronization", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    expect(renderHook().sendChat("early")).toBe(false);
+    socket.connect();
+    socket.fire("room.sync.snapshot", snapshot);
+    socket.connected = false;
+    socket.fire("disconnect", "transport close");
+
+    expect(renderHook().sendChat("draft")).toBe(false);
+    expect(socket.emitted.some((frame) => frame.event === "chat")).toBe(false);
+    socket.connected = true;
+    socket.fire("connect");
+    socket.fire("room.sync.snapshot", snapshot);
+    expect(socket.emitted.some((frame) => frame.event === "chat")).toBe(false);
+    expect(renderHook().sendChat("draft")).toBe(true);
+  });
+
   it("stops reconnecting and clears state when credential renewal confirms removal", async () => {
     renderHook();
     harness.effect?.();
