@@ -46,7 +46,9 @@ describe('Game room synchronization over Socket.IO', () => {
     gateway = new RoomsGateway(
       { get: () => secret } as never,
       rooms as never,
-      {} as never,
+      {
+        get: (id: string) => ({ displayName: id === 'P1' ? 'Alice' : 'Bob' }),
+      } as never,
       gameService,
     );
     const namespace = socketServer.of('/ws');
@@ -60,6 +62,9 @@ describe('Game room synchronization over Socket.IO', () => {
       client.on('room.action.submit', (payload: unknown) => {
         void gateway.submitAction(client, payload);
       });
+      client.on('chat', (payload: unknown) =>
+        gateway.handleChat(client, payload as { text: string }),
+      );
     });
     await new Promise<void>((resolve) => httpServer.listen(0, resolve));
     const address = httpServer.address();
@@ -86,6 +91,49 @@ describe('Game room synchronization over Socket.IO', () => {
       state: { id: gameId, players: ['P1', 'P2'] },
     });
     client.disconnect();
+  });
+
+  it.each(['turn', 'gameover'] as const)(
+    'delivers chat between seated players while %s without changing the Action sequence',
+    async (phase) => {
+      const game = gameService.get(gameId);
+      if (phase === 'gameover')
+        game.state = { ...game.state, phase, winner: 'P1' };
+      const sender = await connectAs('P1');
+      const receiver = await connectAs('P2');
+      const ownMessage = waitForChat(sender);
+      const received = waitForChat(receiver);
+
+      sender.emit('chat', { text: ' Hello from Alice ' });
+
+      await expect(ownMessage).resolves.toMatchObject({
+        type: 'CHAT_MESSAGE',
+        playerId: 'P1',
+        playerName: 'Alice',
+        text: 'Hello from Alice',
+      });
+      await expect(received).resolves.toMatchObject({
+        type: 'CHAT_MESSAGE',
+        playerId: 'P1',
+        playerName: 'Alice',
+        text: 'Hello from Alice',
+      });
+      expect(game.meta.seq).toBe(0);
+    },
+  );
+
+  it('does not broadcast chat from a player whose seat was removed', async () => {
+    const sender = await connectAs('P1');
+    const receiver = await connectAs('P2');
+    roomPlayers = [{ id: 'P2' }];
+    let received = false;
+    receiver.on('event', (event: { type: string }) => {
+      if (event.type === 'CHAT_MESSAGE') received = true;
+    });
+
+    sender.emit('chat', { text: 'No longer seated' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(received).toBe(false);
   });
 
   it('broadcasts one Accepted Action result with the full Authoritative state', async () => {
@@ -277,51 +325,54 @@ describe('Game room synchronization over Socket.IO', () => {
       },
     ],
     ['Joker', { kind: 'joker' as const, id: 'wild' }],
-  ])('delivers a %s discard rejection only to the submitting Game room client', async (_name, wild) => {
-    const actionLog = jest.spyOn(console, 'info').mockImplementation();
-    const game = gameService.get(gameId);
-    const activePlayer = game.state.turn.activePlayer;
-    game.state.byId[activePlayer]!.hand.cards = [wild];
-    const stateBefore = JSON.parse(JSON.stringify(game.state));
-    const sender = await connectAs(activePlayer);
-    const observer = await connectAs(activePlayer === 'P1' ? 'P2' : 'P1');
-    let observerReceivedResult = false;
-    observer.on('room.action.rejected', () => {
-      observerReceivedResult = true;
-    });
-    observer.on('room.action.accepted', () => {
-      observerReceivedResult = true;
-    });
-    const actionId = '550e8400-e29b-41d4-a716-446655440023';
-    const rejection = waitForEvent(sender, 'room.action.rejected');
+  ])(
+    'delivers a %s discard rejection only to the submitting Game room client',
+    async (_name, wild) => {
+      const actionLog = jest.spyOn(console, 'info').mockImplementation();
+      const game = gameService.get(gameId);
+      const activePlayer = game.state.turn.activePlayer;
+      game.state.byId[activePlayer]!.hand.cards = [wild];
+      const stateBefore = JSON.parse(JSON.stringify(game.state));
+      const sender = await connectAs(activePlayer);
+      const observer = await connectAs(activePlayer === 'P1' ? 'P2' : 'P1');
+      let observerReceivedResult = false;
+      observer.on('room.action.rejected', () => {
+        observerReceivedResult = true;
+      });
+      observer.on('room.action.accepted', () => {
+        observerReceivedResult = true;
+      });
+      const actionId = '550e8400-e29b-41d4-a716-446655440023';
+      const rejection = waitForEvent(sender, 'room.action.rejected');
 
-    sender.emit('room.action.submit', {
-      version: 1,
-      actionId,
-      baseSeq: 0,
-      action: { kind: 'DISCARD_FROM_HAND', cardId: 'wild', pileIndex: 0 },
-    });
+      sender.emit('room.action.submit', {
+        version: 1,
+        actionId,
+        baseSeq: 0,
+        action: { kind: 'DISCARD_FROM_HAND', cardId: 'wild', pileIndex: 0 },
+      });
 
-    await expect(rejection).resolves.toMatchObject({
-      version: 1,
-      actionId,
-      code: 'ILLEGAL_ACTION',
-      seq: 0,
-      state: stateBefore,
-    });
-    expect(JSON.parse(actionLog.mock.calls[0]![0] as string)).toEqual({
-      roomId: 'room-1',
-      playerId: activePlayer,
-      actionId,
-      seq: 0,
-      outcome: 'rejected',
-    });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(observerReceivedResult).toBe(false);
-    expect(game.meta.seq).toBe(0);
-    expect(game.state.turn.activePlayer).toBe(activePlayer);
-    expect(game.state).toEqual(stateBefore);
-  });
+      await expect(rejection).resolves.toMatchObject({
+        version: 1,
+        actionId,
+        code: 'ILLEGAL_ACTION',
+        seq: 0,
+        state: stateBefore,
+      });
+      expect(JSON.parse(actionLog.mock.calls[0]![0] as string)).toEqual({
+        roomId: 'room-1',
+        playerId: activePlayer,
+        actionId,
+        seq: 0,
+        outcome: 'rejected',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(observerReceivedResult).toBe(false);
+      expect(game.meta.seq).toBe(0);
+      expect(game.state.turn.activePlayer).toBe(activePlayer);
+      expect(game.state).toEqual(stateBefore);
+    },
+  );
 
   it('rejects malformed Action frames without entering the Action sequence', async () => {
     const client = await connectAs('P1');
@@ -463,5 +514,16 @@ describe('Game room synchronization over Socket.IO', () => {
 
   function waitForEvent(client: ClientSocket, event: string): Promise<unknown> {
     return new Promise((resolve) => client.once(event, resolve));
+  }
+
+  function waitForChat(client: ClientSocket): Promise<unknown> {
+    return new Promise((resolve) => {
+      const listener = (event: { type: string }) => {
+        if (event.type !== 'CHAT_MESSAGE') return;
+        client.off('event', listener);
+        resolve(event);
+      };
+      client.on('event', listener);
+    });
   }
 });

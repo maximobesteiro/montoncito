@@ -174,6 +174,8 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const claims = this.conns.get(client.id);
     if (!claims) return;
 
+    if (!this.getCurrentMemberRoom(client, claims)) return;
+
     // Validate message
     const text = data?.text?.trim();
     if (!text || text.length === 0 || text.length > 500) return;

@@ -32,6 +32,7 @@ import {
   getOrCreateClientId,
   getServerUrl,
 } from "./api";
+import type { ChatMessage } from "./socket-client";
 
 export type GameRoomConnectionStatus =
   | "connecting"
@@ -49,6 +50,8 @@ export type GameRoomView = {
   pendingAction: ActionSubmission | null;
   lastActionResult: ActionAccepted | ActionRejected | null;
   submitAction: (action: PlayerAction) => boolean;
+  chatMessages: ChatMessage[];
+  sendChat: (text: string) => boolean;
 };
 
 export function useGameRoom(roomId: string): GameRoomView {
@@ -58,7 +61,9 @@ export function useGameRoom(roomId: string): GameRoomView {
   const [connectionStatus, setConnectionStatus] =
     useState<GameRoomConnectionStatus>("connecting");
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const socketRef = useRef<Socket | null>(null);
+  const chatReadyRef = useRef(false);
   const pendingActionRef = useRef<ActionSubmission | null>(null);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -100,6 +105,19 @@ export function useGameRoom(roomId: string): GameRoomView {
     [roomId],
   );
 
+  const sendChat = useCallback((text: string): boolean => {
+    const trimmed = text.trim();
+    if (
+      !chatReadyRef.current ||
+      !socketRef.current?.connected ||
+      !trimmed ||
+      trimmed.length > 500
+    )
+      return false;
+    socketRef.current.emit("chat", { text: trimmed });
+    return true;
+  }, []);
+
   useEffect(() => {
     let disposed = false;
     let socket: Socket | null = null;
@@ -110,6 +128,8 @@ export function useGameRoom(roomId: string): GameRoomView {
     updateGameRoomSession(sessionRef, setSession, createGameRoomSession);
     setConnectionStatus("connecting");
     socketRef.current = null;
+    chatReadyRef.current = false;
+    setChatMessages([]);
     pendingActionRef.current = null;
 
     const isRemovedError = (error: unknown) =>
@@ -121,6 +141,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       if (retryTimer) clearTimeout(retryTimer);
       clearPendingAction(roomId);
       pendingActionRef.current = null;
+      chatReadyRef.current = false;
       socket?.disconnect();
       updateGameRoomSession(sessionRef, setSession, removeGameRoomSession);
       setConnectionStatus("removed");
@@ -178,6 +199,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
+          chatReadyRef.current = false;
           requestedFreshSnapshot = false;
           updateGameRoomSession(sessionRef, setSession, markGameRoomConnected);
           setConnectionStatus("synchronizing");
@@ -192,6 +214,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             payload,
           );
           if (synchronized.status !== "synchronized") {
+            chatReadyRef.current = false;
             updateGameRoomSession(sessionRef, setSession, () => synchronized);
             setConnectionStatus("failed");
             return;
@@ -202,6 +225,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             (payload as SyncSnapshot).seq < currentGameRoomSession.seq
           ) {
             setConnectionStatus("synchronizing");
+            chatReadyRef.current = false;
             if (!requestedFreshSnapshot) {
               requestedFreshSnapshot = true;
               socket?.emit("room.sync.request", {
@@ -221,6 +245,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             : synchronized;
           updateGameRoomSession(sessionRef, setSession, () => recovered);
           setConnectionStatus("connected");
+          chatReadyRef.current = true;
           if (restored) socket?.emit("room.action.submit", restored);
         });
         socket.on("room.state", (payload: unknown) => {
@@ -262,9 +287,13 @@ export function useGameRoom(roomId: string): GameRoomView {
           updateGameRoomSession(sessionRef, setSession, (previous) =>
             failGameRoomSession(previous, failure),
           );
+          chatReadyRef.current = false;
           setConnectionStatus("failed");
         });
         socket.on("event", (payload: unknown) => {
+          if (isChatMessage(payload)) {
+            setChatMessages((previous) => [...previous, payload]);
+          }
           if (
             typeof payload === "object" &&
             payload !== null &&
@@ -275,10 +304,12 @@ export function useGameRoom(roomId: string): GameRoomView {
           }
         });
         socket.on("connect_error", () => {
+          chatReadyRef.current = false;
           setConnectionStatus("connecting");
           scheduleRenewal();
         });
         socket.on("disconnect", (reason) => {
+          chatReadyRef.current = false;
           if (!disposed && reason !== "io client disconnect") {
             setConnectionStatus("connecting");
             scheduleRenewal();
@@ -302,6 +333,7 @@ export function useGameRoom(roomId: string): GameRoomView {
     void connect();
     return () => {
       disposed = true;
+      chatReadyRef.current = false;
       if (retryTimer) clearTimeout(retryTimer);
       socket?.disconnect();
       if (socketRef.current === socket) socketRef.current = null;
@@ -333,7 +365,29 @@ export function useGameRoom(roomId: string): GameRoomView {
         ? (session.lastActionResult ?? null)
         : null,
     submitAction,
+    chatMessages,
+    sendChat,
   };
+}
+
+function isChatMessage(
+  payload: unknown,
+): payload is ChatMessage & { type: "CHAT_MESSAGE" } {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("type" in payload) ||
+    payload.type !== "CHAT_MESSAGE"
+  )
+    return false;
+  const message = payload as Record<string, unknown>;
+  return (
+    typeof message.id === "string" &&
+    typeof message.playerId === "string" &&
+    typeof message.playerName === "string" &&
+    typeof message.text === "string" &&
+    typeof message.timestamp === "number"
+  );
 }
 
 function updateGameRoomSession(

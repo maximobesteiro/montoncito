@@ -94,7 +94,7 @@
 5. The server verifies current membership and returns a full Authoritative state snapshot.
 6. A player submits an Action with a random Action ID and Base sequence number.
 7. The server checks membership, deduplication, staleness, and `core-game` validation, then atomically commits state, Sequence number, and outcome before delivery.
-8. A finished Game room remains connected and read-only.
+8. A finished Game room remains connected and read-only for gameplay Actions; seated players can continue chatting.
 
 ## 7) State, Persistence & Scaling
 

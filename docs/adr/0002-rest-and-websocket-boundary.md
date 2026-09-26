@@ -11,3 +11,4 @@ REST handles resource-oriented flows such as authentication, profiles, Lobby mem
 - In-room gameplay mutations use WebSockets.
 - Lobby and room metadata can remain cacheable and auditable through REST.
 - Client reconnect logic always recovers through a full Authoritative state snapshot before retrying a Pending Action.
+- Chat stays on the room WebSocket during play and after the match finishes; finished rooms reject gameplay Actions, but chat does not change Authoritative state or its Sequence number.

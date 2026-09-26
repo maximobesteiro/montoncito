@@ -39,7 +39,7 @@
 - Includes minimal **feedback cues** (pulse, color flash, outline) to show accepted/rejected moves.
 
 ### 4. **Chat & Presence**
-- Collapsible side panel for lightweight chat.
+- A contained chat panel in the page flow, positioned so it can become a collapsible side panel in a later layout redesign.
 - Shows connected players and presence indicators.
 - WebSocket-driven updates.
 
