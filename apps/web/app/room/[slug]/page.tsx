@@ -6,7 +6,6 @@ import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient, type ChatMessage } from "@/lib/socket-client";
 import { getRoomSettings, saveRoomSettings } from "@/lib/room-settings-storage";
 import { WaitingRoomChat } from "@/components/WaitingRoomChat";
-import { useGameStore } from "@/stores/game-store";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 
@@ -33,8 +32,6 @@ export default function WaitingRoomPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const sanitizedSlug = useMemo(() => slug.slice(0, 15).toLowerCase(), [slug]);
-
-  const { setRoomId, setCurrentPlayerId } = useGameStore();
 
   const clientId = useMemo(() => {
     try {
@@ -91,10 +88,8 @@ export default function WaitingRoomPage() {
       clientId,
     });
     setRoom(view);
-    setRoomId(view.id);
-    setCurrentPlayerId(clientId);
     return view;
-  }, [clientId, sanitizedSlug, setCurrentPlayerId, setRoomId]);
+  }, [clientId, sanitizedSlug]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,8 +108,6 @@ export default function WaitingRoomPage() {
 
         if (cancelled) return;
         setRoom(view);
-        setRoomId(view.id);
-        setCurrentPlayerId(clientId);
 
         // 1b) If we're the host, re-apply locally saved settings (best-effort).
         // This mitigates room recreation/reset after everyone leaves.
@@ -185,15 +178,7 @@ export default function WaitingRoomPage() {
       // Disconnect so server can treat this as leaving (refresh/navigation/tab close).
       getSocketClient().disconnect();
     };
-  }, [
-    clientId,
-    refetchRoom,
-    router,
-    setCurrentPlayerId,
-    setRoomId,
-    sanitizedSlug,
-    showToast,
-  ]);
+  }, [clientId, refetchRoom, router, sanitizedSlug, showToast]);
 
   useEffect(() => {
     if (!room) return;
