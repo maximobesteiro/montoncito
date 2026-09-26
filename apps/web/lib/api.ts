@@ -1,5 +1,15 @@
 export const DEFAULT_SERVER_URL = "http://localhost:3001";
 
+export class ApiHttpError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiHttpError";
+  }
+}
+
 export function getServerUrl(): string {
   return process.env.NEXT_PUBLIC_SERVER_URL || DEFAULT_SERVER_URL;
 }
@@ -21,21 +31,23 @@ export function getOrCreateClientId(): string {
 
 export async function apiFetch<T>(
   path: string,
-  init?: RequestInit & { clientId?: string }
+  init?: RequestInit & { clientId?: string },
 ): Promise<T> {
   const url = new URL(path, getServerUrl());
   const clientId = init?.clientId;
 
   const headers = new Headers(init?.headers);
   if (clientId) headers.set("x-client-id", clientId);
-  if (!headers.has("content-type")) headers.set("content-type", "application/json");
+  if (!headers.has("content-type"))
+    headers.set("content-type", "application/json");
 
   const res = await fetch(url.toString(), { ...init, headers });
   if (!res.ok) {
     const bodyText = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status} ${res.statusText}: ${bodyText}`);
+    throw new ApiHttpError(
+      res.status,
+      `HTTP ${res.status} ${res.statusText}: ${bodyText}`,
+    );
   }
   return (await res.json()) as T;
 }
-
-

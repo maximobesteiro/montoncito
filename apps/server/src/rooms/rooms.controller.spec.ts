@@ -1,12 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
 import { ConflictException, ForbiddenException } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
 import { RoomsGateway } from '../ws/rooms.gateway';
 import { GameService } from '../game/game.service';
 import { ProfilesService } from '../profiles/profiles.service';
 import jwt from 'jsonwebtoken';
+import request from 'supertest';
 
 let wsGateway: {
   emitStateUpdate: jest.Mock;
@@ -21,6 +23,7 @@ describe('RoomsController', () => {
   let gameService: jest.Mocked<GameService>;
   let mockRoomsService: jest.Mocked<Partial<RoomsService>>;
   let mockGameService: jest.Mocked<Partial<GameService>>;
+  let testingModule: TestingModule;
 
   const mockRoom = {
     id: 'room-123',
@@ -133,7 +136,7 @@ describe('RoomsController', () => {
       applyMove: jest.fn(),
     };
 
-    const module: TestingModule = await Test.createTestingModule({
+    testingModule = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvVars: false })],
       controllers: [RoomsController],
       providers: [
@@ -156,9 +159,9 @@ describe('RoomsController', () => {
       ],
     }).compile();
 
-    controller = module.get<RoomsController>(RoomsController);
-    roomsService = module.get(RoomsService);
-    gameService = module.get(GameService);
+    controller = testingModule.get<RoomsController>(RoomsController);
+    roomsService = testingModule.get(RoomsService);
+    gameService = testingModule.get(GameService);
   });
 
   describe('create', () => {
@@ -610,6 +613,34 @@ describe('RoomsController', () => {
       expect(() =>
         controller.createGameRoomSocketToken('room-123', 'client-1'),
       ).not.toThrow();
+    });
+
+    it('issues a renewed token through the REST route for a current member', async () => {
+      roomsService.getById.mockReturnValue({
+        ...mockRoom,
+        status: 'in_progress',
+        gameId: 'game-123',
+      });
+      const app: INestApplication = testingModule.createNestApplication();
+      await app.init();
+
+      try {
+        const response = await request(app.getHttpServer())
+          .post('/rooms/room-123/socket-token')
+          .set('x-client-id', 'client-1')
+          .expect(201);
+        const claims = jwt.verify(response.body.wsJoinToken, 'test-secret') as {
+          roomId: string;
+          playerId: string;
+        };
+
+        expect(claims).toMatchObject({
+          roomId: 'room-123',
+          playerId: 'client-1',
+        });
+      } finally {
+        await app.close();
+      }
     });
   });
 });

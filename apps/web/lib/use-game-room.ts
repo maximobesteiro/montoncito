@@ -25,7 +25,12 @@ import {
   type ProtocolFailure,
   type GameRoomSession,
 } from "@mont/game-room";
-import { apiFetch, getOrCreateClientId, getServerUrl } from "./api";
+import {
+  apiFetch,
+  ApiHttpError,
+  getOrCreateClientId,
+  getServerUrl,
+} from "./api";
 
 export type GameRoomConnectionStatus =
   | "connecting"
@@ -107,7 +112,8 @@ export function useGameRoom(roomId: string): GameRoomView {
     pendingActionRef.current = null;
 
     const isRemovedError = (error: unknown) =>
-      error instanceof Error && /HTTP (403|404)\b/.test(error.message);
+      error instanceof ApiHttpError &&
+      (error.status === 403 || error.status === 404);
 
     const markRemoved = () => {
       if (disposed) return;
