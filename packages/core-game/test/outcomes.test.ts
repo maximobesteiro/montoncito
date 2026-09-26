@@ -181,6 +181,92 @@ describe("explicit core outcomes", () => {
     });
   });
 
+  it("plays an all-wild Hand, refills, and discards an ordinary card on the same Turn", () => {
+    let state = applyMove(
+      createInitialState(
+        [{ id: "P1" }, { id: "P2" }],
+        [
+          standard("stock-1", 9),
+          ace("stock-2"),
+          standard("king", 13),
+          { kind: "joker", id: "joker" },
+          standard("drawn", 7),
+          standard("later", 6),
+        ],
+        { id: "wild-hand", seed: 1, stockSize: 1, handSize: 2 },
+      ),
+      { kind: "START_GAME" },
+    ).state;
+    expect(state.byId.P1!.hand.cards.map(({ id }) => id)).toEqual([
+      "king",
+      "joker",
+    ]);
+    expect(state.center.buildPiles).toEqual([]);
+
+    const first = applyMove(state, {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "king",
+      target: "new",
+    });
+    expect(first.accepted).toBe(true);
+    state = first.state;
+    expect(state.center.buildPiles[0]?.nextRank).toBe(2);
+    expect(state.turn.activePlayer).toBe("P1");
+
+    const second = applyMove(state, {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "joker",
+      target: "B1",
+    });
+    expect(second.accepted).toBe(true);
+    state = second.state;
+    expect(state.center.buildPiles[0]?.nextRank).toBe(3);
+    expect(state.byId.P1!.hand.cards.map(({ id }) => id)).toEqual([
+      "drawn",
+      "later",
+    ]);
+    expect(second.events).toContainEqual({
+      type: "DrewToHand",
+      payload: { player: "P1", count: 2 },
+    });
+    expect(state.turn.activePlayer).toBe("P1");
+
+    const discard = applyMove(state, {
+      kind: "DISCARD_FROM_HAND",
+      cardId: "drawn",
+      pileIndex: 0,
+    });
+    expect(discard.accepted).toBe(true);
+    expect(discard.state.turn.activePlayer).toBe("P2");
+    expect(discard.state.byId.P1!.discards[0]?.at(-1)?.id).toBe("drawn");
+  });
+
+  it("allows END_TURN after playing the last wild card with no refill or placement", () => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [{ kind: "joker", id: "last-wild" }];
+    state.byId.P1!.stock.faceDown = [standard("blocked-stock", 9)];
+    state.byId.P2!.stock.faceDown = [ace("playable-stock")];
+    state.deck.drawPile = [];
+    state.deck.recyclePile = [];
+
+    const played = applyMove(state, {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "last-wild",
+      target: "new",
+    });
+    expect(played.accepted).toBe(true);
+    expect(played.state.phase).toBe("turn");
+    expect(played.state.byId.P1!.hand.cards).toEqual([]);
+    expect(played.events).toContainEqual({
+      type: "DrewToHand",
+      payload: { player: "P1", count: 0 },
+    });
+
+    const ended = applyMove(played.state, { kind: "END_TURN" });
+    expect(ended.accepted).toBe(true);
+    expect(ended.state.turn.activePlayer).toBe("P2");
+  });
+
   it("automatically refills the next player's Hand after a discard", () => {
     const state = turn();
     state.byId.P1!.hand.cards = [standard("discard", 7)];
@@ -225,6 +311,31 @@ describe("explicit core outcomes", () => {
     ]);
     expect(result.state.byId.P1!.discards[0]?.at(-1)?.id).toBe("discard");
     expect(result.events.map(({ type }) => type)).toContain("TurnEnded");
+    expect(state).toEqual(before);
+  });
+
+  it.each([
+    ["King", standard("wild", 13)],
+    ["Joker", { kind: "joker" as const, id: "wild" }],
+  ])("rejects discarding a %s without changing the Turn", (_name, wild) => {
+    const state = turn();
+    state.byId.P1!.hand.cards = [wild, standard("ordinary", 7)];
+    const before = structuredClone(state);
+    freeze(state);
+
+    const result = applyMove(state, {
+      kind: "DISCARD_FROM_HAND",
+      cardId: "wild",
+      pileIndex: 0,
+    });
+
+    expect(result).toMatchObject({
+      accepted: false,
+      reason: "Wild cards cannot be discarded",
+      state: before,
+    });
+    expect(result.state).toBe(state);
+    expect(result.state.turn.activePlayer).toBe("P1");
     expect(state).toEqual(before);
   });
 

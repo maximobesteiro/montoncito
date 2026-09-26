@@ -58,7 +58,7 @@ export function ActionPanel({
       )}
       {validMoves.canDiscard.length > 0 && (
         <p className="mb-3 text-text-muted">
-          Discard a Hand card at any time to end your Turn.
+          Discard a non-wild Hand card at any time to end your Turn.
         </p>
       )}
       <div className="flex flex-wrap gap-2">

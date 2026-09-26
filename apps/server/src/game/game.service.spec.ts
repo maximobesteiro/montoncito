@@ -1,6 +1,59 @@
 import { GameService } from './game.service';
 
 describe('GameService core outcomes', () => {
+  it.each([
+    [
+      'King',
+      {
+        kind: 'standard' as const,
+        id: 'wild',
+        rank: 13 as const,
+        suit: 'Hearts' as const,
+      },
+    ],
+    ['Joker', { kind: 'joker' as const, id: 'wild' }],
+  ])('rejects a %s discard through the normal Game room action flow', async (_name, wild) => {
+    const service = new GameService();
+    const game = service.create({
+      roomId: 'room',
+      players: ['P1', 'P2'],
+      config: { seed: 1 },
+    });
+    const playerId = game.state.turn.activePlayer;
+    game.state.byId[playerId]!.hand.cards = [
+      wild,
+      { kind: 'standard', id: 'ordinary', rank: 7, suit: 'Hearts' },
+    ];
+    const before = structuredClone(game.state);
+    const original = game.state;
+
+    const rejected = await service.processAction(game.meta.id, {
+      playerId,
+      actionId: '550e8400-e29b-41d4-a716-446655440020',
+      baseSeq: 0,
+      action: { kind: 'DISCARD_FROM_HAND', cardId: 'wild', pileIndex: 0 },
+    });
+
+    expect(rejected).toMatchObject({
+      accepted: false,
+      code: 'ILLEGAL_ACTION',
+      message: 'Wild cards cannot be discarded',
+      seq: 0,
+      state: before,
+    });
+    expect(game.state).toBe(original);
+    expect(game.meta.seq).toBe(0);
+    expect(game.state.turn.activePlayer).toBe(playerId);
+
+    const accepted = await service.processAction(game.meta.id, {
+      playerId,
+      actionId: '550e8400-e29b-41d4-a716-446655440021',
+      baseSeq: 0,
+      action: { kind: 'DISCARD_FROM_HAND', cardId: 'ordinary', pileIndex: 0 },
+    });
+    expect(accepted).toMatchObject({ accepted: true, seq: 1 });
+    expect(game.state.turn.activePlayer).not.toBe(playerId);
+  });
   it('processes an Action once and returns the same outcome for a retry', async () => {
     const service = new GameService();
     const game = service.create({

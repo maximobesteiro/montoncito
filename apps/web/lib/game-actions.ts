@@ -101,8 +101,9 @@ export function getValidMoves(
     }
   }
 
-  // All hand cards can be discarded to any discard pile
+  // Only ordinary Hand cards can be discarded to a Discard pile.
   for (const card of player.hand.cards) {
+    if (isWild(card)) continue;
     for (let i = 0; i < gameState.rules.discardPiles; i++) {
       result.canDiscard.push({ cardId: card.id, pileIndex: i });
     }

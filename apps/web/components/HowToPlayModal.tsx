@@ -87,8 +87,8 @@ export function HowToPlayModal({
               </li>
               <li>
                 <span className="font-bold">End your turn</span>: when you’re
-                done playing, discard <span className="font-bold">1</span> card
-                from your hand onto one of your discard piles.
+                done playing, discard <span className="font-bold">1 non-wild</span>{" "}
+                card from your hand onto one of your discard piles.
               </li>
               <li>
                 <span className="font-bold">Next player</span>: draws back up to{" "}
@@ -103,7 +103,9 @@ export function HowToPlayModal({
             </h3>
             <p className="mt-2 text-text-primary">
               Kings and Jokers are wild and can act as any needed value in a
-              build pile sequence.
+              build pile sequence. They cannot be discarded. If your Hand has only
+              wild cards, play them onto Build piles. When your Hand empties, it
+              refills automatically and your Turn continues.
             </p>
           </section>
 

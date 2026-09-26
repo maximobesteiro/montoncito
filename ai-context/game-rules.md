@@ -62,11 +62,11 @@ A turn consists of the following steps:
    - An Ace, King, or Joker may target `new` to start a new Build pile; the core assigns its identifier.
    - After playing a `12`, the pile is **cleared** into the Recycle pile and removed.
    - If the player empties their Hand, the server automatically refills it to 5 and the Play phase continues.
-   - The player may continue playing while valid moves remain, or choose to discard instead.
+   - The player may continue playing while valid moves remain, or choose to discard a non-wild Hand card instead. An all-wild Hand can start new Build piles; playing it out refills the Hand and continues the same Turn.
 
 2. **Discard**
 
-   At any point during their Turn, the player may **discard** one card from their Hand onto one of their configured Discard piles (top visible), even if a legal play remains.
+   At any point during their Turn, the player may **discard** one non-wild card from their Hand onto one of their configured Discard piles (top visible), even if a legal play remains. Kings and Jokers cannot be discarded.
 
 3. **End of Turn**  
    The accepted discard ends the Turn. The server advances to the next player and automatically refills that player's Hand to 5 cards.
@@ -116,7 +116,7 @@ Setup, Hand refill, Build pile clearing, reshuffling, and winner evaluation are 
 ## 🧩 Card Value Rules
 
 - Standard Cards are ranked 1–13; Build piles require values 1–12.
-- Kings (`13`) and Jokers are wild.
+- Kings (`13`) and Jokers are wild and cannot be discarded from the Hand.
 - No wrap-around; playing 12 removes the completed Build pile.
 - Stock cards can only be played if they match the next required number on a build pile.
 - Discards can only be played if their top card matches the next required number.

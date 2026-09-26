@@ -31,11 +31,11 @@ _Avoid_: Discard pile, waste pile
 ## Cards
 
 **King**:
-A standard rank-13 Card that always acts as a wild card, regardless of Card pack, and may represent the next required rank on a Build pile.
+A standard rank-13 Card that always acts as a wild card, regardless of Card pack, and may represent the next required rank on a Build pile. It cannot be discarded from the Hand.
 _Avoid_: Joker
 
 **Joker**:
-A separate always-wild Card included at two per Card pack. A Joker may represent the next required rank on a Build pile.
+A separate always-wild Card included at two per Card pack. A Joker may represent the next required rank on a Build pile. It cannot be discarded from the Hand.
 _Avoid_: King, rank 13
 
 **Card pack**:
@@ -57,7 +57,7 @@ A player's active connection to a Game room, through which they receive Authorit
 _Avoid_: Game room, Lobby
 
 **Turn**:
-The active player's opportunity to make valid plays and finish by discarding. A player with an empty Hand may finish without discarding only when no card can be drawn and they have no legal placement.
+The active player's opportunity to make valid plays and finish by discarding a non-wild Hand card. A player with an empty Hand may finish without discarding only when no card can be drawn and they have no legal placement.
 _Avoid_: round (a round may contain multiple turns)
 
 **Play phase**:
