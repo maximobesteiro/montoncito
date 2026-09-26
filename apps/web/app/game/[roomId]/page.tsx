@@ -53,6 +53,16 @@ export default function GameRoomPage() {
             {state.phase} · Active player: {state.turn.activePlayer}
             {state.winner ? ` · Winner: ${state.winner}` : ""}
           </p>
+          {connectionStatus === "connecting" && (
+            <p role="status" className="text-sm font-semibold">
+              Reconnecting to the Game room…
+            </p>
+          )}
+          {connectionStatus === "synchronizing" && (
+            <p role="status" className="text-sm font-semibold">
+              Synchronizing Game room…
+            </p>
+          )}
         </div>
         <p className="font-mono text-sm" aria-live="polite">
           Sequence {seq}

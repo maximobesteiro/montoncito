@@ -16,6 +16,7 @@ import {
   receiveGameRoomUpdate,
   receiveGameRoomActionAccepted,
   receiveGameRoomActionRejected,
+  removeGameRoomSession,
   setPendingGameRoomAction,
   type PlayerAction,
   type ActionSubmission,
@@ -24,13 +25,19 @@ import {
   type ProtocolFailure,
   type GameRoomSession,
 } from "@mont/game-room";
-import { apiFetch, getOrCreateClientId, getServerUrl } from "./api";
+import {
+  apiFetch,
+  ApiHttpError,
+  getOrCreateClientId,
+  getServerUrl,
+} from "./api";
 
 export type GameRoomConnectionStatus =
   | "connecting"
   | "synchronizing"
   | "connected"
-  | "failed";
+  | "failed"
+  | "removed";
 
 export type GameRoomView = {
   state: GameState | null;
@@ -49,9 +56,6 @@ export function useGameRoom(roomId: string): GameRoomView {
   );
   const [connectionStatus, setConnectionStatus] =
     useState<GameRoomConnectionStatus>("connecting");
-  const [connectionProblem, setConnectionProblem] = useState<string | null>(
-    null,
-  );
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const pendingActionRef = useRef<ActionSubmission | null>(null);
@@ -70,6 +74,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       }
       const currentSession = sessionRef.current;
       if (currentSession.status !== "synchronized") return false;
+      if (currentSession.state.phase === "gameover") return false;
       const pending: ActionSubmission = {
         version: GAME_ROOM_PROTOCOL_VERSION,
         actionId: crypto.randomUUID(),
@@ -95,11 +100,61 @@ export function useGameRoom(roomId: string): GameRoomView {
   useEffect(() => {
     let disposed = false;
     let socket: Socket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let renewalInFlight = false;
+    let renewalAttempt = 0;
     setSession(createGameRoomSession());
     setConnectionStatus("connecting");
-    setConnectionProblem(null);
     socketRef.current = null;
     pendingActionRef.current = null;
+
+    const isRemovedError = (error: unknown) =>
+      error instanceof ApiHttpError &&
+      (error.status === 403 || error.status === 404);
+
+    const markRemoved = () => {
+      if (disposed) return;
+      if (retryTimer) clearTimeout(retryTimer);
+      clearPendingAction(roomId);
+      pendingActionRef.current = null;
+      socket?.disconnect();
+      setSession((previous) => removeGameRoomSession(previous));
+      setConnectionStatus("removed");
+    };
+
+    const scheduleRenewal = () => {
+      if (disposed || renewalInFlight || retryTimer) return;
+      renewalInFlight = true;
+      const renew = async () => {
+        try {
+          const clientId = getOrCreateClientId();
+          const { wsJoinToken } = await apiFetch<{ wsJoinToken: string }>(
+            `/rooms/${encodeURIComponent(roomId)}/socket-token`,
+            { method: "POST", clientId },
+          );
+          if (disposed || !socket) return;
+          renewalAttempt = 0;
+          renewalInFlight = false;
+          socket.auth = { token: wsJoinToken };
+          if (!socket.connected) socket.connect();
+        } catch (error) {
+          renewalInFlight = false;
+          if (isRemovedError(error)) {
+            markRemoved();
+            return;
+          }
+          if (disposed) return;
+          setConnectionStatus("connecting");
+          const delay = Math.min(1000 * 2 ** renewalAttempt, 15000);
+          renewalAttempt += 1;
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            scheduleRenewal();
+          }, delay);
+        }
+      };
+      void renew();
+    };
 
     const connect = async () => {
       try {
@@ -114,12 +169,13 @@ export function useGameRoom(roomId: string): GameRoomView {
         socket = io(`${getServerUrl()}/ws`, {
           transports: ["websocket"],
           auth: { token: wsJoinToken },
+          autoConnect: false,
+          reconnection: false,
         });
         socketRef.current = socket;
         socket.on("connect", () => {
           setSession((previous) => markGameRoomConnected(previous));
           setConnectionStatus("synchronizing");
-          setConnectionProblem(null);
           socket?.emit("room.sync.request", {
             version: GAME_ROOM_PROTOCOL_VERSION,
           });
@@ -168,34 +224,52 @@ export function useGameRoom(roomId: string): GameRoomView {
                 code: "MALFORMED_MESSAGE",
                 message: "The server returned an invalid protocol failure",
               };
+          if (failure.code === "NOT_A_MEMBER") {
+            markRemoved();
+            return;
+          }
           setSession((previous) => failGameRoomSession(previous, failure));
           setConnectionStatus("failed");
         });
-        socket.on("connect_error", (error: Error) => {
-          setConnectionStatus("failed");
-          setConnectionProblem(
-            error.message || "Unable to connect to the Game room",
-          );
+        socket.on("event", (payload: unknown) => {
+          if (
+            typeof payload === "object" &&
+            payload !== null &&
+            "type" in payload &&
+            payload.type === "KICKED"
+          ) {
+            markRemoved();
+          }
+        });
+        socket.on("connect_error", () => {
+          setConnectionStatus("connecting");
+          scheduleRenewal();
         });
         socket.on("disconnect", (reason) => {
           if (!disposed && reason !== "io client disconnect") {
             setConnectionStatus("connecting");
+            scheduleRenewal();
           }
         });
+        socket.connect();
       } catch (error) {
         if (disposed) return;
-        setConnectionStatus("failed");
-        setConnectionProblem(
-          error instanceof Error
-            ? error.message
-            : "Unable to connect to the Game room",
-        );
+        if (isRemovedError(error)) {
+          markRemoved();
+        } else {
+          setConnectionStatus("connecting");
+          retryTimer = setTimeout(() => {
+            retryTimer = null;
+            void connect();
+          }, 1000);
+        }
       }
     };
 
     void connect();
     return () => {
       disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
       socket?.disconnect();
       if (socketRef.current === socket) socketRef.current = null;
     };
@@ -205,9 +279,18 @@ export function useGameRoom(roomId: string): GameRoomView {
     state: session.status === "synchronized" ? session.state : null,
     seq: session.status === "synchronized" ? session.seq : null,
     currentPlayerId,
-    connectionStatus: session.status === "failed" ? "failed" : connectionStatus,
+    connectionStatus:
+      session.status === "failed"
+        ? "failed"
+        : session.status === "removed"
+          ? "removed"
+          : connectionStatus,
     problem:
-      session.status === "failed" ? session.problem.message : connectionProblem,
+      session.status === "failed"
+        ? session.problem.message
+        : session.status === "removed"
+          ? "You are no longer a member of this Game room"
+          : null,
     pendingAction:
       session.status === "synchronized"
         ? (session.pendingAction ?? null)
