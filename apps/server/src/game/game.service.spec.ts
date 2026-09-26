@@ -106,6 +106,84 @@ describe('GameService core outcomes', () => {
     expect(service.get(game.meta.id).meta.seq).toBe(2);
   });
 
+  it('serializes concurrent retries so only one state transition is committed', async () => {
+    const service = new GameService();
+    const game = service.create({
+      roomId: 'room',
+      players: ['P1', 'P2'],
+      config: { seed: 1 },
+    });
+    const playerId = game.state.turn.activePlayer;
+    const submission = {
+      playerId,
+      actionId: '550e8400-e29b-41d4-a716-446655440013',
+      baseSeq: 0,
+      action: {
+        kind: 'DISCARD_FROM_HAND' as const,
+        cardId: game.state.byId[playerId]!.hand.cards[0]!.id,
+        pileIndex: 0,
+      },
+    };
+
+    const [first, second] = await Promise.all([
+      service.processAction(game.meta.id, submission),
+      service.processAction(game.meta.id, submission),
+    ]);
+
+    expect([first, second].map((result) => result.accepted)).toEqual([
+      true,
+      true,
+    ]);
+    expect([first, second].filter((result) => result.duplicate)).toHaveLength(
+      1,
+    );
+    expect(game.meta.seq).toBe(1);
+  });
+
+  it('replays a retained rejection with the latest Authoritative state', async () => {
+    const service = new GameService();
+    const game = service.create({
+      roomId: 'room',
+      players: ['P1', 'P2'],
+      config: { seed: 1 },
+    });
+    const firstPlayer = game.state.turn.activePlayer;
+    const submission = {
+      playerId: firstPlayer,
+      actionId: '550e8400-e29b-41d4-a716-446655440014',
+      baseSeq: 3,
+      action: { kind: 'END_TURN' as const },
+    };
+
+    const rejected = await service.processAction(game.meta.id, submission);
+    const legalAction = await service.processAction(game.meta.id, {
+      playerId: firstPlayer,
+      actionId: '550e8400-e29b-41d4-a716-446655440015',
+      baseSeq: 0,
+      action: {
+        kind: 'DISCARD_FROM_HAND',
+        cardId: game.state.byId[firstPlayer]!.hand.cards[0]!.id,
+        pileIndex: 0,
+      },
+    });
+    const retry = await service.processAction(game.meta.id, submission);
+
+    expect(rejected).toMatchObject({
+      accepted: false,
+      code: 'STALE_BASE_SEQ',
+      seq: 0,
+    });
+    expect(legalAction).toMatchObject({ accepted: true, seq: 1 });
+    expect(retry).toMatchObject({
+      accepted: false,
+      code: 'STALE_BASE_SEQ',
+      seq: 1,
+      state: legalAction.state,
+      duplicate: true,
+    });
+    expect(game.meta.seq).toBe(1);
+  });
+
   it('rejects a stale Action without advancing authoritative state or sequence', async () => {
     const service = new GameService();
     const game = service.create({
@@ -159,5 +237,37 @@ describe('GameService core outcomes', () => {
       seq: 1,
     });
     expect(service.get(game.meta.id).meta.seq).toBe(1);
+  });
+
+  it('rejects reuse of an Action ID with a changed Base sequence number', async () => {
+    const service = new GameService();
+    const game = service.create({
+      roomId: 'room',
+      players: ['P1', 'P2'],
+      config: { seed: 1 },
+    });
+    const playerId = game.state.turn.activePlayer;
+    const actionId = '550e8400-e29b-41d4-a716-446655440016';
+    const action = { kind: 'END_TURN' as const };
+
+    await service.processAction(game.meta.id, {
+      playerId,
+      actionId,
+      baseSeq: 0,
+      action,
+    });
+    const conflict = await service.processAction(game.meta.id, {
+      playerId,
+      actionId,
+      baseSeq: 1,
+      action,
+    });
+
+    expect(conflict).toMatchObject({
+      accepted: false,
+      code: 'ACTION_ID_CONFLICT',
+      seq: 0,
+    });
+    expect(game.meta.seq).toBe(0);
   });
 });

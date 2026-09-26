@@ -24,6 +24,7 @@ import {
   type ActionRejected,
   type ProtocolFailure,
   type GameRoomSession,
+  type SyncSnapshot,
 } from "@mont/game-room";
 import {
   apiFetch,
@@ -72,13 +73,13 @@ export function useGameRoom(roomId: string): GameRoomView {
       ) {
         return false;
       }
-      const currentSession = sessionRef.current;
-      if (currentSession.status !== "synchronized") return false;
-      if (currentSession.state.phase === "gameover") return false;
+      const currentGameRoomSession = sessionRef.current;
+      if (currentGameRoomSession.status !== "synchronized") return false;
+      if (currentGameRoomSession.state.phase === "gameover") return false;
       const pending: ActionSubmission = {
         version: GAME_ROOM_PROTOCOL_VERSION,
         actionId: crypto.randomUUID(),
-        baseSeq: currentSession.seq,
+        baseSeq: currentGameRoomSession.seq,
         action,
       };
       try {
@@ -90,7 +91,9 @@ export function useGameRoom(roomId: string): GameRoomView {
         return false;
       }
       pendingActionRef.current = pending;
-      setSession((previous) => setPendingGameRoomAction(previous, pending));
+      updateGameRoomSession(sessionRef, setSession, (previous) =>
+        setPendingGameRoomAction(previous, pending),
+      );
       activeSocket.emit("room.action.submit", pending);
       return true;
     },
@@ -103,7 +106,8 @@ export function useGameRoom(roomId: string): GameRoomView {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let renewalInFlight = false;
     let renewalAttempt = 0;
-    setSession(createGameRoomSession());
+    let requestedFreshSnapshot = false;
+    updateGameRoomSession(sessionRef, setSession, createGameRoomSession);
     setConnectionStatus("connecting");
     socketRef.current = null;
     pendingActionRef.current = null;
@@ -118,7 +122,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       clearPendingAction(roomId);
       pendingActionRef.current = null;
       socket?.disconnect();
-      setSession((previous) => removeGameRoomSession(previous));
+      updateGameRoomSession(sessionRef, setSession, removeGameRoomSession);
       setConnectionStatus("removed");
     };
 
@@ -174,35 +178,62 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
-          setSession((previous) => markGameRoomConnected(previous));
+          requestedFreshSnapshot = false;
+          updateGameRoomSession(sessionRef, setSession, markGameRoomConnected);
           setConnectionStatus("synchronizing");
           socket?.emit("room.sync.request", {
             version: GAME_ROOM_PROTOCOL_VERSION,
           });
         });
         socket.on("room.sync.snapshot", (payload: unknown) => {
+          const currentGameRoomSession = sessionRef.current;
+          const synchronized = receiveGameRoomSnapshot(
+            currentGameRoomSession,
+            payload,
+          );
+          if (synchronized.status !== "synchronized") {
+            updateGameRoomSession(sessionRef, setSession, () => synchronized);
+            setConnectionStatus("failed");
+            return;
+          }
+          if (
+            currentGameRoomSession.status === "synchronized" &&
+            synchronized === currentGameRoomSession &&
+            (payload as SyncSnapshot).seq < currentGameRoomSession.seq
+          ) {
+            setConnectionStatus("synchronizing");
+            if (!requestedFreshSnapshot) {
+              requestedFreshSnapshot = true;
+              socket?.emit("room.sync.request", {
+                version: GAME_ROOM_PROTOCOL_VERSION,
+              });
+            }
+            return;
+          }
+
+          requestedFreshSnapshot = false;
           const restored = readPendingAction(roomId);
           if (restored) {
             pendingActionRef.current = restored;
           }
-          setSession((previous) => {
-            const synchronized = receiveGameRoomSnapshot(previous, payload);
-            return restored
-              ? setPendingGameRoomAction(synchronized, restored)
-              : synchronized;
-          });
+          const recovered = restored
+            ? setPendingGameRoomAction(synchronized, restored)
+            : synchronized;
+          updateGameRoomSession(sessionRef, setSession, () => recovered);
           setConnectionStatus("connected");
           if (restored) socket?.emit("room.action.submit", restored);
         });
         socket.on("room.state", (payload: unknown) => {
-          setSession((previous) => receiveGameRoomUpdate(previous, payload));
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
+            receiveGameRoomUpdate(previous, payload),
+          );
         });
         socket.on("room.action.accepted", (payload: unknown) => {
           const result = ActionAcceptedSchema.safeParse(payload);
           if (result.success) {
             clearMatchingPendingAction(roomId, result.data, pendingActionRef);
           }
-          setSession((previous) =>
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
             receiveGameRoomActionAccepted(previous, payload),
           );
         });
@@ -211,7 +242,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           if (result.success) {
             clearMatchingPendingAction(roomId, result.data, pendingActionRef);
           }
-          setSession((previous) =>
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
             receiveGameRoomActionRejected(previous, payload),
           );
         });
@@ -228,7 +259,9 @@ export function useGameRoom(roomId: string): GameRoomView {
             markRemoved();
             return;
           }
-          setSession((previous) => failGameRoomSession(previous, failure));
+          updateGameRoomSession(sessionRef, setSession, (previous) =>
+            failGameRoomSession(previous, failure),
+          );
           setConnectionStatus("failed");
         });
         socket.on("event", (payload: unknown) => {
@@ -301,6 +334,17 @@ export function useGameRoom(roomId: string): GameRoomView {
         : null,
     submitAction,
   };
+}
+
+function updateGameRoomSession(
+  sessionRef: { current: GameRoomSession },
+  setSession: (session: GameRoomSession) => void,
+  transition: (session: GameRoomSession) => GameRoomSession,
+): GameRoomSession {
+  const updated = transition(sessionRef.current);
+  sessionRef.current = updated;
+  setSession(updated);
+  return updated;
 }
 
 const pendingStorageKey = (roomId: string) =>

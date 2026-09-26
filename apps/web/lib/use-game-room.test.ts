@@ -242,6 +242,113 @@ describe("useGameRoom reconnect behavior", () => {
     ).toBe(false);
   });
 
+  it("does not retry a Pending Action after receiving an invalid snapshot", async () => {
+    const pendingAction = {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440019",
+      baseSeq: 0,
+      action: { kind: "END_TURN" },
+    };
+    window.sessionStorage.setItem(
+      `montoncito:${roomId}:pending-action`,
+      JSON.stringify(pendingAction),
+    );
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.connect();
+
+    socket.fire("room.sync.snapshot", {
+      version: 1,
+      seq: -1,
+      state: snapshot.state,
+    });
+
+    expect(
+      socket.emitted.some((frame) => frame.event === "room.action.submit"),
+    ).toBe(false);
+    expect(renderHook().connectionStatus).toBe("failed");
+  });
+
+  it("does not retry a Pending Action from a snapshot older than current state", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.connect();
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+    renderHook();
+
+    const pendingAction = {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440022",
+      baseSeq: 4,
+      action: { kind: "END_TURN" },
+    };
+    window.sessionStorage.setItem(
+      `montoncito:${roomId}:pending-action`,
+      JSON.stringify(pendingAction),
+    );
+
+    const syncRequestsBeforeStaleSnapshot = socket.emitted.filter(
+      (frame) => frame.event === "room.sync.request",
+    ).length;
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 4 });
+
+    expect(
+      socket.emitted.some((frame) => frame.event === "room.action.submit"),
+    ).toBe(false);
+    expect(
+      socket.emitted.filter((frame) => frame.event === "room.sync.request"),
+    ).toHaveLength(syncRequestsBeforeStaleSnapshot + 1);
+
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+
+    expect(
+      socket.emitted.find((frame) => frame.event === "room.action.submit")
+        ?.payload,
+    ).toEqual(pendingAction);
+    expect(renderHook().seq).toBe(5);
+  });
+
+  it("preserves a newer broadcast that has not rendered before a snapshot arrives", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.connect();
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+    renderHook();
+
+    const newerState = {
+      ...snapshot.state,
+      turn: { ...snapshot.state.turn, number: 6 },
+    };
+    socket.fire("room.state", {
+      version: 1,
+      seq: 6,
+      state: newerState,
+    });
+    const pendingAction = {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440023",
+      baseSeq: 4,
+      action: { kind: "END_TURN" },
+    };
+    window.sessionStorage.setItem(
+      `montoncito:${roomId}:pending-action`,
+      JSON.stringify(pendingAction),
+    );
+
+    socket.fire("room.sync.snapshot", { ...snapshot, seq: 5 });
+
+    expect(
+      socket.emitted.some((frame) => frame.event === "room.action.submit"),
+    ).toBe(false);
+    expect(renderHook()).toMatchObject({ seq: 6, state: newerState });
+  });
+
   it("clears pending storage and Authoritative state when membership is removed", async () => {
     renderHook();
     harness.effect?.();
