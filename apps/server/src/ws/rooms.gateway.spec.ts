@@ -18,6 +18,8 @@ describe('Game room synchronization over Socket.IO', () => {
   let baseUrl: string;
   let clients: ClientSocket[];
   let roomPlayers: { id: string }[];
+  let roomGameId: string | undefined;
+  let leaveRoom: jest.Mock;
 
   beforeEach(async () => {
     httpServer = createServer();
@@ -31,12 +33,15 @@ describe('Game room synchronization over Socket.IO', () => {
     });
     gameId = game.meta.id;
     roomPlayers = [{ id: 'P1' }, { id: 'P2' }];
+    roomGameId = gameId;
+    leaveRoom = jest.fn(({ clientId }: { clientId: string }) => {
+      roomPlayers = roomPlayers.filter((player) => player.id !== clientId);
+      return { room: { players: roomPlayers, gameId: roomGameId } };
+    });
     const rooms = {
-      getById: () => ({ players: roomPlayers, gameId }),
-      leave: jest.fn(({ clientId }: { clientId: string }) => {
-        roomPlayers = roomPlayers.filter((player) => player.id !== clientId);
-        return { room: { players: roomPlayers, gameId } };
-      }),
+      getById: () => ({ players: roomPlayers, gameId: roomGameId }),
+      leave: leaveRoom,
+      toView: () => ({}),
     };
     gateway = new RoomsGateway(
       { get: () => secret } as never,
@@ -240,13 +245,28 @@ describe('Game room synchronization over Socket.IO', () => {
     expect(gameService.get(gameId).meta.seq).toBe(0);
   });
 
-  it('retains Game room membership when a socket disconnects for recovery', async () => {
+  it('retains active Game room membership when a socket disconnects for recovery', async () => {
     const client = await connectAs('P1');
 
     client.disconnect();
     await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(roomPlayers).toContainEqual({ id: 'P1' });
+    expect(leaveRoom).not.toHaveBeenCalled();
+  });
+
+  it('releases an open Lobby seat when its last socket disconnects', async () => {
+    roomGameId = undefined;
+    const client = await connectAs('P1');
+
+    client.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(roomPlayers).not.toContainEqual({ id: 'P1' });
+    expect(leaveRoom).toHaveBeenCalledWith({
+      roomId: 'room-1',
+      clientId: 'P1',
+    });
   });
 
   it('synchronizes finished games as read-only and rejects new Actions consistently', async () => {

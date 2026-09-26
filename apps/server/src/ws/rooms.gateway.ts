@@ -93,6 +93,20 @@ export class RoomsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       set.delete(client.id);
       if (set.size === 0) {
         this.byPlayer.delete(k);
+        try {
+          const room = this.rooms.getById(claims.roomId);
+          if (room.gameId) return;
+
+          const result = this.rooms.leave({
+            roomId: claims.roomId,
+            clientId: claims.playerId,
+          });
+          if (!result.deleted && result.room) {
+            this.emitRoomUpdated(claims.roomId, this.rooms.toView(result.room));
+          }
+        } catch {
+          // A Game room retains membership; an absent room needs no cleanup.
+        }
         return;
       }
     }
