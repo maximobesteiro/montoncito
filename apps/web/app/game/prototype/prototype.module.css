@@ -154,7 +154,7 @@
 }
 .v4Table {
   display: grid;
-  grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.3fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.9rem;
   align-items: start;
 }
@@ -164,6 +164,7 @@
 }
 .v4Player {
   display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
   gap: 0.9rem;
 }
 .stock,
@@ -501,12 +502,6 @@ button.card:hover {
   .variant4 {
     grid-template-columns: 1fr;
   }
-  .v4Table {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .v4Discards {
-    grid-column: 1 / -1;
-  }
 }
 @media (max-width: 700px) {
   .prototype {
@@ -558,13 +553,6 @@ button.card:hover {
     display: flex;
     flex-direction: column;
   }
-  .v4Table {
-    display: flex;
-    flex-direction: column;
-  }
-  .v4Table > div {
-    width: 100%;
-  }
   .v4Compare {
     display: contents;
   }
@@ -596,6 +584,11 @@ button.card:hover {
   }
   .switcher span {
     min-width: 0;
+  }
+}
+@media (max-width: 480px) {
+  .v4Player {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 380px) {
