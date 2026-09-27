@@ -1,0 +1,605 @@
+.prototype {
+  --ink: #172c2b;
+  --line: #172c2b;
+  --paper: #fffdf5;
+  --accent: #c8ee65;
+  color: var(--ink);
+  background: #e9eee5;
+  min-height: 100vh;
+  padding: 1.25rem 1.25rem 8rem;
+  font-family: var(--font-geist-sans), sans-serif;
+}
+.prototype * {
+  box-sizing: border-box;
+}
+.prototype button {
+  cursor: pointer;
+  font: inherit;
+}
+.prototype button:focus-visible {
+  outline: 3px solid #2764ce;
+  outline-offset: 3px;
+}
+.intro {
+  max-width: 1520px;
+  margin: 0 auto 1rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+.eyebrow {
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+.intro h1 {
+  font-size: clamp(1.6rem, 3vw, 2.6rem);
+  line-height: 1.15;
+  font-weight: 900;
+}
+.intro h1 span {
+  color: #366b50;
+}
+.intro p {
+  margin: 0.2rem 0;
+}
+.turn {
+  flex-shrink: 0;
+  border: 2px solid var(--line);
+  background: var(--accent);
+  padding: 0.6rem 1rem;
+  font-weight: 800;
+}
+.turn span {
+  display: block;
+  font-size: 0.8rem;
+}
+.feedback {
+  max-width: 1520px;
+  margin: 0 auto 1rem;
+  background: #deebf5;
+  border-left: 5px solid #2764ce;
+  padding: 0.65rem 1rem;
+  min-height: 2.8rem;
+  font-size: 0.9rem;
+}
+.variant3,
+.variant2,
+.variant4 {
+  max-width: 1520px;
+  margin: 0 auto;
+  gap: 0.9rem;
+}
+.variant3 > div,
+.variant2 > div,
+.variant4 > div {
+  min-width: 0;
+}
+.variant3 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 260px);
+  grid-template-areas: "opponents chat" "table chat" "tray tray";
+}
+.v3Opponents {
+  grid-area: opponents;
+}
+.v3Table {
+  grid-area: table;
+}
+.v3Chat {
+  grid-area: chat;
+}
+.v3Tray {
+  grid-area: tray;
+}
+.v3Tray {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) minmax(260px, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+  background: #d6e8d4;
+  border: 3px solid var(--line);
+  padding: 0.9rem;
+}
+.variant2 {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 195px minmax(0, 1.2fr);
+  grid-template-areas: "opponents opponents chat" "hand stock builds" "discards stock builds";
+  align-items: start;
+}
+.v2Opponents {
+  grid-area: opponents;
+}
+.v2Hand {
+  grid-area: hand;
+}
+.v2Stock {
+  grid-area: stock;
+}
+.v2Builds {
+  grid-area: builds;
+}
+.v2Discards {
+  grid-area: discards;
+}
+.v2Chat {
+  grid-area: chat;
+}
+.v2Stock {
+  align-self: stretch;
+  background: #c8ee65;
+  border: 3px solid var(--line);
+  padding: 0.5rem;
+  display: flex;
+  align-items: center;
+}
+.v2Stock .stock {
+  width: 100%;
+}
+.variant4 {
+  display: grid;
+  grid-template-columns: minmax(340px, 1.1fr) minmax(0, 1fr);
+  grid-template-areas: "compare builds" "compare player";
+  align-items: start;
+}
+.v4Compare {
+  grid-area: compare;
+  display: grid;
+  gap: 0.9rem;
+}
+.v4Builds {
+  grid-area: builds;
+}
+.v4Player {
+  grid-area: player;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: 170px minmax(0, 1fr);
+}
+.v4Player .discards {
+  grid-column: 1 / -1;
+}
+.stock,
+.discards,
+.hand,
+.builds,
+.opponents,
+.chat {
+  border: 2px solid var(--line);
+  background: var(--paper);
+  padding: 0.8rem;
+  min-width: 0;
+}
+.ownStock {
+  background: #ecf7cc;
+}
+.sectionHeading,
+.opponentHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.sectionHeading span,
+.opponentHeader span,
+.hint {
+  font-size: 0.75rem;
+  color: #445954;
+}
+.sectionHeading span {
+  font-weight: 800;
+}
+.stock h2,
+.discards h2,
+.hand h2,
+.builds h2,
+.opponents h2,
+.chat h2 {
+  font-size: 0.9rem;
+  font-weight: 850;
+  margin: 0 0 0.7rem;
+}
+.stockVisual {
+  position: relative;
+  width: fit-content;
+  margin: 0.8rem auto;
+  padding: 0 5px 5px 0;
+}
+.stockBack {
+  position: absolute;
+  inset: 5px 0 0 5px;
+  border: 2px solid var(--line);
+  background: #446679;
+  transform: translate(3px, 3px);
+}
+.hint {
+  margin: 0.5rem 0 0;
+}
+.card {
+  border: 2px solid var(--line);
+  border-radius: 5px;
+  background: white;
+  color: #162d2c;
+  width: 66px;
+  height: 90px;
+  flex: 0 0 66px;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  font-size: 1.45rem;
+  line-height: 1;
+  box-shadow: 2px 2px 0 #172c2b;
+}
+.card span {
+  align-self: flex-end;
+  font-size: 1.3rem;
+}
+.card.red {
+  color: #b02830;
+}
+.card.back {
+  background: #446679;
+  color: white;
+  justify-content: center;
+  align-items: center;
+}
+.card.smallCard {
+  width: 47px;
+  height: 66px;
+  flex-basis: 47px;
+  font-size: 1rem;
+}
+.smallCard span {
+  font-size: 1rem;
+}
+button.card:hover {
+  transform: translateY(-3px);
+}
+.card.selected {
+  outline: 4px solid #277b43;
+  outline-offset: 2px;
+  background: #ebffc0;
+}
+.buildGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+.buildSlot {
+  display: grid;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  text-align: center;
+}
+.destination {
+  display: block;
+  border: 3px solid transparent;
+  border-radius: 7px;
+  padding: 0.2rem;
+  background: transparent;
+}
+.destination:disabled {
+  cursor: default;
+}
+.destination.possible {
+  border-color: #257e3e;
+  background: #c8ee65;
+  box-shadow: 0 0 0 2px white inset;
+}
+.destination.possible:hover {
+  background: #a5dd38;
+}
+.emptyCard {
+  display: grid;
+  place-items: center;
+  border: 2px dashed #658274;
+  border-radius: 5px;
+  width: 66px;
+  height: 90px;
+  font-size: 2rem;
+}
+.handCards {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+.discardGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.discardPile {
+  background: #f2f3e9;
+  border: 1px solid #80948a;
+  padding: 0.35rem;
+  min-width: 74px;
+}
+.pileTitle {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  margin-bottom: 0.4rem;
+}
+.pileTitle button {
+  border: 0;
+  background: transparent;
+  color: #195d42;
+  padding: 0;
+  text-decoration: underline;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+.sequence {
+  display: flex;
+  align-items: start;
+  padding-right: 0.2rem;
+}
+.sequence > * + * {
+  margin-left: -25px;
+}
+.sequence.openSequence {
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.sequence.openSequence > * + * {
+  margin-left: 0;
+}
+.discardDrop {
+  display: block;
+  margin-top: 0.4rem;
+  width: 100%;
+  border: 2px dashed #257e3e;
+  background: #e6f6d0;
+  padding: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.groupTitle {
+  margin: 0 0 0.7rem;
+}
+.opponents {
+  display: grid;
+  gap: 0.6rem;
+}
+.opponent {
+  border: 1px solid #8da297;
+  background: #f2f3e9;
+  padding: 0.65rem;
+  min-width: 0;
+}
+.opponentHeader h2 {
+  margin: 0 0 0.5rem;
+}
+.opponentContent {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.opponentContent .stock,
+.opponentContent .discards {
+  border-width: 1px;
+}
+.opponentContent .discards {
+  flex: 1 1 220px;
+}
+.compactOpponents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+.compactOpponents .groupTitle {
+  flex-basis: 100%;
+}
+.compactOpponent {
+  flex: 1 1 240px;
+}
+.compactOpponent .opponentContent .stock {
+  padding: 0.4rem;
+}
+.compactOpponent .opponentContent .discards {
+  padding: 0.4rem;
+}
+.compactOpponent .discardPile {
+  min-width: 56px;
+}
+.compactOpponent .pileTitle {
+  flex-direction: column;
+  align-items: start;
+}
+.chat {
+  align-self: start;
+}
+.chatToggle {
+  border: 2px solid var(--line);
+  background: #dcebe8;
+  padding: 0.45rem 0.65rem;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+.chatBody {
+  display: none;
+  margin-top: 0.7rem;
+}
+.chatOpen .chatBody {
+  display: block;
+}
+.chatBody p {
+  border-top: 1px solid #adbdb2;
+  margin: 0;
+  padding: 0.6rem 0;
+  font-size: 0.85rem;
+}
+.v3Chat .chat,
+.v4Compare .chat {
+  position: sticky;
+  top: 1rem;
+}
+.switcher {
+  position: fixed;
+  z-index: 30;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  background: #172c2b;
+  color: white;
+  box-shadow: 4px 4px 0 #6a8e78;
+  border-radius: 100px;
+  padding: 0.25rem;
+  max-width: calc(100vw - 1rem);
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-align: center;
+}
+.switcher span {
+  min-width: 170px;
+  padding: 0 0.5rem;
+}
+.switcher button {
+  border: 0;
+  border-radius: 100%;
+  background: #c8ee65;
+  color: #172c2b;
+  font-size: 1.4rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 2.5rem;
+}
+
+@media (max-width: 1050px) {
+  .variant3 {
+    grid-template-columns: minmax(0, 1fr) 200px;
+  }
+  .v3Tray {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+  .v3Tray .hand {
+    grid-column: 1 / -1;
+  }
+  .variant2 {
+    grid-template-columns: minmax(0, 1fr) 170px minmax(0, 1fr);
+    grid-template-areas: "opponents opponents opponents" "hand stock builds" "discards discards builds" "chat chat chat";
+  }
+  .variant4 {
+    grid-template-columns: 1fr;
+    grid-template-areas: "compare" "builds" "player";
+  }
+}
+@media (max-width: 700px) {
+  .prototype {
+    padding: 0.9rem 0.6rem 7rem;
+  }
+  .intro {
+    align-items: start;
+  }
+  .turn {
+    padding: 0.4rem;
+    font-size: 0.8rem;
+  }
+  .turn span {
+    font-size: 0.7rem;
+  }
+  .variant3 {
+    display: flex;
+    flex-direction: column;
+  }
+  .v3Opponents {
+    order: 1;
+    width: 100%;
+  }
+  .v3Table {
+    order: 2;
+    width: 100%;
+  }
+  .v3Tray {
+    order: 3;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .v3Chat {
+    position: absolute;
+  }
+  .v3Tray > * {
+    width: 100%;
+  }
+  .variant2 {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "opponents opponents" "stock builds" "hand hand" "discards discards" "chat chat";
+  }
+  .v2Stock {
+    align-self: stretch;
+  }
+  .variant4 {
+    display: flex;
+    flex-direction: column;
+  }
+  .v4Compare {
+    display: contents;
+  }
+  .v4Compare .opponents {
+    order: 1;
+    width: 100%;
+  }
+  .v4Builds {
+    order: 2;
+  }
+  .v4Player {
+    order: 3;
+  }
+  .v4Compare .chat {
+    order: 4;
+    width: 100%;
+  }
+  .v4Compare,
+  .v4Builds,
+  .v4Player {
+    width: 100%;
+  }
+  .v4Player {
+    grid-template-columns: 1fr;
+  }
+  .v4Player .discards {
+    grid-column: 1;
+  }
+  .v3Chat .chat,
+  .v2Chat .chat {
+    position: fixed;
+    z-index: 20;
+    bottom: 4.5rem;
+    right: 0.6rem;
+    width: min(340px, calc(100vw - 1.2rem));
+    box-shadow: 3px 3px 0 var(--line);
+  }
+  .v4Compare .chat {
+    position: static;
+  }
+  .compactOpponents {
+    flex-direction: column;
+  }
+  .compactOpponent {
+    flex-basis: auto;
+  }
+  .switcher {
+    bottom: 0.5rem;
+  }
+  .switcher span {
+    min-width: 0;
+  }
+}
+@media (max-width: 380px) {
+  .variant2 {
+    grid-template-areas: "opponents opponents" "stock stock" "builds builds" "hand hand" "discards discards" "chat chat";
+  }
+}
