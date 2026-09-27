@@ -65,6 +65,15 @@
   min-height: 2.8rem;
   font-size: 0.9rem;
 }
+.feedbackHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .variant3,
 .variant2,
 .variant4 {
@@ -140,26 +149,22 @@
 }
 .variant4 {
   display: grid;
-  grid-template-columns: minmax(340px, 1.1fr) minmax(0, 1fr);
-  grid-template-areas: "compare builds" "compare player";
+  grid-template-columns: minmax(0, 7fr) minmax(260px, 3fr);
+  align-items: start;
+}
+.v4Table {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.3fr);
+  gap: 0.9rem;
   align-items: start;
 }
 .v4Compare {
-  grid-area: compare;
   display: grid;
   gap: 0.9rem;
-}
-.v4Builds {
-  grid-area: builds;
 }
 .v4Player {
-  grid-area: player;
   display: grid;
   gap: 0.9rem;
-  grid-template-columns: 170px minmax(0, 1fr);
-}
-.v4Player .discards {
-  grid-column: 1 / -1;
 }
 .stock,
 .discards,
@@ -442,8 +447,7 @@ button.card:hover {
   padding: 0.6rem 0;
   font-size: 0.85rem;
 }
-.v3Chat .chat,
-.v4Compare .chat {
+.v3Chat .chat {
   position: sticky;
   top: 1rem;
 }
@@ -496,7 +500,12 @@ button.card:hover {
   }
   .variant4 {
     grid-template-columns: 1fr;
-    grid-template-areas: "compare" "builds" "player";
+  }
+  .v4Table {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .v4Discards {
+    grid-column: 1 / -1;
   }
 }
 @media (max-width: 700px) {
@@ -549,45 +558,32 @@ button.card:hover {
     display: flex;
     flex-direction: column;
   }
+  .v4Table {
+    display: flex;
+    flex-direction: column;
+  }
+  .v4Table > div {
+    width: 100%;
+  }
   .v4Compare {
     display: contents;
   }
   .v4Compare .opponents {
-    order: 1;
     width: 100%;
   }
-  .v4Builds {
-    order: 2;
-  }
-  .v4Player {
-    order: 3;
-  }
-  .v4Compare .chat {
-    order: 4;
+  .v4Table,
+  .v4Compare {
     width: 100%;
-  }
-  .v4Compare,
-  .v4Builds,
-  .v4Player {
-    width: 100%;
-  }
-  .v4Player {
-    grid-template-columns: 1fr;
-  }
-  .v4Player .discards {
-    grid-column: 1;
   }
   .v3Chat .chat,
-  .v2Chat .chat {
+  .v2Chat .chat,
+  .v4Compare .chat {
     position: fixed;
     z-index: 20;
     bottom: 4.5rem;
     right: 0.6rem;
     width: min(340px, calc(100vw - 1.2rem));
     box-shadow: 3px 3px 0 var(--line);
-  }
-  .v4Compare .chat {
-    position: static;
   }
   .compactOpponents {
     flex-direction: column;

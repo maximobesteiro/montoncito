@@ -529,30 +529,34 @@ function Variant4({
 }: BoardProps) {
   return (
     <div className={styles.variant4}>
+      <div className={styles.v4Table}>
+        <div className={styles.v4Builds}>
+          <Builds selected={selected} onTarget={target} />
+        </div>
+        <div className={styles.v4Player}>
+          <Stock
+            player={me}
+            own
+            selected={selected?.area === "stock"}
+            onSelect={() => select({ area: "stock", index: 0, card: me.stock })}
+          />
+          <Hand selected={selected} onSelect={select} />
+        </div>
+        <div className={styles.v4Discards}>
+          <Discards
+            player={me}
+            owner="you"
+            selected={selected}
+            onSelect={select}
+            onTarget={target}
+            expanded={expanded}
+            toggle={toggle}
+          />
+        </div>
+      </div>
       <div className={styles.v4Compare}>
-        <Opponents expanded={expanded} toggle={toggle} />
         <Chat variant="4" open={chatOpen} setOpen={setChatOpen} />
-      </div>
-      <div className={styles.v4Builds}>
-        <Builds selected={selected} onTarget={target} />
-      </div>
-      <div className={styles.v4Player}>
-        <Stock
-          player={me}
-          own
-          selected={selected?.area === "stock"}
-          onSelect={() => select({ area: "stock", index: 0, card: me.stock })}
-        />
-        <Hand selected={selected} onSelect={select} />
-        <Discards
-          player={me}
-          owner="you"
-          selected={selected}
-          onSelect={select}
-          onTarget={target}
-          expanded={expanded}
-          toggle={toggle}
-        />
+        <Opponents expanded={expanded} toggle={toggle} />
       </div>
     </div>
   );
@@ -652,7 +656,11 @@ export function GamePrototype() {
           You are up <span>Stock: 8 left</span>
         </p>
       </header>
-      <p className={styles.feedback} role="status" aria-live="polite">
+      <p
+        className={variant === "4" ? styles.feedbackHidden : styles.feedback}
+        role="status"
+        aria-live="polite"
+      >
         {feedback}
       </p>
       {variant === "3" ? (
