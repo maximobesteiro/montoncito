@@ -215,6 +215,10 @@
   background: #446679;
   transform: translate(3px, 3px);
 }
+.stockVisual > .card {
+  position: relative;
+  z-index: 1;
+}
 .hint {
   margin: 0.5rem 0 0;
 }
