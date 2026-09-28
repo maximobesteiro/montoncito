@@ -1,6 +1,7 @@
 "use client";
 
 import type { DiscardArea } from "@mont/core-game";
+import { formatCardName } from "@/lib/format-card-name";
 import { Card } from "./Card";
 
 interface DiscardPilesProps {
@@ -28,9 +29,23 @@ export function DiscardPiles({
               <Card
                 card={topCard}
                 faceUp={true}
-                onClick={onCardClick ? () => onCardClick(index) : undefined}
+                onClick={
+                  onCardClick && playablePiles.has(index)
+                    ? () => onCardClick(index)
+                    : undefined
+                }
                 isPlayable={playablePiles.has(index)}
+                ariaLabel={`Discard pile ${index + 1}, ${formatCardName(topCard)}`}
               />
+            ) : playablePiles.has(index) && onCardClick ? (
+              <button
+                type="button"
+                aria-label={`Discard pile ${index + 1}, empty`}
+                onClick={() => onCardClick(index)}
+                className="w-16 h-24 brutal-border border-dashed border-btn-primary bg-surface flex items-center justify-center text-text-subtle text-xs"
+              >
+                Empty
+              </button>
             ) : (
               <div className="w-16 h-24 brutal-border border-dashed bg-surface flex items-center justify-center text-text-subtle text-xs">
                 Empty

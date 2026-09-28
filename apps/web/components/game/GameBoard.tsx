@@ -17,6 +17,7 @@ interface GameBoardProps {
   isStockPlayable?: boolean;
   playableDiscardPiles?: Set<number>;
   playableBuildPiles?: Set<BuildPileTarget>;
+  selectedHandCard?: string | null;
 }
 
 export function GameBoard({
@@ -30,6 +31,7 @@ export function GameBoard({
   isStockPlayable = false,
   playableDiscardPiles = new Set(),
   playableBuildPiles = new Set(),
+  selectedHandCard,
 }: GameBoardProps) {
   const currentPlayer = gameState.byId[currentPlayerId];
   const opponents = gameState.players
@@ -38,8 +40,13 @@ export function GameBoard({
     .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
   return (
-    <div className="flex flex-col gap-4 p-2 sm:p-4 min-h-screen bg-muted">
+    <div className="flex flex-col gap-4 p-2 sm:p-4 bg-muted">
       <TurnIndicator gameState={gameState} currentPlayerId={currentPlayerId} />
+
+      <div className="flex justify-center gap-4 text-sm font-semibold">
+        <span>Draw pile: {gameState.deck.drawPile.length} cards</span>
+        <span>Recycle pile: {gameState.deck.recyclePile.length} cards</span>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 auto-rows-min">
         {/* Opponents on left (desktop), top (mobile) */}
@@ -68,6 +75,7 @@ export function GameBoard({
               onStockClick={onStockClick}
               onDiscardClick={onDiscardClick}
               playableHandCards={playableHandCards}
+              selectedHandCard={selectedHandCard}
               isStockPlayable={isStockPlayable}
               playableDiscardPiles={playableDiscardPiles}
             />
