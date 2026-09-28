@@ -9,6 +9,7 @@ interface ActionPanelProps {
   gameState: GameState;
   currentPlayerId: PlayerId;
   pendingAction?: ActionSubmission | null;
+  canSubmit?: boolean;
   submitAction?: (action: PlayerAction) => boolean;
 }
 
@@ -16,17 +17,24 @@ export function ActionPanel({
   gameState,
   currentPlayerId,
   pendingAction,
+  canSubmit = true,
   submitAction,
 }: ActionPanelProps) {
   const isMyTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
-  const disabled = !isMyTurn || pendingAction != null || !submitAction;
+  const disabled =
+    !isMyTurn || pendingAction != null || !canSubmit || !submitAction;
 
   if (!isMyTurn) {
     return (
       <section className="brutal-border brutal-shadow bg-surface p-4">
         <h2 className="mb-2 text-xl font-bold">Actions</h2>
+        {pendingAction && (
+          <p className="mb-3" role="status">
+            Action pending: {pendingAction.action.kind}
+          </p>
+        )}
         <p className="font-semibold text-text-muted">
           {gameState.phase === "gameover"
             ? `Game finished${gameState.winner ? `. Winner: ${gameState.winner}` : "."}`

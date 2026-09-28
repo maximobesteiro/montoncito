@@ -159,7 +159,14 @@ function applyAuthoritativeState(
       });
     }
   }
-  return { status: "synchronized", seq: update.seq, state: update.state };
+  return {
+    status: "synchronized",
+    seq: update.seq,
+    state: update.state,
+    ...(session.status === "synchronized" && session.pendingAction
+      ? { pendingAction: session.pendingAction }
+      : {}),
+  };
 }
 
 function haveSameJsonValue(left: unknown, right: unknown): boolean {

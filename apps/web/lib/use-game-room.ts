@@ -48,6 +48,7 @@ export type GameRoomView = {
   currentPlayerId: string | null;
   connectionStatus: GameRoomConnectionStatus;
   problem: string | null;
+  submissionError: string | null;
   pendingAction: ActionSubmission | null;
   lastActionResult: ActionAccepted | ActionRejected | null;
   submitAction: (action: PlayerAction) => boolean;
@@ -63,6 +64,7 @@ export function useGameRoom(roomId: string): GameRoomView {
   const [connectionStatus, setConnectionStatus] =
     useState<GameRoomConnectionStatus>("connecting");
   const [currentPlayerId, setCurrentPlayerId] = useState<string | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [liveChatCount, setLiveChatCount] = useState(0);
   const chatMessagesRef = useRef<ChatMessage[]>([]);
@@ -70,17 +72,22 @@ export function useGameRoom(roomId: string): GameRoomView {
   const socketRef = useRef<Socket | null>(null);
   const chatReadyRef = useRef(false);
   const pendingActionRef = useRef<ActionSubmission | null>(null);
+  const synchronizedRef = useRef(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
 
   const submitAction = useCallback(
     (action: PlayerAction): boolean => {
       const activeSocket = socketRef.current;
-      if (
-        !activeSocket?.connected ||
-        pendingActionRef.current ||
-        !crypto.randomUUID
-      ) {
+      if (pendingActionRef.current) return false;
+      if (!crypto.randomUUID) {
+        setSubmissionError("Action did not submit. Please try again.");
+        return false;
+      }
+      if (!activeSocket?.connected || !synchronizedRef.current) {
+        setSubmissionError(
+          "Action did not submit. Wait for the Game room to reconnect.",
+        );
         return false;
       }
       const currentGameRoomSession = sessionRef.current;
@@ -98,13 +105,21 @@ export function useGameRoom(roomId: string): GameRoomView {
           JSON.stringify(pending),
         );
       } catch {
+        setSubmissionError("Action did not submit. Please try again.");
+        return false;
+      }
+      try {
+        activeSocket.emit("room.action.submit", pending);
+      } catch {
+        clearPendingAction(roomId);
+        setSubmissionError("Action did not submit. Please try again.");
         return false;
       }
       pendingActionRef.current = pending;
       updateGameRoomSession(sessionRef, setSession, (previous) =>
         setPendingGameRoomAction(previous, pending),
       );
-      activeSocket.emit("room.action.submit", pending);
+      setSubmissionError(null);
       return true;
     },
     [roomId],
@@ -139,6 +154,8 @@ export function useGameRoom(roomId: string): GameRoomView {
     chatHistoryReadyRef.current = false;
     setLiveChatCount(0);
     pendingActionRef.current = null;
+    synchronizedRef.current = false;
+    setSubmissionError(null);
 
     const isRemovedError = (error: unknown) =>
       error instanceof ApiHttpError &&
@@ -149,6 +166,7 @@ export function useGameRoom(roomId: string): GameRoomView {
       if (retryTimer) clearTimeout(retryTimer);
       clearPendingAction(roomId);
       pendingActionRef.current = null;
+      synchronizedRef.current = false;
       chatReadyRef.current = false;
       setChatMessages([]);
       chatMessagesRef.current = [];
@@ -214,6 +232,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             version: GAME_ROOM_PROTOCOL_VERSION,
           });
           chatReadyRef.current = false;
+          synchronizedRef.current = false;
           requestedFreshSnapshot = false;
           updateGameRoomSession(sessionRef, setSession, markGameRoomConnected);
           setConnectionStatus("synchronizing");
@@ -229,6 +248,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           );
           if (synchronized.status !== "synchronized") {
             chatReadyRef.current = false;
+            synchronizedRef.current = false;
             updateGameRoomSession(sessionRef, setSession, () => synchronized);
             setConnectionStatus("failed");
             return;
@@ -240,6 +260,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           ) {
             setConnectionStatus("synchronizing");
             chatReadyRef.current = false;
+            synchronizedRef.current = false;
             if (!requestedFreshSnapshot) {
               requestedFreshSnapshot = true;
               socket?.emit("room.sync.request", {
@@ -259,6 +280,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             : synchronized;
           updateGameRoomSession(sessionRef, setSession, () => recovered);
           setConnectionStatus("connected");
+          synchronizedRef.current = true;
           chatReadyRef.current = true;
           if (restored) socket?.emit("room.action.submit", restored);
         });
@@ -302,6 +324,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             failGameRoomSession(previous, failure),
           );
           chatReadyRef.current = false;
+          synchronizedRef.current = false;
           setConnectionStatus("failed");
         });
         socket.on("event", (payload: unknown) => {
@@ -337,11 +360,13 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socket.on("connect_error", () => {
           chatReadyRef.current = false;
+          synchronizedRef.current = false;
           setConnectionStatus("connecting");
           scheduleRenewal();
         });
         socket.on("disconnect", (reason) => {
           chatReadyRef.current = false;
+          synchronizedRef.current = false;
           if (!disposed && reason !== "io client disconnect") {
             setConnectionStatus("connecting");
             scheduleRenewal();
@@ -366,6 +391,7 @@ export function useGameRoom(roomId: string): GameRoomView {
     return () => {
       disposed = true;
       chatReadyRef.current = false;
+      synchronizedRef.current = false;
       if (retryTimer) clearTimeout(retryTimer);
       socket?.disconnect();
       if (socketRef.current === socket) socketRef.current = null;
@@ -388,6 +414,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         : session.status === "removed"
           ? "You are no longer a member of this Game room"
           : null,
+    submissionError,
     pendingAction:
       session.status === "synchronized"
         ? (session.pendingAction ?? null)

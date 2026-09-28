@@ -15,6 +15,7 @@ export default function GameRoomPage() {
     currentPlayerId,
     connectionStatus,
     problem,
+    submissionError,
     pendingAction,
     lastActionResult,
     submitAction,
@@ -87,8 +88,14 @@ export default function GameRoomPage() {
               gameState={state}
               currentPlayerId={currentPlayerId}
               pendingAction={pendingAction}
+              canSubmit={connectionStatus === "connected"}
               submitAction={submitAction}
             />
+            {submissionError && (
+              <p className="mt-2 font-semibold" role="alert">
+                {submissionError}
+              </p>
+            )}
             {lastActionResult && "code" in lastActionResult && (
               <p className="mt-2 font-semibold" role="alert">
                 Action rejected: {lastActionResult.code}

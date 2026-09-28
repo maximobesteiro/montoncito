@@ -168,6 +168,51 @@ describe("Game room session transitions", () => {
     expect(updated).toMatchObject({ seq: 1, state: nextState, pendingAction });
   });
 
+  it("keeps a Pending Action across a newer broadcast until its matching result arrives", () => {
+    const pendingAction = {
+      version: 1 as const,
+      actionId: "550e8400-e29b-41d4-a716-446655440030",
+      baseSeq: 0,
+      action: { kind: "END_TURN" as const },
+    };
+    const pending = setPendingGameRoomAction(
+      receiveGameRoomSnapshot(
+        markGameRoomConnected(createGameRoomSession()),
+        snapshot,
+      ),
+      pendingAction,
+    );
+    const nextState = {
+      ...snapshot.state,
+      turn: { ...snapshot.state.turn, number: 2 },
+    };
+    const broadcast = receiveGameRoomUpdate(pending, {
+      version: 1,
+      seq: 1,
+      state: nextState,
+    });
+    expect(broadcast).toMatchObject({
+      seq: 1,
+      state: nextState,
+      pendingAction,
+    });
+    expect(
+      setPendingGameRoomAction(broadcast, {
+        ...pendingAction,
+        actionId: "550e8400-e29b-41d4-a716-446655440031",
+      }),
+    ).toBe(broadcast);
+
+    const accepted = receiveGameRoomActionAccepted(broadcast, {
+      version: 1,
+      actionId: pendingAction.actionId,
+      seq: 1,
+      state: nextState,
+    });
+    expect(accepted).not.toHaveProperty("pendingAction");
+    expect(accepted).toMatchObject({ seq: 1, state: nextState });
+  });
+
   it("moves from connecting to synchronized on a valid full snapshot", () => {
     const session = markGameRoomConnected(createGameRoomSession());
 
