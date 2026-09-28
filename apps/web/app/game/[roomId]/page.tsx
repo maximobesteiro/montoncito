@@ -1,10 +1,8 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import type { Card } from "@mont/core-game";
 import { useGameRoom } from "@/lib/use-game-room";
-import { formatCardName } from "@/lib/format-card-name";
-import { ActionPanel } from "@/components/game/ActionPanel";
+import { GameRoomBoard } from "@/components/game/GameRoomBoard";
 import { GameRoomChat } from "@/components/game/GameRoomChat";
 
 export default function GameRoomPage() {
@@ -55,10 +53,6 @@ export default function GameRoomPage() {
         <div>
           <h1 className="text-2xl font-bold">Game room</h1>
           <p className="font-mono text-sm">{roomId}</p>
-          <p className="text-sm">
-            {state.phase} · Active player: {state.turn.activePlayer}
-            {state.winner ? ` · Winner: ${state.winner}` : ""}
-          </p>
           {connectionStatus === "connecting" && (
             <p role="status" className="text-sm font-semibold">
               Reconnecting to the Game room…
@@ -75,16 +69,10 @@ export default function GameRoomPage() {
         </p>
       </header>
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[2fr_1fr]">
-        <section className="brutal-border brutal-shadow bg-card p-4 lg:col-span-2">
-          <h2 className="mb-3 text-xl font-bold">Shared piles</h2>
-          <div className="flex gap-6">
-            <p>Draw pile: {state.deck.drawPile.length} cards</p>
-            <p>Recycle pile: {state.deck.recyclePile.length} cards</p>
-          </div>
-        </section>
         {currentPlayerId && (
           <div className="lg:col-span-2">
-            <ActionPanel
+            <GameRoomBoard
+              key={`${roomId}:${seq}`}
               gameState={state}
               currentPlayerId={currentPlayerId}
               pendingAction={pendingAction}
@@ -106,64 +94,6 @@ export default function GameRoomPage() {
             )}
           </div>
         )}
-        <section className="brutal-border brutal-shadow bg-card p-4">
-          <h2 className="mb-3 text-xl font-bold">Build piles</h2>
-          {state.center.buildPiles.length === 0 ? (
-            <p className="text-text-muted">No active Build piles</p>
-          ) : (
-            <div className="flex flex-wrap gap-3">
-              {state.center.buildPiles.map((pile) => (
-                <div
-                  key={pile.id}
-                  className="brutal-border min-w-24 bg-surface p-3"
-                >
-                  <p className="font-mono text-sm">Pile {pile.id}</p>
-                  <p className="text-lg font-bold">
-                    Next: {pile.nextRank ?? "complete"}
-                  </p>
-                  <p className="text-xs">
-                    Cards: {pile.cards.map(describeCard).join(" → ")}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-        <section className="brutal-border brutal-shadow bg-card p-4">
-          <h2 className="mb-3 text-xl font-bold">Players</h2>
-          <ul className="space-y-2">
-            {state.players.map((playerId) => {
-              const player = state.byId[playerId];
-              return (
-                <li key={playerId} className="brutal-border bg-surface p-3">
-                  <p className="font-bold">
-                    {player?.name ?? playerId}
-                    {playerId === currentPlayerId ? " (you)" : ""}
-                  </p>
-                  <p className="text-sm">
-                    Stock: {player?.stock.faceDown.length ?? 0} cards · Top:{" "}
-                    {describeCard(player?.stock.faceDown.at(-1))}
-                  </p>
-                  <p className="text-sm">
-                    Hand:{" "}
-                    {playerId === currentPlayerId
-                      ? (player?.hand.cards.map(describeCard).join(" · ") ??
-                        "unavailable")
-                      : `${player?.hand.cards.length ?? 0} concealed cards`}
-                  </p>
-                  <p className="text-sm">
-                    Discards:{" "}
-                    {player?.discards.map(describeDiscard).join(" · ") ??
-                      "unavailable"}
-                  </p>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="mt-4 text-sm text-text-muted">
-            {state.turn.activePlayer}&apos;s turn
-          </p>
-        </section>
         <GameRoomChat
           key={roomId}
           roomId={roomId}
@@ -176,12 +106,4 @@ export default function GameRoomPage() {
       </div>
     </main>
   );
-}
-
-function describeDiscard(pile: Card[], index: number): string {
-  return `${index + 1}: ${describeCard(pile.at(-1))}`;
-}
-
-function describeCard(card: Card | undefined): string {
-  return card ? formatCardName(card) : "empty";
 }

@@ -12,6 +12,7 @@ interface PlayerAreaProps {
   onStockClick?: () => void;
   onDiscardClick?: (pileIndex: number) => void;
   playableHandCards?: Set<string>;
+  selectedHandCard?: string | null;
   isStockPlayable?: boolean;
   playableDiscardPiles?: Set<number>;
 }
@@ -23,6 +24,7 @@ export function PlayerArea({
   onStockClick,
   onDiscardClick,
   playableHandCards = new Set(),
+  selectedHandCard,
   isStockPlayable = false,
   playableDiscardPiles = new Set(),
 }: PlayerAreaProps) {
@@ -47,6 +49,7 @@ export function PlayerArea({
             hand={player.hand}
             onCardClick={onHandCardClick}
             playableCards={playableHandCards}
+            selectedCardId={selectedHandCard}
           />
         </div>
 
@@ -60,7 +63,7 @@ export function PlayerArea({
         </div>
 
         <div>
-          <h4 className="text-sm font-semibold mb-2">Discards</h4>
+          <h4 className="text-sm font-semibold mb-2">Discard piles</h4>
           <DiscardPiles
             discards={player.discards}
             onCardClick={onDiscardClick}

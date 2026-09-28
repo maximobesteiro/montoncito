@@ -25,8 +25,17 @@ export function BuildPiles({
           const nextRank = pile.nextRank;
           const label = `${pile.id} ${nextRank ? `→ ${nextRank}` : "(Complete)"}`;
 
-          return (
-            <div
+          const content = (
+            <Pile
+              cards={[...pile.cards].reverse()}
+              size={size}
+              label={label}
+              isPlayable={isPlayable}
+            />
+          );
+          return onPileClick ? (
+            <button
+              type="button"
               key={pile.id}
               className={`
                 brutal-border
@@ -34,31 +43,45 @@ export function BuildPiles({
                 bg-surface
                 p-2
                 brutal-shadow-sm
-                ${onPileClick ? "cursor-pointer hover:scale-105" : ""}
+                ${isPlayable ? "cursor-pointer hover:scale-105" : ""}
                 transition-transform
               `}
-              onClick={onPileClick ? () => onPileClick(pile.id) : undefined}
+              aria-label={`Build pile ${pile.id}, next ${nextRank ?? "complete"}`}
+              data-legal-target={isPlayable}
+              disabled={!isPlayable}
+              onClick={isPlayable ? () => onPileClick?.(pile.id) : undefined}
             >
-              <Pile
-                cards={pile.cards}
-                size={size}
-                label={label}
-                isPlayable={isPlayable}
-              />
+              {content}
+            </button>
+          ) : (
+            <div
+              key={pile.id}
+              className="brutal-border bg-surface p-2 brutal-shadow-sm"
+            >
+              {content}
             </div>
           );
         })}
-        <button
-          type="button"
-          className={`
+        {onPileClick ? (
+          <button
+            type="button"
+            className={`
             brutal-border bg-surface p-2 brutal-shadow-sm transition-transform
             ${playablePiles.has("new") ? "border-btn-primary" : ""}
-            ${onPileClick ? "cursor-pointer hover:scale-105" : ""}
+            ${playablePiles.has("new") ? "cursor-pointer hover:scale-105" : ""}
           `}
-          onClick={onPileClick ? () => onPileClick("new") : undefined}
-        >
-          New Build Pile
-        </button>
+            disabled={!playablePiles.has("new")}
+            onClick={
+              playablePiles.has("new") ? () => onPileClick("new") : undefined
+            }
+          >
+            New Build pile
+          </button>
+        ) : (
+          <div className="brutal-border bg-surface p-2 brutal-shadow-sm">
+            New Build pile
+          </div>
+        )}
       </div>
     </div>
   );

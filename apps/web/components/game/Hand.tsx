@@ -2,17 +2,20 @@
 
 import type { Hand as GameHand } from "@mont/core-game";
 import { Card } from "./Card";
+import { formatCardName } from "@/lib/format-card-name";
 
 interface HandProps {
   hand: GameHand;
   onCardClick?: (cardId: string) => void;
   playableCards?: Set<string>;
+  selectedCardId?: string | null;
 }
 
 export function Hand({
   hand,
   onCardClick,
   playableCards = new Set(),
+  selectedCardId,
 }: HandProps) {
   return (
     <div className="flex gap-2 flex-wrap">
@@ -21,12 +24,21 @@ export function Hand({
           key={card.id}
           card={card}
           faceUp={true}
-          onClick={onCardClick ? () => onCardClick(card.id) : undefined}
-          isPlayable={playableCards.has(card.id)}
+          onClick={
+            onCardClick && playableCards.has(card.id)
+              ? () => onCardClick(card.id)
+              : undefined
+          }
+          isPlayable={selectedCardId === card.id}
+          className={
+            playableCards.has(card.id) && selectedCardId !== card.id
+              ? "outline outline-2 outline-btn-primary"
+              : ""
+          }
+          ariaLabel={`Hand ${formatCardName(card)}`}
+          isSelected={selectedCardId === card.id}
         />
       ))}
     </div>
   );
 }
-
-

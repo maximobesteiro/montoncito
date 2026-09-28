@@ -22,6 +22,8 @@ interface CardProps {
   className?: string;
   style?: React.CSSProperties;
   size?: CardSize;
+  ariaLabel?: string;
+  isSelected?: boolean;
 }
 
 const sizeStyles: Record<
@@ -65,6 +67,8 @@ export function Card({
   className = "",
   style,
   size = "md",
+  ariaLabel,
+  isSelected = false,
 }: CardProps) {
   const displayValue = () => {
     if (card.kind === "joker") {
@@ -106,24 +110,33 @@ export function Card({
     transition-all
   `;
 
+  const interactiveProps = onClick
+    ? {
+        type: "button" as const,
+        onClick,
+        "aria-pressed": isSelected,
+      }
+    : {};
+  const Element = onClick ? "button" : "div";
+
   if (!faceUp) {
     return (
-      <div
+      <Element
         className={`${baseStyles} bg-card-back text-text-on-dark ${className}`}
-        onClick={onClick}
+        {...interactiveProps}
+        aria-label={ariaLabel}
         style={style}
       >
         <div className={sizes.backIcon}>🂠</div>
-      </div>
+      </Element>
     );
   }
 
   return (
-    <div
+    <Element
       className={`${baseStyles} ${className}`}
-      onClick={onClick}
-      role={onClick ? "button" : undefined}
-      tabIndex={onClick ? 0 : undefined}
+      {...interactiveProps}
+      aria-label={ariaLabel}
       style={style}
     >
       <div
@@ -145,6 +158,6 @@ export function Card({
         <br />
         {displaySuit()}
       </div>
-    </div>
+    </Element>
   );
 }
