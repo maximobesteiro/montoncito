@@ -49,13 +49,6 @@ export function GameRoomBoard({
           .map((move) => move.pileIndex)
       : [],
   );
-  const canEndTurn =
-    gameState.byId[currentPlayerId]?.hand.cards.length === 0 &&
-    gameState.deck.drawPile.length === 0 &&
-    gameState.deck.recyclePile.length === 0 &&
-    moves.handToBuild.length === 0 &&
-    moves.stockToBuild.length === 0 &&
-    moves.discardToBuild.length === 0;
 
   function submit(action: PlayerAction) {
     if (!canInteract) return;
@@ -109,15 +102,6 @@ export function GameRoomBoard({
         playableBuildPiles={buildTargets}
         playableDiscardPiles={discardTargets}
       />
-      {canInteract && canEndTurn && (
-        <button
-          type="button"
-          className="brutal-border bg-accent px-3 py-2 font-semibold"
-          onClick={() => submit({ kind: "END_TURN" })}
-        >
-          End Turn
-        </button>
-      )}
     </section>
   );
 }

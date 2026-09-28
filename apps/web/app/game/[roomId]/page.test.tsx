@@ -249,22 +249,6 @@ it("locks a Pending Action across broadcasts until the server refills Hand", () 
   expect(submitAction).toHaveBeenCalledTimes(1);
 });
 
-it("can end a Turn when Hand is empty and no cards or placements remain", () => {
-  showGameRoom();
-  const state = boardState();
-  state.byId["player-1"]!.hand.cards = [];
-  state.byId["player-1"]!.stock.faceDown = [
-    { kind: "standard", id: "stock-nine", rank: 9, suit: "Hearts" },
-  ];
-  state.deck.drawPile = [];
-  state.deck.recyclePile = [];
-  const submitAction = vi.fn(() => true);
-  gameRoom.view = { ...gameRoom.view, state, submitAction };
-  render(<GameRoomPage />);
-  fireEvent.click(screen.getByRole("button", { name: "End Turn" }));
-  expect(submitAction).toHaveBeenCalledExactlyOnceWith({ kind: "END_TURN" });
-});
-
 it("starts expanded and restores a room's collapsed state only within its browser session", () => {
   showGameRoom();
   const { unmount } = render(<GameRoomPage />);

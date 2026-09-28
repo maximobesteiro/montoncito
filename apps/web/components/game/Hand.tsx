@@ -30,6 +30,11 @@ export function Hand({
               : undefined
           }
           isPlayable={selectedCardId === card.id}
+          className={
+            playableCards.has(card.id) && selectedCardId !== card.id
+              ? "outline outline-2 outline-btn-primary"
+              : ""
+          }
           ariaLabel={`Hand ${formatCardName(card)}`}
           isSelected={selectedCardId === card.id}
         />
