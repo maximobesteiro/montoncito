@@ -8,12 +8,14 @@ interface DiscardPilesProps {
   discards: DiscardArea;
   onCardClick?: (pileIndex: number) => void;
   playablePiles?: Set<number>;
+  selectedPile?: number | null;
 }
 
 export function DiscardPiles({
   discards,
   onCardClick,
   playablePiles = new Set(),
+  selectedPile,
 }: DiscardPilesProps) {
   return (
     <div className="flex gap-2">
@@ -35,6 +37,7 @@ export function DiscardPiles({
                     : undefined
                 }
                 isPlayable={playablePiles.has(index)}
+                isSelected={selectedPile === index}
                 ariaLabel={`Discard pile ${index + 1}, ${formatCardName(topCard)}`}
               />
             ) : playablePiles.has(index) && onCardClick ? (

@@ -10,6 +10,8 @@ interface PileProps {
   label?: ReactNode;
   onClick?: () => void;
   isPlayable?: boolean;
+  cardAriaLabel?: string;
+  isSelected?: boolean;
   faceUp?: boolean;
   className?: string;
   children?: ReactNode;
@@ -21,6 +23,8 @@ export function Pile({
   label,
   onClick,
   isPlayable = false,
+  cardAriaLabel,
+  isSelected = false,
   faceUp = true,
   className = "",
   children,
@@ -35,6 +39,8 @@ export function Pile({
       size={size}
       onClick={onClick}
       isPlayable={isPlayable}
+      ariaLabel={cardAriaLabel}
+      isSelected={isSelected}
     />
   ) : (
     <div

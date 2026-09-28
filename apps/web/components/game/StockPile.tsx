@@ -1,6 +1,7 @@
 "use client";
 
 import type { Stock } from "@mont/core-game";
+import { formatCardName } from "@/lib/format-card-name";
 import type { CardSize } from "./Card";
 import { Pile } from "./Pile";
 
@@ -9,6 +10,7 @@ interface StockPileProps {
   size?: CardSize;
   onTopCardClick?: () => void;
   isPlayable?: boolean;
+  isSelected?: boolean;
 }
 
 export function StockPile({
@@ -16,6 +18,7 @@ export function StockPile({
   size = "md",
   onTopCardClick,
   isPlayable = false,
+  isSelected = false,
 }: StockPileProps) {
   const remainingCount = stock.faceDown.length;
 
@@ -26,6 +29,12 @@ export function StockPile({
       label={`Stock (${remainingCount})`}
       onClick={onTopCardClick}
       isPlayable={isPlayable}
+      isSelected={isSelected}
+      cardAriaLabel={
+        onTopCardClick && remainingCount > 0
+          ? `Stock top ${formatCardName(stock.faceDown[remainingCount - 1]!)}`
+          : undefined
+      }
       faceUp={true}
     />
   );

@@ -14,6 +14,11 @@ interface GameRoomBoardProps {
   submitAction: (action: PlayerAction) => boolean;
 }
 
+type SelectedSource =
+  | { kind: "hand"; cardId: string }
+  | { kind: "stock" }
+  | { kind: "discard"; pileIndex: number };
+
 export function GameRoomBoard({
   gameState,
   currentPlayerId,
@@ -21,7 +26,9 @@ export function GameRoomBoard({
   canSubmit,
   submitAction,
 }: GameRoomBoardProps) {
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [selectedSource, setSelectedSource] = useState<SelectedSource | null>(
+    null,
+  );
   const myTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
@@ -32,27 +39,55 @@ export function GameRoomBoard({
     ...moves.canDiscard.map((move) => move.cardId),
   ]);
   const selected =
-    canInteract && selectedCardId && selectableCards.has(selectedCardId)
-      ? selectedCardId
+    canInteract &&
+    selectedSource &&
+    (selectedSource.kind === "hand"
+      ? selectableCards.has(selectedSource.cardId)
+      : selectedSource.kind === "stock"
+        ? moves.stockToBuild.length > 0
+        : moves.discardToBuild.some(
+            (move) => move.pileIndex === selectedSource.pileIndex,
+          ))
+      ? selectedSource
       : null;
   const buildTargets = new Set<BuildPileTarget>(
-    selected
+    selected?.kind === "hand"
       ? moves.handToBuild
-          .filter((move) => move.cardId === selected)
+          .filter((move) => move.cardId === selected.cardId)
           .map((move) => move.buildId)
-      : [],
+      : selected?.kind === "stock"
+        ? moves.stockToBuild.map((move) => move.buildId)
+        : selected?.kind === "discard"
+          ? moves.discardToBuild
+              .filter((move) => move.pileIndex === selected.pileIndex)
+              .map((move) => move.buildId)
+          : [],
   );
   const discardTargets = new Set<number>(
-    selected
+    selected?.kind === "hand"
       ? moves.canDiscard
-          .filter((move) => move.cardId === selected)
+          .filter((move) => move.cardId === selected.cardId)
           .map((move) => move.pileIndex)
       : [],
   );
+  const selectableDiscardPiles = new Set(
+    moves.discardToBuild.map((move) => move.pileIndex),
+  );
+  const visibleDiscardPiles = new Set(
+    canInteract ? [...selectableDiscardPiles, ...discardTargets] : [],
+  );
+  const canEndTurn =
+    canInteract &&
+    gameState.byId[currentPlayerId]?.hand.cards.length === 0 &&
+    gameState.deck.drawPile.length === 0 &&
+    gameState.deck.recyclePile.length === 0 &&
+    moves.handToBuild.length === 0 &&
+    moves.stockToBuild.length === 0 &&
+    moves.discardToBuild.length === 0;
 
   function submit(action: PlayerAction) {
     if (!canInteract) return;
-    if (submitAction(action)) setSelectedCardId(null);
+    if (submitAction(action)) setSelectedSource(null);
   }
 
   return (
@@ -69,19 +104,38 @@ export function GameRoomBoard({
           canInteract
             ? (cardId) => {
                 if (selectableCards.has(cardId))
-                  setSelectedCardId(selected === cardId ? null : cardId);
+                  setSelectedSource(
+                    selected?.kind === "hand" && selected.cardId === cardId
+                      ? null
+                      : { kind: "hand", cardId },
+                  );
               }
             : undefined
         }
+        onStockClick={
+          canInteract && moves.stockToBuild.length > 0
+            ? () =>
+                setSelectedSource(
+                  selected?.kind === "stock" ? null : { kind: "stock" },
+                )
+            : undefined
+        }
         onDiscardClick={
-          selected
+          canInteract
             ? (pileIndex) => {
-                if (discardTargets.has(pileIndex))
+                if (selected?.kind === "hand" && discardTargets.has(pileIndex))
                   submit({
                     kind: "DISCARD_FROM_HAND",
-                    cardId: selected,
+                    cardId: selected.cardId,
                     pileIndex,
                   });
+                else if (selectableDiscardPiles.has(pileIndex))
+                  setSelectedSource(
+                    selected?.kind === "discard" &&
+                      selected.pileIndex === pileIndex
+                      ? null
+                      : { kind: "discard", pileIndex },
+                  );
               }
             : undefined
         }
@@ -89,19 +143,43 @@ export function GameRoomBoard({
           selected
             ? (target) => {
                 if (buildTargets.has(target))
-                  submit({
-                    kind: "PLAY_HAND_TO_BUILD",
-                    cardId: selected,
-                    target,
-                  });
+                  submit(
+                    selected.kind === "hand"
+                      ? {
+                          kind: "PLAY_HAND_TO_BUILD",
+                          cardId: selected.cardId,
+                          target,
+                        }
+                      : selected.kind === "stock"
+                        ? { kind: "PLAY_STOCK_TO_BUILD", target }
+                        : {
+                            kind: "PLAY_DISCARD_TO_BUILD",
+                            pileIndex: selected.pileIndex,
+                            target,
+                          },
+                  );
               }
             : undefined
         }
         playableHandCards={canInteract ? selectableCards : new Set()}
-        selectedHandCard={selected}
+        selectedHandCard={selected?.kind === "hand" ? selected.cardId : null}
+        isStockPlayable={canInteract && moves.stockToBuild.length > 0}
+        isStockSelected={selected?.kind === "stock"}
+        selectedDiscardPile={
+          selected?.kind === "discard" ? selected.pileIndex : null
+        }
         playableBuildPiles={buildTargets}
-        playableDiscardPiles={discardTargets}
+        playableDiscardPiles={visibleDiscardPiles}
       />
+      {canEndTurn && (
+        <button
+          type="button"
+          className="brutal-button"
+          onClick={() => submit({ kind: "END_TURN" })}
+        >
+          End Turn
+        </button>
+      )}
     </section>
   );
 }
