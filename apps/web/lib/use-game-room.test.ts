@@ -225,6 +225,74 @@ describe("useGameRoom reconnect behavior", () => {
     expect(renderHook().state).toEqual(snapshot.state);
   });
 
+  it("keeps the pending lock through other players' updates and reconnects until a matching outcome", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.fire("room.sync.snapshot", snapshot);
+    const view = renderHook();
+    expect(view.submitAction({ kind: "END_TURN" })).toBe(true);
+    const submission = socket.emitted.find(
+      ({ event }) => event === "room.action.submit",
+    )!.payload as { actionId: string };
+    expect(renderHook()).toMatchObject({
+      seq: 0,
+      state: snapshot.state,
+      pendingAction: submission,
+    });
+    const newerState = {
+      ...snapshot.state,
+      turn: { ...snapshot.state.turn, number: 2 },
+    };
+    socket.fire("room.state", { version: 1, seq: 1, state: newerState });
+    socket.fire("room.action.accepted", {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440040",
+      seq: 1,
+      state: newerState,
+    });
+    expect(renderHook()).toMatchObject({
+      seq: 1,
+      state: newerState,
+      pendingAction: submission,
+    });
+    expect(renderHook().submitAction({ kind: "END_TURN" })).toBe(false);
+
+    socket.connected = false;
+    socket.fire("disconnect", "transport close");
+    expect(renderHook().pendingAction).toMatchObject(submission);
+    socket.connected = true;
+    socket.fire("connect");
+    expect(renderHook().connectionStatus).toBe("synchronizing");
+    expect(renderHook().pendingAction).toMatchObject(submission);
+    expect(
+      socket.emitted.filter(({ event }) => event === "room.action.submit"),
+    ).toHaveLength(1);
+    expect(renderHook().submitAction({ kind: "END_TURN" })).toBe(false);
+    socket.fire("room.sync.snapshot", {
+      ...snapshot,
+      seq: 1,
+      state: newerState,
+    });
+    expect(
+      socket.emitted
+        .filter(({ event }) => event === "room.action.submit")
+        .map(({ payload }) => payload),
+    ).toEqual([submission, submission]);
+    socket.fire("room.action.rejected", {
+      version: 1,
+      actionId: submission.actionId,
+      code: "STALE_BASE_SEQ",
+      seq: 1,
+      state: newerState,
+    });
+    expect(renderHook().pendingAction).toBeNull();
+    expect(
+      window.sessionStorage.getItem(`montoncito:${roomId}:pending-action`),
+    ).toBeNull();
+  });
+
   it("does not deliver an Action when same-tab persistence fails", async () => {
     renderHook();
     harness.effect?.();
@@ -240,6 +308,28 @@ describe("useGameRoom reconnect behavior", () => {
     expect(
       socket.emitted.some((frame) => frame.event === "room.action.submit"),
     ).toBe(false);
+    expect(renderHook().pendingAction).toBeNull();
+    expect(renderHook().state).toEqual(snapshot.state);
+    expect(renderHook().submissionError).toMatch(/did not submit/i);
+  });
+
+  it("rolls back a local submission when the socket cannot emit", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.fire("room.sync.snapshot", snapshot);
+    vi.spyOn(socket, "emit").mockImplementationOnce(() => {
+      throw new Error("transport failed");
+    });
+
+    expect(renderHook().submitAction({ kind: "END_TURN" })).toBe(false);
+    expect(renderHook().pendingAction).toBeNull();
+    expect(renderHook().state).toEqual(snapshot.state);
+    expect(renderHook().submissionError).toMatch(/did not submit/i);
+    expect(
+      window.sessionStorage.getItem(`montoncito:${roomId}:pending-action`),
+    ).toBeNull();
   });
 
   it("does not retry a Pending Action after receiving an invalid snapshot", async () => {
