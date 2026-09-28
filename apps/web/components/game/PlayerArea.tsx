@@ -14,7 +14,12 @@ interface PlayerAreaProps {
   playableHandCards?: Set<string>;
   selectedHandCard?: string | null;
   isStockPlayable?: boolean;
+  isStockSelected?: boolean;
   playableDiscardPiles?: Set<number>;
+  selectedDiscardPile?: number | null;
+  handDiscardTargets?: Set<number>;
+  handDiscardOnlyTargets?: Set<number>;
+  onHandDiscardClick?: (pileIndex: number) => void;
 }
 
 export function PlayerArea({
@@ -26,7 +31,12 @@ export function PlayerArea({
   playableHandCards = new Set(),
   selectedHandCard,
   isStockPlayable = false,
+  isStockSelected = false,
   playableDiscardPiles = new Set(),
+  selectedDiscardPile,
+  handDiscardTargets,
+  handDiscardOnlyTargets,
+  onHandDiscardClick,
 }: PlayerAreaProps) {
   return (
     <div
@@ -59,6 +69,7 @@ export function PlayerArea({
             stock={player.stock}
             onTopCardClick={onStockClick}
             isPlayable={isStockPlayable}
+            isSelected={isStockSelected}
           />
         </div>
 
@@ -68,6 +79,10 @@ export function PlayerArea({
             discards={player.discards}
             onCardClick={onDiscardClick}
             playablePiles={playableDiscardPiles}
+            selectedPile={selectedDiscardPile}
+            handDiscardTargets={handDiscardTargets}
+            handDiscardOnlyTargets={handDiscardOnlyTargets}
+            onHandDiscardClick={onHandDiscardClick}
           />
         </div>
       </div>

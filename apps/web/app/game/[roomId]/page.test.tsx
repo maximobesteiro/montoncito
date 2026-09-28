@@ -149,12 +149,16 @@ it("discards a non-wild Hand card and follows the next Turn", () => {
     screen.getByRole("button", { name: "Discard pile 1, empty" }),
   ).toBeTruthy();
   expect(
-    screen.getByRole("button", { name: "Discard pile 2, 7 of Clubs" }),
+    screen.getByRole("button", {
+      name: "Discard Hand to pile 2, over 7 of Clubs",
+    }),
   ).toBeTruthy();
   const buildPile = screen.getByRole("button", { name: /Build pile build-1/ });
   expect(buildPile.hasAttribute("disabled")).toBe(true);
   fireEvent.click(
-    screen.getByRole("button", { name: "Discard pile 2, 7 of Clubs" }),
+    screen.getByRole("button", {
+      name: "Discard Hand to pile 2, over 7 of Clubs",
+    }),
   );
   expect(submitAction).toHaveBeenCalledExactlyOnceWith({
     kind: "DISCARD_FROM_HAND",
@@ -188,7 +192,9 @@ it("plays a wild Hand card to a new Build pile without Discard targets", () => {
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   render(<GameRoomPage />);
 
-  fireEvent.click(screen.getByRole("button", { name: "Hand King of Diamonds" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hand King of Diamonds" }),
+  );
   expect(screen.queryByRole("button", { name: /Discard pile/ })).toBeNull();
   const newBuildPile = screen.getByRole("button", { name: "New Build pile" });
   expect(newBuildPile.hasAttribute("disabled")).toBe(false);
@@ -198,6 +204,280 @@ it("plays a wild Hand card to a new Build pile without Discard targets", () => {
     cardId: "king",
     target: "new",
   });
+});
+
+it("selects the legal Stock top, switches sources, and follows accepted Stock progress", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.stock.faceDown = [
+    { kind: "standard", id: "covered-stock", rank: 7, suit: "Clubs" },
+    { kind: "standard", id: "stock-two", rank: 2, suit: "Hearts" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  const { rerender } = render(<GameRoomPage />);
+
+  const stock = screen.getByRole("button", { name: "Stock top 2 of Hearts" });
+  fireEvent.click(stock);
+  expect(stock.getAttribute("aria-pressed")).toBe("true");
+  expect(
+    screen
+      .getByRole("button", { name: /Build pile build-1/ })
+      .getAttribute("data-legal-target"),
+  ).toBe("true");
+  fireEvent.click(stock);
+  expect(stock.getAttribute("aria-pressed")).toBe("false");
+  fireEvent.click(screen.getByRole("button", { name: "Hand Ace of Hearts" }));
+  fireEvent.click(stock);
+  expect(
+    screen
+      .getByRole("button", { name: "Hand Ace of Hearts" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+  fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_STOCK_TO_BUILD",
+    target: "build-1",
+  });
+
+  const accepted = structuredClone(state);
+  accepted.byId["player-1"]!.stock.faceDown.pop();
+  accepted.center.buildPiles[0]!.nextRank = 3;
+  gameRoom.view = { ...gameRoom.view, state: accepted, seq: 1 };
+  rerender(<GameRoomPage />);
+  expect(screen.getByText("Stock (1)")).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "Stock top 7 of Clubs" }),
+  ).toBeNull();
+  expect(screen.getByText("build-1 → 3")).toBeTruthy();
+});
+
+it("plays only the top of an own Discard pile and clears selection on Build completion", () => {
+  showGameRoom();
+  const state = boardState();
+  state.center.buildPiles[0]!.nextRank = 12;
+  state.byId["player-1"]!.discards = [
+    [
+      { kind: "standard", id: "covered-ace", rank: 1, suit: "Hearts" },
+      { kind: "standard", id: "queen", rank: 12, suit: "Spades" },
+    ],
+    [{ kind: "joker", id: "discard-joker" }],
+  ];
+  state.byId["player-2"]!.discards = [
+    [{ kind: "standard", id: "opponent-ace", rank: 1, suit: "Clubs" }],
+    [],
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  const { rerender } = render(<GameRoomPage />);
+
+  expect(
+    screen.queryByRole("button", { name: "Discard pile 1, Ace of Hearts" }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Discard pile 1, Ace of Clubs" }),
+  ).toBeNull();
+  const queen = screen.getByRole("button", {
+    name: "Discard pile 1, Queen of Spades",
+  });
+  fireEvent.click(queen);
+  expect(queen.getAttribute("aria-pressed")).toBe("true");
+  const newPile = screen.getByRole("button", { name: "New Build pile" });
+  expect(newPile.hasAttribute("disabled")).toBe(true);
+  fireEvent.click(newPile);
+  expect(submitAction).not.toHaveBeenCalled();
+  expect(queen.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_DISCARD_TO_BUILD",
+    pileIndex: 0,
+    target: "build-1",
+  });
+
+  const accepted = structuredClone(state);
+  accepted.byId["player-1"]!.discards[0]!.pop();
+  accepted.center.buildPiles = [];
+  accepted.deck.recyclePile.push({
+    kind: "standard",
+    id: "queen",
+    rank: 12,
+    suit: "Spades",
+  });
+  gameRoom.view = { ...gameRoom.view, state: accepted, seq: 1 };
+  rerender(<GameRoomPage />);
+  expect(screen.getByText("Recycle pile: 1 cards")).toBeTruthy();
+  expect(screen.queryByText("build-1 → 12")).toBeNull();
+  expect(
+    screen
+      .getByRole("button", { name: "Discard pile 1, Ace of Hearts" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+});
+
+it("starts a new Build pile from a wild Discard top without rank selection", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.discards[0] = [
+    { kind: "joker", id: "discard-joker" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard pile 1, Joker" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "New Build pile" }));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_DISCARD_TO_BUILD",
+    pileIndex: 0,
+    target: "new",
+  });
+});
+
+it("does not select blocked Stock, covered Discard cards, or opponent cards", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.stock.faceDown = [
+    { kind: "standard", id: "blocked", rank: 8, suit: "Spades" },
+  ];
+  state.byId["player-1"]!.discards[0] = [
+    { kind: "standard", id: "covered-ace", rank: 1, suit: "Hearts" },
+    { kind: "standard", id: "blocked-discard", rank: 8, suit: "Clubs" },
+  ];
+  state.byId["player-2"]!.discards[0] = [
+    { kind: "standard", id: "opponent-two", rank: 2, suit: "Diamonds" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+  expect(screen.queryByRole("button", { name: /Stock top/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Discard pile/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Hand 2 of Clubs" }));
+  fireEvent.click(screen.getByRole("button", { name: "New Build pile" }));
+  expect(submitAction).not.toHaveBeenCalled();
+  expect(
+    screen
+      .getByRole("button", { name: "Hand 2 of Clubs" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
+it("offers new Build destinations to an Ace Stock top and a King Discard top", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.stock.faceDown = [
+    { kind: "standard", id: "stock-ace", rank: 1, suit: "Clubs" },
+  ];
+  state.byId["player-1"]!.discards[0] = [
+    { kind: "standard", id: "discard-king", rank: 13, suit: "Hearts" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+
+  fireEvent.click(
+    screen.getByRole("button", { name: "Stock top Ace of Clubs" }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard pile 1, King of Hearts" }),
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "Stock top Ace of Clubs" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard pile 1, King of Hearts" }),
+  );
+  expect(
+    screen
+      .getByRole("button", { name: "Discard pile 1, King of Hearts" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Stock top Ace of Clubs" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "New Build pile" }));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_STOCK_TO_BUILD",
+    target: "new",
+  });
+});
+
+it("switches from Hand to a playable Discard top while keeping Hand discard available", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.discards[0] = [
+    { kind: "standard", id: "discard-two", rank: 2, suit: "Hearts" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
+  );
+  expect(submitAction).not.toHaveBeenCalled();
+  expect(
+    screen
+      .getByRole("button", { name: "Discard pile 1, 2 of Hearts" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard Hand to pile 1" }),
+  );
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 0,
+  });
+});
+
+it("offers End Turn only with empty Hand, no refill, and no legal placement", () => {
+  showGameRoom();
+  const state = boardState();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  expect(screen.queryByRole("button", { name: "End Turn" })).toBeNull();
+
+  const rare = structuredClone(state);
+  rare.byId["player-1"]!.hand.cards = [];
+  rare.deck.drawPile = [];
+  rare.deck.recyclePile = [];
+  rare.byId["player-1"]!.stock.faceDown[
+    rare.byId["player-1"]!.stock.faceDown.length - 1
+  ] = { kind: "standard", id: "blocked", rank: 8, suit: "Hearts" };
+  gameRoom.view = { ...gameRoom.view, state: rare, seq: 1 };
+  rerender(<GameRoomPage />);
+  const refill = structuredClone(rare);
+  refill.deck.recyclePile = [
+    { kind: "standard", id: "refill", rank: 9, suit: "Clubs" },
+  ];
+  gameRoom.view = { ...gameRoom.view, state: refill, seq: 2 };
+  rerender(<GameRoomPage />);
+  expect(screen.queryByRole("button", { name: "End Turn" })).toBeNull();
+  const playable = structuredClone(rare);
+  playable.byId["player-1"]!.discards[0] = [
+    { kind: "standard", id: "two-discard", rank: 2, suit: "Clubs" },
+  ];
+  gameRoom.view = { ...gameRoom.view, state: playable, seq: 3 };
+  rerender(<GameRoomPage />);
+  expect(screen.queryByRole("button", { name: "End Turn" })).toBeNull();
+  gameRoom.view = { ...gameRoom.view, state: rare, seq: 4 };
+  rerender(<GameRoomPage />);
+  fireEvent.click(screen.getByRole("button", { name: "End Turn" }));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({ kind: "END_TURN" });
+
+  const advanced = structuredClone(rare);
+  advanced.turn.activePlayer = "player-2";
+  advanced.turn.number = 2;
+  gameRoom.view = { ...gameRoom.view, state: advanced, seq: 5 };
+  rerender(<GameRoomPage />);
+  expect(screen.queryByRole("button", { name: "End Turn" })).toBeNull();
+  expect(screen.getByText("Active: Bob")).toBeTruthy();
 });
 
 it("locks a Pending Action across broadcasts until the server refills Hand", () => {

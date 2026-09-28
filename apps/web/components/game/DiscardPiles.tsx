@@ -8,12 +8,20 @@ interface DiscardPilesProps {
   discards: DiscardArea;
   onCardClick?: (pileIndex: number) => void;
   playablePiles?: Set<number>;
+  selectedPile?: number | null;
+  handDiscardTargets?: Set<number>;
+  handDiscardOnlyTargets?: Set<number>;
+  onHandDiscardClick?: (pileIndex: number) => void;
 }
 
 export function DiscardPiles({
   discards,
   onCardClick,
   playablePiles = new Set(),
+  selectedPile,
+  handDiscardTargets = new Set(),
+  handDiscardOnlyTargets = new Set(),
+  onHandDiscardClick,
 }: DiscardPilesProps) {
   return (
     <div className="flex gap-2">
@@ -35,7 +43,12 @@ export function DiscardPiles({
                     : undefined
                 }
                 isPlayable={playablePiles.has(index)}
-                ariaLabel={`Discard pile ${index + 1}, ${formatCardName(topCard)}`}
+                isSelected={selectedPile === index}
+                ariaLabel={
+                  handDiscardOnlyTargets.has(index)
+                    ? `Discard Hand to pile ${index + 1}, over ${formatCardName(topCard)}`
+                    : `Discard pile ${index + 1}, ${formatCardName(topCard)}`
+                }
               />
             ) : playablePiles.has(index) && onCardClick ? (
               <button
@@ -55,6 +68,15 @@ export function DiscardPiles({
               <div className="text-xs font-bold text-text-muted">
                 +{pile.length - 1}
               </div>
+            )}
+            {handDiscardTargets.has(index) && onHandDiscardClick && (
+              <button
+                type="button"
+                className="brutal-button text-xs"
+                onClick={() => onHandDiscardClick(index)}
+              >
+                Discard Hand to pile {index + 1}
+              </button>
             )}
           </div>
         );
