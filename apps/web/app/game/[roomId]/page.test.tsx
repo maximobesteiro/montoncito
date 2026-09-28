@@ -400,6 +400,37 @@ it("offers new Build destinations to an Ace Stock top and a King Discard top", (
   });
 });
 
+it("switches from Hand to a playable Discard top while keeping Hand discard available", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.discards[0] = [
+    { kind: "standard", id: "discard-two", rank: 2, suit: "Hearts" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
+  );
+  expect(submitAction).not.toHaveBeenCalled();
+  expect(
+    screen
+      .getByRole("button", { name: "Discard pile 1, 2 of Hearts" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard Hand to pile 1" }),
+  );
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 0,
+  });
+});
+
 it("offers End Turn only with empty Hand, no refill, and no legal placement", () => {
   showGameRoom();
   const state = boardState();

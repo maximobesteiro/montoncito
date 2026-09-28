@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
+import { validateMove } from "@mont/core-game";
 import type { ActionSubmission, PlayerAction } from "@mont/game-room";
 import { getValidMoves } from "@/lib/game-actions";
 import { GameBoard } from "./GameBoard";
@@ -76,14 +77,13 @@ export function GameRoomBoard({
   const visibleDiscardPiles = new Set(
     canInteract ? [...selectableDiscardPiles, ...discardTargets] : [],
   );
+  const overlappingDiscardTargets = new Set(
+    [...discardTargets].filter((pileIndex) =>
+      selectableDiscardPiles.has(pileIndex),
+    ),
+  );
   const canEndTurn =
-    canInteract &&
-    gameState.byId[currentPlayerId]?.hand.cards.length === 0 &&
-    gameState.deck.drawPile.length === 0 &&
-    gameState.deck.recyclePile.length === 0 &&
-    moves.handToBuild.length === 0 &&
-    moves.stockToBuild.length === 0 &&
-    moves.discardToBuild.length === 0;
+    canInteract && validateMove(gameState, { kind: "END_TURN" }) === null;
 
   function submit(action: PlayerAction) {
     if (!canInteract) return;
@@ -123,7 +123,11 @@ export function GameRoomBoard({
         onDiscardClick={
           canInteract
             ? (pileIndex) => {
-                if (selected?.kind === "hand" && discardTargets.has(pileIndex))
+                if (
+                  selected?.kind === "hand" &&
+                  discardTargets.has(pileIndex) &&
+                  !selectableDiscardPiles.has(pileIndex)
+                )
                   submit({
                     kind: "DISCARD_FROM_HAND",
                     cardId: selected.cardId,
@@ -170,6 +174,19 @@ export function GameRoomBoard({
         }
         playableBuildPiles={buildTargets}
         playableDiscardPiles={visibleDiscardPiles}
+        handDiscardTargets={overlappingDiscardTargets}
+        onHandDiscardClick={
+          selected?.kind === "hand"
+            ? (pileIndex) => {
+                if (discardTargets.has(pileIndex))
+                  submit({
+                    kind: "DISCARD_FROM_HAND",
+                    cardId: selected.cardId,
+                    pileIndex,
+                  });
+              }
+            : undefined
+        }
       />
       {canEndTurn && (
         <button

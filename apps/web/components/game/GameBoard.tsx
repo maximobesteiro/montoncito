@@ -20,6 +20,8 @@ interface GameBoardProps {
   playableBuildPiles?: Set<BuildPileTarget>;
   selectedHandCard?: string | null;
   selectedDiscardPile?: number | null;
+  handDiscardTargets?: Set<number>;
+  onHandDiscardClick?: (pileIndex: number) => void;
 }
 
 export function GameBoard({
@@ -36,6 +38,8 @@ export function GameBoard({
   playableBuildPiles = new Set(),
   selectedHandCard,
   selectedDiscardPile,
+  handDiscardTargets,
+  onHandDiscardClick,
 }: GameBoardProps) {
   const currentPlayer = gameState.byId[currentPlayerId];
   const opponents = gameState.players
@@ -84,6 +88,8 @@ export function GameBoard({
               isStockSelected={isStockSelected}
               playableDiscardPiles={playableDiscardPiles}
               selectedDiscardPile={selectedDiscardPile}
+              handDiscardTargets={handDiscardTargets}
+              onHandDiscardClick={onHandDiscardClick}
             />
           )}
         </div>
