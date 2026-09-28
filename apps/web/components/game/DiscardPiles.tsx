@@ -10,6 +10,7 @@ interface DiscardPilesProps {
   playablePiles?: Set<number>;
   selectedPile?: number | null;
   handDiscardTargets?: Set<number>;
+  handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
 }
 
@@ -19,6 +20,7 @@ export function DiscardPiles({
   playablePiles = new Set(),
   selectedPile,
   handDiscardTargets = new Set(),
+  handDiscardOnlyTargets = new Set(),
   onHandDiscardClick,
 }: DiscardPilesProps) {
   return (
@@ -42,7 +44,11 @@ export function DiscardPiles({
                 }
                 isPlayable={playablePiles.has(index)}
                 isSelected={selectedPile === index}
-                ariaLabel={`Discard pile ${index + 1}, ${formatCardName(topCard)}`}
+                ariaLabel={
+                  handDiscardOnlyTargets.has(index)
+                    ? `Discard Hand to pile ${index + 1}, over ${formatCardName(topCard)}`
+                    : `Discard pile ${index + 1}, ${formatCardName(topCard)}`
+                }
               />
             ) : playablePiles.has(index) && onCardClick ? (
               <button

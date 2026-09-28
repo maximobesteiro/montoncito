@@ -18,6 +18,7 @@ interface PlayerAreaProps {
   playableDiscardPiles?: Set<number>;
   selectedDiscardPile?: number | null;
   handDiscardTargets?: Set<number>;
+  handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
 }
 
@@ -34,6 +35,7 @@ export function PlayerArea({
   playableDiscardPiles = new Set(),
   selectedDiscardPile,
   handDiscardTargets,
+  handDiscardOnlyTargets,
   onHandDiscardClick,
 }: PlayerAreaProps) {
   return (
@@ -79,6 +81,7 @@ export function PlayerArea({
             playablePiles={playableDiscardPiles}
             selectedPile={selectedDiscardPile}
             handDiscardTargets={handDiscardTargets}
+            handDiscardOnlyTargets={handDiscardOnlyTargets}
             onHandDiscardClick={onHandDiscardClick}
           />
         </div>

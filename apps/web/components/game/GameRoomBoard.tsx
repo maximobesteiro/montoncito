@@ -82,6 +82,11 @@ export function GameRoomBoard({
       selectableDiscardPiles.has(pileIndex),
     ),
   );
+  const handDiscardOnlyTargets = new Set(
+    [...discardTargets].filter(
+      (pileIndex) => !selectableDiscardPiles.has(pileIndex),
+    ),
+  );
   const canEndTurn =
     canInteract && validateMove(gameState, { kind: "END_TURN" }) === null;
 
@@ -175,6 +180,7 @@ export function GameRoomBoard({
         playableBuildPiles={buildTargets}
         playableDiscardPiles={visibleDiscardPiles}
         handDiscardTargets={overlappingDiscardTargets}
+        handDiscardOnlyTargets={handDiscardOnlyTargets}
         onHandDiscardClick={
           selected?.kind === "hand"
             ? (pileIndex) => {

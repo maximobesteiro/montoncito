@@ -149,12 +149,16 @@ it("discards a non-wild Hand card and follows the next Turn", () => {
     screen.getByRole("button", { name: "Discard pile 1, empty" }),
   ).toBeTruthy();
   expect(
-    screen.getByRole("button", { name: "Discard pile 2, 7 of Clubs" }),
+    screen.getByRole("button", {
+      name: "Discard Hand to pile 2, over 7 of Clubs",
+    }),
   ).toBeTruthy();
   const buildPile = screen.getByRole("button", { name: /Build pile build-1/ });
   expect(buildPile.hasAttribute("disabled")).toBe(true);
   fireEvent.click(
-    screen.getByRole("button", { name: "Discard pile 2, 7 of Clubs" }),
+    screen.getByRole("button", {
+      name: "Discard Hand to pile 2, over 7 of Clubs",
+    }),
   );
   expect(submitAction).toHaveBeenCalledExactlyOnceWith({
     kind: "DISCARD_FROM_HAND",
