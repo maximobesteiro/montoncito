@@ -8,6 +8,7 @@ import { getValidMoves } from "@/lib/game-actions";
 import { GameBoard } from "./GameBoard";
 
 interface GameRoomBoardProps {
+  seq: number | null;
   gameState: GameState;
   currentPlayerId: PlayerId;
   pendingAction: ActionSubmission | null;
@@ -52,6 +53,7 @@ function discardFromHand(cardId: string, pileIndex: number): PlayerAction {
 }
 
 export function GameRoomBoard({
+  seq,
   gameState,
   currentPlayerId,
   pendingAction,
@@ -133,18 +135,25 @@ export function GameRoomBoard({
     }
   }
 
+  function cancelDrag() {
+    drag.current = null;
+    stopScrolling();
+  }
+
+  // New Authoritative state cancels gameplay gestures, but keeps inspection open.
+  useEffect(() => {
+    setSelectedSource(null);
+    cancelDrag();
+    suppressPointerClick.current = false;
+  }, [seq]);
+
   useEffect(() => {
     if (!canInteract) {
-      drag.current = null;
-      stopScrolling();
+      cancelDrag();
     }
   }, [canInteract]);
 
   useEffect(() => {
-    const cancelDrag = () => {
-      drag.current = null;
-      stopScrolling();
-    };
     window.addEventListener("blur", cancelDrag);
     return () => {
       window.removeEventListener("blur", cancelDrag);
@@ -296,8 +305,7 @@ export function GameRoomBoard({
       onPointerCancel={finishDrag}
       onLostPointerCapture={(event) => {
         if (drag.current?.pointerId === event.pointerId) {
-          drag.current = null;
-          stopScrolling();
+          cancelDrag();
         }
       }}
       onClickCapture={(event) => {

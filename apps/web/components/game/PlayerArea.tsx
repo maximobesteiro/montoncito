@@ -77,6 +77,7 @@ export function PlayerArea({
           <h4 className="text-sm font-semibold mb-2">Discard piles</h4>
           <DiscardPiles
             discards={player.discards}
+            playerName={player.name || player.id}
             onCardClick={onDiscardClick}
             playablePiles={playableDiscardPiles}
             selectedPile={selectedDiscardPile}
