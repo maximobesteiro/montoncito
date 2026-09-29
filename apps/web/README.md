@@ -20,6 +20,20 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load Inter, a custom Google Font.
 
+## Tests
+
+From the repository root, install Chromium once before running web tests:
+
+```sh
+pnpm --filter web exec playwright install chromium
+pnpm --filter web test
+pnpm check-types
+```
+
+On Linux CI hosts, use `playwright install --with-deps chromium` to install browser system dependencies too.
+
+`app/game/[roomId]/page.test.tsx` exercises live-page interactions with a controlled Game room hook. `page.layout.test.tsx` renders that same page into headless Chromium with the real compiled stylesheet. Its deterministic fixtures cover 18 Build piles, all 1–4 Discard pile configurations, three opponents, and 320–1440px viewports. It checks reading order, Stock/Hand reflow, card dimensions, horizontal visibility, hit-testing, and control reachability. It does not require a running server.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

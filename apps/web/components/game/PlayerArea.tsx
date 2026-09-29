@@ -43,37 +43,38 @@ export function PlayerArea({
       className={`
         p-4 brutal-border
         ${isCurrentPlayer ? "bg-highlight-bg" : "bg-muted"}
-        flex flex-col gap-4
+        min-w-0 flex flex-col gap-4
         brutal-shadow
       `}
     >
-      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-card inline-block">
+      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-card inline-block break-words">
         {player.name || player.id}
         {isCurrentPlayer && " (You)"}
       </h3>
 
-      <div className="flex flex-col gap-4">
-        <div>
-          <h4 className="text-sm font-semibold mb-2">Hand</h4>
-          <Hand
-            hand={player.hand}
-            onCardClick={onHandCardClick}
-            playableCards={playableHandCards}
-            selectedCardId={selectedHandCard}
-          />
+      <div className="player-cards">
+        <div className="player-stock-hand">
+          <div role="group" aria-label="Your Stock">
+            <h4 className="text-sm font-semibold mb-2">Stock</h4>
+            <StockPile
+              stock={player.stock}
+              onTopCardClick={onStockClick}
+              isPlayable={isStockPlayable}
+              isSelected={isStockSelected}
+            />
+          </div>
+          <div role="group" aria-label="Your Hand" className="min-w-0">
+            <h4 className="text-sm font-semibold mb-2">Hand</h4>
+            <Hand
+              hand={player.hand}
+              onCardClick={onHandCardClick}
+              playableCards={playableHandCards}
+              selectedCardId={selectedHandCard}
+            />
+          </div>
         </div>
 
-        <div>
-          <h4 className="text-sm font-semibold mb-2">Stock</h4>
-          <StockPile
-            stock={player.stock}
-            onTopCardClick={onStockClick}
-            isPlayable={isStockPlayable}
-            isSelected={isStockSelected}
-          />
-        </div>
-
-        <div>
+        <div role="group" aria-label="Your Discard piles">
           <h4 className="text-sm font-semibold mb-2">Discard piles</h4>
           <DiscardPiles
             discards={player.discards}

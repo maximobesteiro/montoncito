@@ -3,6 +3,7 @@
 import type { BuildPile, BuildPileTarget } from "@mont/core-game";
 import type { CardSize } from "./Card";
 import { Pile } from "./Pile";
+import { formatCardName } from "@/lib/format-card-name";
 
 interface BuildPilesProps {
   buildPiles: BuildPile[];
@@ -18,8 +19,9 @@ export function BuildPiles({
   playablePiles = new Set(),
 }: BuildPilesProps) {
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex gap-4 flex-wrap justify-center">
+    <section aria-label="Build piles" className="min-w-0 flex flex-col gap-2">
+      <h3 className="text-lg font-bold">Build piles</h3>
+      <div className="flex gap-4 flex-wrap items-start">
         {buildPiles.map((pile) => {
           const isPlayable = playablePiles.has(pile.id);
           const nextRank = pile.nextRank;
@@ -27,7 +29,12 @@ export function BuildPiles({
 
           const content = (
             <Pile
-              cards={[...pile.cards].reverse()}
+              cards={pile.cards}
+              cardAriaLabel={
+                pile.cards.length
+                  ? `Build top ${formatCardName(pile.cards[pile.cards.length - 1]!)}`
+                  : undefined
+              }
               size={size}
               label={label}
               isPlayable={isPlayable}
@@ -85,6 +92,6 @@ export function BuildPiles({
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 }

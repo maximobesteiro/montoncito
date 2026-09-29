@@ -6,45 +6,35 @@ import { DiscardPiles } from "./DiscardPiles";
 
 interface OpponentAreaProps {
   player: PlayerState;
+  isActive?: boolean;
 }
 
-export function OpponentArea({ player }: OpponentAreaProps) {
-  // Opponent Hands stay hidden; Discard histories are public.
+export function OpponentArea({ player, isActive = false }: OpponentAreaProps) {
+  const name = player.name || player.id;
+  const handCount = player.hand.cards.length;
   return (
-    <div className="p-4 brutal-border bg-surface flex flex-col gap-4 brutal-shadow">
-      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-card inline-block">
-        {player.name || player.id}
-      </h3>
-
-      <div className="flex flex-col gap-4">
-        <div>
-          <h4 className="text-sm font-semibold mb-2">Stock</h4>
-          <StockPile stock={player.stock} />
-        </div>
-
-        <div>
-          <h4 className="text-sm font-semibold mb-2">Discards</h4>
-          <DiscardPiles
-            discards={player.discards}
-            playerName={player.name || player.id}
-            isOpponent
-          />
-        </div>
-
-        <div>
-          <h4 className="text-sm font-semibold mb-2">Hand</h4>
-          <div className="flex gap-2">
-            {Array.from({ length: player.hand.cards.length }).map((_, i) => (
-              <div
-                key={i}
-                className="w-16 h-24 brutal-border bg-card-back flex items-center justify-center brutal-shadow-sm"
-              >
-                <div className="text-text-on-dark text-2xl font-bold">?</div>
-              </div>
-            ))}
-          </div>
-        </div>
+    <section
+      aria-label={name}
+      className="min-w-0 p-3 brutal-border bg-surface flex flex-col gap-3 brutal-shadow"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="min-w-0 text-lg font-bold break-words">{name}</h3>
+        {isActive && (
+          <span className="brutal-border bg-active-bg px-2 text-sm font-bold">
+            Turn
+          </span>
+        )}
       </div>
-    </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <StockPile stock={player.stock} />
+        <p className="text-sm font-semibold">
+          Hand: {handCount} concealed {handCount === 1 ? "card" : "cards"}
+        </p>
+      </div>
+      <div>
+        <h4 className="text-sm font-semibold mb-2">Discard piles</h4>
+        <DiscardPiles discards={player.discards} playerName={name} isOpponent />
+      </div>
+    </section>
   );
 }

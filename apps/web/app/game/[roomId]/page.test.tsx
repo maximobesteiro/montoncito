@@ -20,6 +20,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/use-game-room", () => ({ useGameRoom: () => gameRoom.view }));
 
 import GameRoomPage from "./page";
+import { denseBoardState } from "./dense-board.fixture";
 
 beforeEach(() => {
   // jsdom has no PointerEvent constructor; use mouse coordinates plus pointer identity.
@@ -125,6 +126,95 @@ function historyState(): GameState {
   ];
   return state;
 }
+
+it.each([1, 2, 3, 4] as const)(
+  "keeps all 18 Build targets and %i Discard piles usable with three inspection-only opponents",
+  (count) => {
+    showGameRoom();
+    const submitAction = vi.fn(() => true);
+    gameRoom.view = {
+      ...gameRoom.view,
+      state: denseBoardState(count),
+      submitAction,
+    };
+    render(<GameRoomPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Hand 3 of Clubs" }));
+    for (let index = 1; index <= 18; index++) {
+      const build = screen.getByRole("button", {
+        name: `Build pile build-${index}, next 3`,
+      });
+      expect(build.hasAttribute("disabled")).toBe(false);
+      expect(within(build).getByLabelText("Build top 2 of Clubs")).toBeTruthy();
+    }
+    fireEvent.click(
+      screen.getByRole("button", { name: "Build pile build-18, next 3" }),
+    );
+    expect(submitAction).toHaveBeenLastCalledWith({
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "player-1-hand-3",
+      target: "build-18",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Hand Ace of Clubs" }));
+    fireEvent.click(screen.getByRole("button", { name: "New Build pile" }));
+    expect(submitAction).toHaveBeenLastCalledWith({
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "player-1-hand-1",
+      target: "new",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Hand 5 of Clubs" }));
+    for (let pile = 1; pile <= count; pile++) {
+      expect(
+        screen.getByRole("button", { name: `Discard Hand to pile ${pile}` }),
+      ).toBeTruthy();
+    }
+    fireEvent.click(
+      screen.getByRole("button", { name: `Discard Hand to pile ${count}` }),
+    );
+    expect(submitAction).toHaveBeenLastCalledWith({
+      kind: "DISCARD_FROM_HAND",
+      cardId: "player-1-hand-5",
+      pileIndex: count - 1,
+    });
+    for (const name of ["Bob", "Carol", "Dave"]) {
+      const opponent = screen.getByRole("region", { name });
+      expect(
+        within(opponent).getByText("Hand: 5 concealed cards"),
+      ).toBeTruthy();
+      expect(within(opponent).queryByLabelText(/^Hand /)).toBeNull();
+      expect(
+        opponent.querySelector("[data-drag-source], [data-drop-discard]"),
+      ).toBeNull();
+      expect(within(opponent).getAllByRole("group")).toHaveLength(count);
+    }
+  },
+);
+
+it("reads Builds, own Stock, Hand, Discards, then distinct opponents with Turn and concealed Hand counts", () => {
+  showGameRoom();
+  const state = boardState();
+  state.turn.activePlayer = "player-2";
+  gameRoom.view = { ...gameRoom.view, state };
+  render(<GameRoomPage />);
+  const build = screen.getByRole("region", { name: "Build piles" });
+  const stock = screen.getByRole("group", { name: "Your Stock" });
+  const hand = screen.getByRole("group", { name: "Your Hand" });
+  const discards = screen.getByRole("group", { name: "Your Discard piles" });
+  const bob = screen.getByRole("region", { name: "Bob" });
+  for (const [before, after] of [
+    [build, stock],
+    [stock, hand],
+    [hand, discards],
+    [discards, bob],
+  ]) {
+    expect(
+      before!.compareDocumentPosition(after!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  }
+  expect(within(bob).getByText("Turn")).toBeTruthy();
+  expect(within(bob).getByText("Hand: 1 concealed card")).toBeTruthy();
+  expect(within(bob).queryByRole("button")).toBeNull();
+});
 
 it("shows three compact own cards, only the opponent top, and history controls only for multi-card piles", () => {
   showGameRoom();

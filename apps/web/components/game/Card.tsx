@@ -102,7 +102,7 @@ export function Card({
 
   const baseStyles = `
     ${sizes.container}
-    relative flex flex-col items-center justify-center
+    shrink-0 relative flex flex-col items-center justify-center
     brutal-border
     bg-card
     text-foreground
