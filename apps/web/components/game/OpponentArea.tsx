@@ -9,7 +9,7 @@ interface OpponentAreaProps {
 }
 
 export function OpponentArea({ player }: OpponentAreaProps) {
-  // Opponents can only see stock top and discard tops, not hand
+  // Opponent Hands stay hidden; Discard histories are public.
   return (
     <div className="p-4 brutal-border bg-surface flex flex-col gap-4 brutal-shadow">
       <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-card inline-block">
@@ -24,7 +24,11 @@ export function OpponentArea({ player }: OpponentAreaProps) {
 
         <div>
           <h4 className="text-sm font-semibold mb-2">Discards</h4>
-          <DiscardPiles discards={player.discards} />
+          <DiscardPiles
+            discards={player.discards}
+            playerName={player.name || player.id}
+            isOpponent
+          />
         </div>
 
         <div>

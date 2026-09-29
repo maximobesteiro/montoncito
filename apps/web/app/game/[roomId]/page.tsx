@@ -72,7 +72,8 @@ export default function GameRoomPage() {
         {currentPlayerId && (
           <div className="lg:col-span-2">
             <GameRoomBoard
-              key={`${roomId}:${seq}`}
+              key={`${roomId}:${currentPlayerId}`}
+              seq={seq}
               gameState={state}
               currentPlayerId={currentPlayerId}
               pendingAction={pendingAction}
