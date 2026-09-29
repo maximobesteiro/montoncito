@@ -12,6 +12,7 @@ interface PileProps {
   isPlayable?: boolean;
   cardAriaLabel?: string;
   isSelected?: boolean;
+  dragSource?: string;
   faceUp?: boolean;
   className?: string;
   children?: ReactNode;
@@ -25,6 +26,7 @@ export function Pile({
   isPlayable = false,
   cardAriaLabel,
   isSelected = false,
+  dragSource,
   faceUp = true,
   className = "",
   children,
@@ -41,6 +43,7 @@ export function Pile({
       isPlayable={isPlayable}
       ariaLabel={cardAriaLabel}
       isSelected={isSelected}
+      dragSource={dragSource}
     />
   ) : (
     <div

@@ -48,6 +48,7 @@ export function BuildPiles({
               `}
               aria-label={`Build pile ${pile.id}, next ${nextRank ?? "complete"}`}
               data-legal-target={isPlayable}
+              data-drop-build={pile.id}
               disabled={!isPlayable}
               onClick={isPlayable ? () => onPileClick?.(pile.id) : undefined}
             >
@@ -71,6 +72,7 @@ export function BuildPiles({
             ${playablePiles.has("new") ? "cursor-pointer hover:scale-105" : ""}
           `}
             disabled={!playablePiles.has("new")}
+            data-drop-build="new"
             onClick={
               playablePiles.has("new") ? () => onPileClick("new") : undefined
             }

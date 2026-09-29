@@ -24,6 +24,7 @@ interface CardProps {
   size?: CardSize;
   ariaLabel?: string;
   isSelected?: boolean;
+  dragSource?: string;
 }
 
 const sizeStyles: Record<
@@ -69,6 +70,7 @@ export function Card({
   size = "md",
   ariaLabel,
   isSelected = false,
+  dragSource,
 }: CardProps) {
   const displayValue = () => {
     if (card.kind === "joker") {
@@ -106,6 +108,7 @@ export function Card({
     text-foreground
     font-bold
     ${onClick ? "cursor-pointer hover:scale-105" : ""}
+    ${dragSource ? "touch-none" : ""}
     ${isPlayable ? "ring-4 ring-btn-primary ring-offset-2" : ""}
     transition-all
   `;
@@ -125,6 +128,7 @@ export function Card({
         className={`${baseStyles} bg-card-back text-text-on-dark ${className}`}
         {...interactiveProps}
         aria-label={ariaLabel}
+        data-drag-source={dragSource}
         style={style}
       >
         <div className={sizes.backIcon}>🂠</div>
@@ -137,6 +141,7 @@ export function Card({
       className={`${baseStyles} ${className}`}
       {...interactiveProps}
       aria-label={ariaLabel}
+      data-drag-source={dragSource}
       style={style}
     >
       <div

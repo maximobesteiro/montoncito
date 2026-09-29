@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
 import { validateMove } from "@mont/core-game";
 import type { ActionSubmission, PlayerAction } from "@mont/game-room";
@@ -20,6 +20,8 @@ type SelectedSource =
   | { kind: "stock" }
   | { kind: "discard"; pileIndex: number };
 
+type Drag = { pointerId: number; source: SelectedSource; wasSelected: boolean };
+
 export function GameRoomBoard({
   gameState,
   currentPlayerId,
@@ -30,6 +32,8 @@ export function GameRoomBoard({
   const [selectedSource, setSelectedSource] = useState<SelectedSource | null>(
     null,
   );
+  const drag = useRef<Drag | null>(null);
+  const suppressPointerClick = useRef(false);
   const myTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
@@ -95,8 +99,124 @@ export function GameRoomBoard({
     if (submitAction(action)) setSelectedSource(null);
   }
 
+  function startDrag(event: PointerEvent<HTMLElement>) {
+    suppressPointerClick.current = false;
+    if (
+      !canInteract ||
+      event.isPrimary === false ||
+      (event.pointerType === "mouse" && event.button !== 0)
+    )
+      return;
+    const element = (event.target as Element).closest<HTMLElement>(
+      "[data-drag-source]",
+    );
+    if (!element || !event.currentTarget.contains(element)) return;
+    const sourceName = element.dataset.dragSource;
+    const source: SelectedSource | null =
+      sourceName === "stock"
+        ? moves.stockToBuild.length
+          ? { kind: "stock" }
+          : null
+        : sourceName?.startsWith("hand:")
+          ? selectableCards.has(sourceName.slice(5))
+            ? { kind: "hand", cardId: sourceName.slice(5) }
+            : null
+          : sourceName?.startsWith("discard:")
+            ? selectableDiscardPiles.has(Number(sourceName.slice(8)))
+              ? { kind: "discard", pileIndex: Number(sourceName.slice(8)) }
+              : null
+            : null;
+    if (!source) return;
+    drag.current = {
+      pointerId: event.pointerId,
+      source,
+      wasSelected:
+        source.kind === "hand"
+          ? selected?.kind === "hand" && selected.cardId === source.cardId
+          : source.kind === "discard"
+            ? selected?.kind === "discard" &&
+              selected.pileIndex === source.pileIndex
+            : selected?.kind === "stock",
+    };
+    setSelectedSource(source);
+    element.setPointerCapture?.(event.pointerId);
+  }
+
+  function finishDrag(event: PointerEvent<HTMLElement>) {
+    const gesture = drag.current;
+    if (!gesture || event.pointerId !== gesture.pointerId) return;
+    drag.current = null;
+    suppressPointerClick.current = true;
+    if (!canInteract || event.type === "pointercancel") return;
+
+    // Pointer capture keeps the gesture on its source. Hit-test at release to find the destination.
+    const hit = document.elementFromPoint(event.clientX, event.clientY);
+    if (!hit || !event.currentTarget.contains(hit)) return;
+    const build =
+      hit.closest<HTMLElement>("[data-drop-build]")?.dataset.dropBuild;
+    const discard = hit.closest<HTMLElement>("[data-drop-discard]")?.dataset
+      .dropDiscard;
+    const { source } = gesture;
+    if (
+      build &&
+      (source.kind === "hand"
+        ? moves.handToBuild.some(
+            (move) => move.cardId === source.cardId && move.buildId === build,
+          )
+        : source.kind === "stock"
+          ? moves.stockToBuild.some((move) => move.buildId === build)
+          : moves.discardToBuild.some(
+              (move) =>
+                move.pileIndex === source.pileIndex && move.buildId === build,
+            ))
+    ) {
+      submit(
+        source.kind === "hand"
+          ? { kind: "PLAY_HAND_TO_BUILD", cardId: source.cardId, target: build }
+          : source.kind === "stock"
+            ? { kind: "PLAY_STOCK_TO_BUILD", target: build }
+            : {
+                kind: "PLAY_DISCARD_TO_BUILD",
+                pileIndex: source.pileIndex,
+                target: build,
+              },
+      );
+    } else if (
+      source.kind === "hand" &&
+      discard !== undefined &&
+      moves.canDiscard.some(
+        (move) =>
+          move.cardId === source.cardId && move.pileIndex === Number(discard),
+      )
+    ) {
+      submit({
+        kind: "DISCARD_FROM_HAND",
+        cardId: source.cardId,
+        pileIndex: Number(discard),
+      });
+    } else if (
+      gesture.wasSelected &&
+      hit.closest("[data-drag-source]") ===
+        (event.target as Element).closest("[data-drag-source]")
+    ) {
+      setSelectedSource(null);
+    }
+  }
+
   return (
-    <section aria-label="Game board">
+    <section
+      aria-label="Game board"
+      onPointerDown={startDrag}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      onClickCapture={(event) => {
+        if (suppressPointerClick.current && event.detail > 0) {
+          event.stopPropagation();
+          event.preventDefault();
+          suppressPointerClick.current = false;
+        }
+      }}
+    >
       {pendingAction && (
         <p role="status" className="font-semibold">
           Action pending: {pendingAction.action.kind}

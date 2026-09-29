@@ -37,6 +37,11 @@ export function Hand({
           }
           ariaLabel={`Hand ${formatCardName(card)}`}
           isSelected={selectedCardId === card.id}
+          dragSource={
+            onCardClick && playableCards.has(card.id)
+              ? `hand:${card.id}`
+              : undefined
+          }
         />
       ))}
     </div>
