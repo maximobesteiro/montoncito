@@ -140,7 +140,17 @@ export function GameRoomBoard({
     }
   }, [canInteract]);
 
-  useEffect(() => () => stopScrolling(), []);
+  useEffect(() => {
+    const cancelDrag = () => {
+      drag.current = null;
+      stopScrolling();
+    };
+    window.addEventListener("blur", cancelDrag);
+    return () => {
+      window.removeEventListener("blur", cancelDrag);
+      cancelDrag();
+    };
+  }, []);
 
   function scrollTowardTargets() {
     if (!drag.current || !scrollDirection.current) {
@@ -284,6 +294,12 @@ export function GameRoomBoard({
       onPointerMove={moveDrag}
       onPointerUp={finishDrag}
       onPointerCancel={finishDrag}
+      onLostPointerCapture={(event) => {
+        if (drag.current?.pointerId === event.pointerId) {
+          drag.current = null;
+          stopScrolling();
+        }
+      }}
       onClickCapture={(event) => {
         if (suppressPointerClick.current && event.detail > 0) {
           event.stopPropagation();

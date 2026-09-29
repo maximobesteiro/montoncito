@@ -229,6 +229,23 @@ it("scrolls toward off-screen Build targets while a touch drag holds at the scre
   }
 });
 
+it("stops a drag if pointer capture is lost before release", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  fireEvent.pointerDown(hand, { pointerId: 5, pointerType: "touch" });
+  fireEvent.lostPointerCapture(hand, { pointerId: 5, pointerType: "touch" });
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => screen.getByText("build-1 → 2"),
+  });
+  fireEvent.pointerUp(hand, { pointerId: 5, pointerType: "touch" });
+  expect(submitAction).not.toHaveBeenCalled();
+  expect(hand.getAttribute("aria-pressed")).toBe("true");
+});
+
 it("selects a held touch Hand card and ends the Turn only after dropping on an own Discard pile", () => {
   showGameRoom();
   const state = boardState();
