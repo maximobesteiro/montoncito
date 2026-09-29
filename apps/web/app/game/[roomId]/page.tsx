@@ -1,12 +1,14 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { useGameRoom } from "@/lib/use-game-room";
 import { GameRoomBoard } from "@/components/game/GameRoomBoard";
 import { GameRoomChat } from "@/components/game/GameRoomChat";
 
 export default function GameRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const {
     state,
     seq,
@@ -48,7 +50,7 @@ export default function GameRoomPage() {
   }
 
   return (
-    <main className="min-h-screen space-y-4 bg-muted p-4 sm:p-6">
+    <main className="game-room-page min-h-screen space-y-4 bg-muted p-4 sm:p-6">
       <header className="brutal-border brutal-shadow mx-auto flex max-w-6xl items-center justify-between bg-card p-4">
         <div>
           <h1 className="text-2xl font-bold">Game room</h1>
@@ -79,6 +81,19 @@ export default function GameRoomPage() {
               pendingAction={pendingAction}
               canSubmit={connectionStatus === "connected"}
               submitAction={submitAction}
+              chatOpen={mobileChatOpen}
+              chat={
+                <GameRoomChat
+                  key={roomId}
+                  roomId={roomId}
+                  messages={chatMessages}
+                  liveChatCount={liveChatCount}
+                  currentPlayerId={currentPlayerId}
+                  canSend={connectionStatus === "connected"}
+                  onSendMessage={sendChat}
+                  onMobileOpenChange={setMobileChatOpen}
+                />
+              }
             />
             {submissionError && (
               <p className="mt-2 font-semibold" role="alert">
@@ -95,15 +110,6 @@ export default function GameRoomPage() {
             )}
           </div>
         )}
-        <GameRoomChat
-          key={roomId}
-          roomId={roomId}
-          messages={chatMessages}
-          liveChatCount={liveChatCount}
-          currentPlayerId={currentPlayerId}
-          canSend={connectionStatus === "connected"}
-          onSendMessage={sendChat}
-        />
       </div>
     </main>
   );

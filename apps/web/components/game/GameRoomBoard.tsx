@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
 import { validateMove } from "@mont/core-game";
 import type { ActionSubmission, PlayerAction } from "@mont/game-room";
@@ -8,6 +14,8 @@ import { getValidMoves } from "@/lib/game-actions";
 import { GameBoard } from "./GameBoard";
 
 interface GameRoomBoardProps {
+  chat?: ReactNode;
+  chatOpen?: boolean;
   seq: number | null;
   gameState: GameState;
   currentPlayerId: PlayerId;
@@ -53,6 +61,8 @@ function discardFromHand(cardId: string, pileIndex: number): PlayerAction {
 }
 
 export function GameRoomBoard({
+  chat,
+  chatOpen = false,
   seq,
   gameState,
   currentPlayerId,
@@ -64,13 +74,14 @@ export function GameRoomBoard({
     null,
   );
   const drag = useRef<Drag | null>(null);
+  const board = useRef<HTMLElement>(null);
   const suppressPointerClick = useRef(false);
   const scrollFrame = useRef<number | null>(null);
   const scrollDirection = useRef(0);
   const myTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
-  const canInteract = myTurn && canSubmit && !pendingAction;
+  const canInteract = myTurn && canSubmit && !pendingAction && !chatOpen;
   const moves = getValidMoves(gameState, currentPlayerId);
   const selectableCards = new Set([
     ...moves.handToBuild.map((move) => move.cardId),
@@ -140,6 +151,14 @@ export function GameRoomBoard({
     stopScrolling();
   }
 
+  useEffect(() => {
+    if (chatOpen) {
+      setSelectedSource(null);
+      cancelDrag();
+      suppressPointerClick.current = true;
+    }
+  }, [chatOpen]);
+
   // New Authoritative state cancels gameplay gestures, but keeps inspection open.
   useEffect(() => {
     setSelectedSource(null);
@@ -166,8 +185,20 @@ export function GameRoomBoard({
       scrollFrame.current = null;
       return;
     }
-    window.scrollBy(0, scrollDirection.current * 12);
+    const page = scrollablePage();
+    (page ?? window).scrollBy(0, scrollDirection.current * 12);
     scrollFrame.current = window.requestAnimationFrame(scrollTowardTargets);
+  }
+
+  function scrollablePage() {
+    const page =
+      board.current?.closest<HTMLElement>(".app-shell") ??
+      board.current?.closest<HTMLElement>(".game-room-page");
+    return page &&
+      page.clientHeight > 0 &&
+      page.scrollHeight > page.clientHeight
+      ? page
+      : null;
   }
 
   function submit(action: PlayerAction) {
@@ -235,8 +266,10 @@ export function GameRoomBoard({
       gesture.moved = true;
     }
     if (!gesture.moved) return;
+    const bottom =
+      scrollablePage()?.getBoundingClientRect().bottom ?? window.innerHeight;
     scrollDirection.current =
-      event.clientY < 48 ? -1 : event.clientY > window.innerHeight - 48 ? 1 : 0;
+      event.clientY < 48 ? -1 : event.clientY > bottom - 48 ? 1 : 0;
     if (!scrollDirection.current) stopScrolling();
     else if (scrollFrame.current === null) {
       scrollFrame.current = window.requestAnimationFrame(scrollTowardTargets);
@@ -298,6 +331,7 @@ export function GameRoomBoard({
 
   return (
     <section
+      ref={board}
       aria-label="Game board"
       onPointerDown={startDrag}
       onPointerMove={moveDrag}
@@ -309,6 +343,7 @@ export function GameRoomBoard({
         }
       }}
       onClickCapture={(event) => {
+        if ((event.target as Element).closest(".game-room-chat")) return;
         if (suppressPointerClick.current && event.detail > 0) {
           event.stopPropagation();
           event.preventDefault();
@@ -322,6 +357,7 @@ export function GameRoomBoard({
         </p>
       )}
       <GameBoard
+        chat={chat}
         gameState={gameState}
         currentPlayerId={currentPlayerId}
         onHandCardClick={

@@ -1,5 +1,97 @@
 @import "tailwindcss";
 
+.chat-container {
+  position: static;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.chat-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 0.75rem;
+}
+
+.chat-content[hidden] {
+  display: none;
+}
+.game-chat-composer {
+  height: 400px;
+  min-height: 0;
+  padding: 1rem;
+}
+.chat-mobile-entry {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  /* Reserve a full-width dock, so scrolling cards never pass behind the entry. */
+  .game-room-page {
+    height: calc(100dvh - 4.5rem - env(safe-area-inset-bottom));
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .app-shell:has(.game-room-chat) {
+    height: calc(100dvh - 4.5rem - env(safe-area-inset-bottom));
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .app-shell .game-room-page {
+    height: auto;
+    overflow-y: visible;
+  }
+  .game-room-chat::before {
+    content: "";
+    position: fixed;
+    inset: auto 0 0;
+    height: calc(4.5rem + env(safe-area-inset-bottom));
+    background: var(--color-muted);
+    z-index: 20;
+  }
+  .chat-mobile-entry {
+    display: block;
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    z-index: 21;
+  }
+  .chat-mobile-entry[hidden],
+  .chat-desktop-toggle {
+    display: none;
+  }
+  .chat-container {
+    display: none;
+  }
+  .chat-container:modal {
+    display: block;
+    position: fixed;
+    inset: auto 0 0;
+    width: 100%;
+    max-height: 80dvh;
+    padding: 1rem max(1rem, env(safe-area-inset-right))
+      calc(1rem + env(safe-area-inset-bottom))
+      max(1rem, env(safe-area-inset-left));
+    border: 4px solid var(--color-brutal-border);
+    background: var(--color-card);
+    overflow: hidden;
+  }
+  .chat-container::backdrop {
+    background: var(--color-overlay);
+  }
+  .chat-content {
+    margin: 0;
+  }
+  .game-chat-composer {
+    height: min(55dvh, 400px);
+  }
+}
+
 /* Reflow based on the play column's available width, including beside opponents. */
 .player-cards {
   container-type: inline-size;

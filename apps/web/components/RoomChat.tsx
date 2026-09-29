@@ -9,6 +9,7 @@ interface RoomChatProps {
   onSendMessage: (text: string) => boolean | void;
   canSend?: boolean;
   className?: string;
+  isVisible?: boolean;
 }
 
 export function RoomChat({
@@ -17,18 +18,22 @@ export function RoomChat({
   onSendMessage,
   canSend = true,
   className = "",
+  isVisible = true,
 }: RoomChatProps) {
   const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (!isVisible) return;
+    // The mobile dialog must enter the top layer before its log can be measured.
+    const frame = window.requestAnimationFrame(scrollToBottom);
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, isVisible]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -52,6 +57,8 @@ export function RoomChat({
 
       <div
         ref={messagesContainerRef}
+        role="log"
+        aria-label="Chat messages"
         className="flex-1 overflow-y-auto brutal-border bg-muted p-3 space-y-2 min-h-0"
       >
         {messages.length === 0 ? (
@@ -75,12 +82,12 @@ export function RoomChat({
             </div>
           ))
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <div className="mt-3 flex gap-2">
         <input
           type="text"
+          aria-label="Chat message"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

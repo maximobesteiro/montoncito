@@ -1,12 +1,14 @@
 "use client";
 
 import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
+import type { ReactNode } from "react";
 import { BuildPiles } from "./BuildPiles";
 import { PlayerArea } from "./PlayerArea";
 import { OpponentArea } from "./OpponentArea";
 import { TurnIndicator } from "./TurnIndicator";
 
 interface GameBoardProps {
+  chat?: ReactNode;
   gameState: GameState;
   currentPlayerId: PlayerId;
   onHandCardClick?: (cardId: string) => void;
@@ -26,6 +28,7 @@ interface GameBoardProps {
 }
 
 export function GameBoard({
+  chat,
   gameState,
   currentPlayerId,
   onHandCardClick,
@@ -84,18 +87,21 @@ export function GameBoard({
             />
           )}
         </div>
-        <aside aria-label="Opponents" className="min-w-0 flex flex-col gap-4">
-          {opponents.map((opponent) => (
-            <OpponentArea
-              key={opponent.id}
-              player={opponent}
-              isActive={
-                gameState.phase === "turn" &&
-                gameState.turn.activePlayer === opponent.id
-              }
-            />
-          ))}
-        </aside>
+        <div className="min-w-0 flex flex-col gap-4">
+          {chat}
+          <aside aria-label="Opponents" className="min-w-0 flex flex-col gap-4">
+            {opponents.map((opponent) => (
+              <OpponentArea
+                key={opponent.id}
+                player={opponent}
+                isActive={
+                  gameState.phase === "turn" &&
+                  gameState.turn.activePlayer === opponent.id
+                }
+              />
+            ))}
+          </aside>
+        </div>
       </div>
     </div>
   );
