@@ -53,30 +53,18 @@ export function GameBoard({
     <div className="flex flex-col gap-4 p-2 sm:p-4 bg-muted">
       <TurnIndicator gameState={gameState} currentPlayerId={currentPlayerId} />
 
-      <div className="flex justify-center gap-4 text-sm font-semibold">
+      <div className="flex flex-wrap justify-center gap-4 text-sm font-semibold">
         <span>Draw pile: {gameState.deck.drawPile.length} cards</span>
         <span>Recycle pile: {gameState.deck.recyclePile.length} cards</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 auto-rows-min">
-        {/* Opponents on left (desktop), top (mobile) */}
-        <div className="flex flex-col gap-4 order-2 lg:order-1">
-          {opponents.map((opponent) => (
-            <OpponentArea key={opponent.id} player={opponent} />
-          ))}
-        </div>
-
-        {/* Build piles in center */}
-        <div className="order-1 lg:order-2">
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 items-start">
+        <div className="min-w-0 flex flex-col gap-4">
           <BuildPiles
             buildPiles={gameState.center.buildPiles}
             onPileClick={onBuildPileClick}
             playablePiles={playableBuildPiles}
           />
-        </div>
-
-        {/* Current player on right (desktop), bottom (mobile) */}
-        <div className="order-3">
           {currentPlayer && (
             <PlayerArea
               player={currentPlayer}
@@ -96,6 +84,18 @@ export function GameBoard({
             />
           )}
         </div>
+        <aside aria-label="Opponents" className="min-w-0 flex flex-col gap-4">
+          {opponents.map((opponent) => (
+            <OpponentArea
+              key={opponent.id}
+              player={opponent}
+              isActive={
+                gameState.phase === "turn" &&
+                gameState.turn.activePlayer === opponent.id
+              }
+            />
+          ))}
+        </aside>
       </div>
     </div>
   );

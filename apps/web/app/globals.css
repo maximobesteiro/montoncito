@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+/* Reflow based on the play column's available width, including beside opponents. */
+.player-cards {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.player-stock-hand {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+@container (min-width: 34rem) {
+  .player-stock-hand {
+    grid-template-columns: 6rem minmax(0, 1fr);
+  }
+}
+
 /* Enable class-based dark mode with .dark class on root element */
 @custom-variant dark (&:where(.dark, .dark *));
 
