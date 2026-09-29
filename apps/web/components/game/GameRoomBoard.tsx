@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
 import { validateMove } from "@mont/core-game";
 import type { ActionSubmission, PlayerAction } from "@mont/game-room";
@@ -20,7 +20,36 @@ type SelectedSource =
   | { kind: "stock" }
   | { kind: "discard"; pileIndex: number };
 
-type Drag = { pointerId: number; source: SelectedSource; wasSelected: boolean };
+type Drag = {
+  pointerId: number;
+  source: SelectedSource;
+  wasSelected: boolean;
+  startX: number;
+  startY: number;
+  moved: boolean;
+};
+
+function playToBuild(
+  source: SelectedSource,
+  target: BuildPileTarget,
+): PlayerAction {
+  switch (source.kind) {
+    case "hand":
+      return { kind: "PLAY_HAND_TO_BUILD", cardId: source.cardId, target };
+    case "stock":
+      return { kind: "PLAY_STOCK_TO_BUILD", target };
+    case "discard":
+      return {
+        kind: "PLAY_DISCARD_TO_BUILD",
+        pileIndex: source.pileIndex,
+        target,
+      };
+  }
+}
+
+function discardFromHand(cardId: string, pileIndex: number): PlayerAction {
+  return { kind: "DISCARD_FROM_HAND", cardId, pileIndex };
+}
 
 export function GameRoomBoard({
   gameState,
@@ -34,6 +63,8 @@ export function GameRoomBoard({
   );
   const drag = useRef<Drag | null>(null);
   const suppressPointerClick = useRef(false);
+  const scrollFrame = useRef<number | null>(null);
+  const scrollDirection = useRef(0);
   const myTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
@@ -94,6 +125,32 @@ export function GameRoomBoard({
   const canEndTurn =
     canInteract && validateMove(gameState, { kind: "END_TURN" }) === null;
 
+  function stopScrolling() {
+    scrollDirection.current = 0;
+    if (scrollFrame.current !== null) {
+      window.cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = null;
+    }
+  }
+
+  useEffect(() => {
+    if (!canInteract) {
+      drag.current = null;
+      stopScrolling();
+    }
+  }, [canInteract]);
+
+  useEffect(() => () => stopScrolling(), []);
+
+  function scrollTowardTargets() {
+    if (!drag.current || !scrollDirection.current) {
+      scrollFrame.current = null;
+      return;
+    }
+    window.scrollBy(0, scrollDirection.current * 12);
+    scrollFrame.current = window.requestAnimationFrame(scrollTowardTargets);
+  }
+
   function submit(action: PlayerAction) {
     if (!canInteract) return;
     if (submitAction(action)) setSelectedSource(null);
@@ -127,6 +184,7 @@ export function GameRoomBoard({
               : null
             : null;
     if (!source) return;
+    stopScrolling();
     drag.current = {
       pointerId: event.pointerId,
       source,
@@ -137,15 +195,40 @@ export function GameRoomBoard({
             ? selected?.kind === "discard" &&
               selected.pileIndex === source.pileIndex
             : selected?.kind === "stock",
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
     };
     setSelectedSource(source);
     element.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveDrag(event: PointerEvent<HTMLElement>) {
+    const gesture = drag.current;
+    if (!gesture || gesture.pointerId !== event.pointerId || !canInteract)
+      return;
+    if (
+      Math.hypot(
+        event.clientX - gesture.startX,
+        event.clientY - gesture.startY,
+      ) > 5
+    ) {
+      gesture.moved = true;
+    }
+    if (!gesture.moved) return;
+    scrollDirection.current =
+      event.clientY < 48 ? -1 : event.clientY > window.innerHeight - 48 ? 1 : 0;
+    if (!scrollDirection.current) stopScrolling();
+    else if (scrollFrame.current === null) {
+      scrollFrame.current = window.requestAnimationFrame(scrollTowardTargets);
+    }
   }
 
   function finishDrag(event: PointerEvent<HTMLElement>) {
     const gesture = drag.current;
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     drag.current = null;
+    stopScrolling();
     suppressPointerClick.current = true;
     if (!canInteract || event.type === "pointercancel") return;
 
@@ -170,17 +253,7 @@ export function GameRoomBoard({
                 move.pileIndex === source.pileIndex && move.buildId === build,
             ))
     ) {
-      submit(
-        source.kind === "hand"
-          ? { kind: "PLAY_HAND_TO_BUILD", cardId: source.cardId, target: build }
-          : source.kind === "stock"
-            ? { kind: "PLAY_STOCK_TO_BUILD", target: build }
-            : {
-                kind: "PLAY_DISCARD_TO_BUILD",
-                pileIndex: source.pileIndex,
-                target: build,
-              },
-      );
+      submit(playToBuild(source, build));
     } else if (
       source.kind === "hand" &&
       discard !== undefined &&
@@ -189,13 +262,14 @@ export function GameRoomBoard({
           move.cardId === source.cardId && move.pileIndex === Number(discard),
       )
     ) {
-      submit({
-        kind: "DISCARD_FROM_HAND",
-        cardId: source.cardId,
-        pileIndex: Number(discard),
-      });
+      submit(discardFromHand(source.cardId, Number(discard)));
     } else if (
       gesture.wasSelected &&
+      !gesture.moved &&
+      Math.hypot(
+        event.clientX - gesture.startX,
+        event.clientY - gesture.startY,
+      ) <= 5 &&
       hit.closest("[data-drag-source]") ===
         (event.target as Element).closest("[data-drag-source]")
     ) {
@@ -207,6 +281,7 @@ export function GameRoomBoard({
     <section
       aria-label="Game board"
       onPointerDown={startDrag}
+      onPointerMove={moveDrag}
       onPointerUp={finishDrag}
       onPointerCancel={finishDrag}
       onClickCapture={(event) => {
@@ -253,11 +328,7 @@ export function GameRoomBoard({
                   discardTargets.has(pileIndex) &&
                   !selectableDiscardPiles.has(pileIndex)
                 )
-                  submit({
-                    kind: "DISCARD_FROM_HAND",
-                    cardId: selected.cardId,
-                    pileIndex,
-                  });
+                  submit(discardFromHand(selected.cardId, pileIndex));
                 else if (selectableDiscardPiles.has(pileIndex))
                   setSelectedSource(
                     selected?.kind === "discard" &&
@@ -272,21 +343,7 @@ export function GameRoomBoard({
           selected
             ? (target) => {
                 if (buildTargets.has(target))
-                  submit(
-                    selected.kind === "hand"
-                      ? {
-                          kind: "PLAY_HAND_TO_BUILD",
-                          cardId: selected.cardId,
-                          target,
-                        }
-                      : selected.kind === "stock"
-                        ? { kind: "PLAY_STOCK_TO_BUILD", target }
-                        : {
-                            kind: "PLAY_DISCARD_TO_BUILD",
-                            pileIndex: selected.pileIndex,
-                            target,
-                          },
-                  );
+                  submit(playToBuild(selected, target));
               }
             : undefined
         }
@@ -305,11 +362,7 @@ export function GameRoomBoard({
           selected?.kind === "hand"
             ? (pileIndex) => {
                 if (discardTargets.has(pileIndex))
-                  submit({
-                    kind: "DISCARD_FROM_HAND",
-                    cardId: selected.cardId,
-                    pileIndex,
-                  });
+                  submit(discardFromHand(selected.cardId, pileIndex));
               }
             : undefined
         }

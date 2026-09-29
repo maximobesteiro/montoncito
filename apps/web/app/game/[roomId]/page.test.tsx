@@ -16,12 +16,27 @@ vi.mock("@/lib/use-game-room", () => ({ useGameRoom: () => gameRoom.view }));
 import GameRoomPage from "./page";
 
 beforeEach(() => {
+  // jsdom has no PointerEvent constructor; use mouse coordinates plus pointer identity.
+  class TestPointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    readonly isPrimary: boolean;
+
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? "mouse";
+      this.isPrimary = init.isPrimary ?? true;
+    }
+  }
+  vi.stubGlobal("PointerEvent", TestPointerEvent);
   Element.prototype.scrollIntoView = vi.fn();
   window.sessionStorage.clear();
   gameRoom.roomId = "room-1";
 });
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
   Reflect.deleteProperty(document, "elementFromPoint");
 });
 
@@ -138,6 +153,80 @@ it("keeps tap selection and deselection usable with pointer-generated clicks", (
   fireEvent.pointerUp(hand, { pointerId: 2, pointerType: "mouse" });
   fireEvent.click(hand, { detail: 1 });
   expect(hand.getAttribute("aria-pressed")).toBe("false");
+});
+
+it("keeps a previously selected card selected when a drag returns to its source", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: boardState() };
+  render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
+  fireEvent.click(hand);
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => hand,
+  });
+  fireEvent.pointerDown(hand, {
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX: 20,
+    clientY: 200,
+  });
+  fireEvent.pointerMove(hand, {
+    pointerId: 1,
+    pointerType: "mouse",
+    clientX: 60,
+    clientY: 200,
+  });
+  fireEvent.pointerUp(hand, {
+    pointerId: 1,
+    pointerType: "mouse",
+    clientX: 20,
+    clientY: 200,
+  });
+  expect(hand.getAttribute("aria-pressed")).toBe("true");
+});
+
+it("scrolls toward off-screen Build targets while a touch drag holds at the screen edge", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: boardState() };
+  let scrollStep: FrameRequestCallback | undefined;
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    value: (step: FrameRequestCallback) => {
+      scrollStep = step;
+      return 1;
+    },
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {});
+  try {
+    render(<GameRoomPage />);
+    const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
+    fireEvent.pointerDown(hand, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 50,
+      clientY: 150,
+    });
+    fireEvent.pointerMove(hand, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 50,
+      clientY: 1,
+    });
+    scrollStep?.(0);
+    expect(scrollBy).toHaveBeenCalledWith(0, -12);
+    fireEvent.pointerCancel(hand, { pointerId: 1, pointerType: "touch" });
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1);
+  } finally {
+    scrollBy.mockRestore();
+    Reflect.deleteProperty(window, "requestAnimationFrame");
+    Reflect.deleteProperty(window, "cancelAnimationFrame");
+  }
 });
 
 it("selects a held touch Hand card and ends the Turn only after dropping on an own Discard pile", () => {
