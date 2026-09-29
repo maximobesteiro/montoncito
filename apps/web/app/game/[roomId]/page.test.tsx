@@ -37,6 +37,23 @@ beforeEach(() => {
     }
   }
   vi.stubGlobal("PointerEvent", TestPointerEvent);
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    })),
+  );
+  HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.show = function () {
+    this.open = true;
+  };
+  HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
   Element.prototype.scrollIntoView = vi.fn();
   window.sessionStorage.clear();
   gameRoom.roomId = "room-1";
@@ -111,6 +128,42 @@ function boardState(): GameState {
   ];
   return state;
 }
+
+it("opens mobile chat closed by default, cancels selection and drag, and restores the board on Close", () => {
+  vi.mocked(window.matchMedia).mockReturnValue({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  } as unknown as MediaQueryList);
+  window.sessionStorage.setItem("montoncito:room-1:chat-expanded", "true");
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  render(<GameRoomPage />);
+  const source = screen.getByRole("button", { name: "Hand Ace of Hearts" });
+  fireEvent.pointerDown(source, { pointerId: 1, pointerType: "touch" });
+  expect(source.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+  expect(screen.getByRole("dialog", { name: "Game room chat" })).toBeTruthy();
+  expect(
+    screen.queryByRole("button", { name: "Hand Ace of Hearts" }),
+  ).toBeNull();
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => screen.getByRole("button", { name: "New Build pile" }),
+  });
+  fireEvent.pointerUp(screen.getByRole("region", { name: "Game board" }), {
+    pointerId: 1,
+    pointerType: "touch",
+  });
+  fireEvent.click(screen.getByText("New Build pile"));
+  expect(submitAction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Hand Ace of Hearts" }));
+  fireEvent.click(screen.getByRole("button", { name: "New Build pile" }));
+  expect(submitAction).toHaveBeenCalledTimes(1);
+});
 
 function historyState(): GameState {
   const state = boardState();
@@ -561,17 +614,15 @@ it("scrolls toward off-screen Build targets while a touch drag holds at the scre
   showGameRoom();
   gameRoom.view = { ...gameRoom.view, state: boardState() };
   let scrollStep: FrameRequestCallback | undefined;
-  Object.defineProperty(window, "requestAnimationFrame", {
-    configurable: true,
-    value: (step: FrameRequestCallback) => {
+  const requestFrame = vi
+    .spyOn(window, "requestAnimationFrame")
+    .mockImplementation((step: FrameRequestCallback) => {
       scrollStep = step;
       return 1;
-    },
-  });
-  Object.defineProperty(window, "cancelAnimationFrame", {
-    configurable: true,
-    value: vi.fn(),
-  });
+    });
+  const cancelFrame = vi
+    .spyOn(window, "cancelAnimationFrame")
+    .mockImplementation(() => {});
   const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {});
   try {
     render(<GameRoomPage />);
@@ -593,9 +644,10 @@ it("scrolls toward off-screen Build targets while a touch drag holds at the scre
     fireEvent.pointerCancel(hand, { pointerId: 1, pointerType: "touch" });
     expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1);
   } finally {
+    cleanup();
     scrollBy.mockRestore();
-    Reflect.deleteProperty(window, "requestAnimationFrame");
-    Reflect.deleteProperty(window, "cancelAnimationFrame");
+    requestFrame.mockRestore();
+    cancelFrame.mockRestore();
   }
 });
 
@@ -1319,6 +1371,94 @@ it("keeps a chat draft when the player collapses and reopens the panel", () => {
     "Keep this draft",
   );
 });
+
+it("counts mobile live arrivals without counting history and keeps its draft/messages offline", () => {
+  vi.mocked(window.matchMedia).mockReturnValue({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  } as unknown as MediaQueryList);
+  showGameRoom(4);
+  const sendChat = vi.fn(() => true);
+  gameRoom.view = {
+    ...gameRoom.view,
+    sendChat,
+    chatMessages: [
+      {
+        id: "old",
+        playerId: "player-2",
+        playerName: "Bob",
+        text: "From the Lobby",
+        timestamp: 1,
+      },
+    ],
+  };
+  const { rerender } = render(<GameRoomPage />);
+  expect(
+    screen.getByRole("button", { name: "Open chat" }).textContent,
+  ).not.toContain("unread");
+  gameRoom.view = { ...gameRoom.view, liveChatCount: 6 };
+  rerender(<GameRoomPage />);
+  fireEvent.click(screen.getByRole("button", { name: /Open chat.*2 unread/ }));
+  expect(screen.getByText("From the Lobby")).toBeTruthy();
+  const draft = screen.getByRole("textbox", {
+    name: "Chat message",
+  }) as HTMLInputElement;
+  fireEvent.change(draft, { target: { value: "See you next Turn" } });
+  gameRoom.view = {
+    ...gameRoom.view,
+    connectionStatus: "connecting",
+    liveChatCount: 7,
+  };
+  rerender(<GameRoomPage />);
+  fireEvent.keyDown(draft, { key: "Enter" });
+  expect(sendChat).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "Send" }).hasAttribute("disabled"),
+  ).toBe(true);
+  expect(screen.getByText("From the Lobby")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
+  expect(
+    screen.getByRole("button", { name: "Open chat" }).textContent,
+  ).not.toContain("unread");
+  fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+  expect(draft.value).toBe("See you next Turn");
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "connected" };
+  rerender(<GameRoomPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(sendChat).toHaveBeenCalledExactlyOnceWith("See you next Turn");
+});
+
+it.each(["pending", "gameover"])(
+  "keeps connected chat usable during %s gameplay",
+  (phase) => {
+    showGameRoom();
+    const state = boardState();
+    if (phase === "gameover") {
+      state.phase = "gameover";
+      state.winner = "player-2";
+    }
+    const sendChat = vi.fn(() => true);
+    const submitAction = vi.fn();
+    gameRoom.view = {
+      ...gameRoom.view,
+      state,
+      sendChat,
+      submitAction,
+      pendingAction:
+        phase === "pending"
+          ? { actionId: "pending", action: { kind: "PLAY_HAND_TO_BUILD" } }
+          : null,
+    };
+    render(<GameRoomPage />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Chat message" }), {
+      target: { value: "Still here" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    expect(sendChat).toHaveBeenCalledExactlyOnceWith("Still here");
+    expect(submitAction).not.toHaveBeenCalled();
+  },
+);
 
 it("keeps chat available when session storage cannot be read", () => {
   showGameRoom();

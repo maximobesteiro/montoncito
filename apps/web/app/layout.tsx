@@ -3,8 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { ThemeProvider } from "../components/ThemeProvider";
 import { ToastProvider } from "../components/ToastProvider";
-import { Header } from "../components/header/Header";
-import { Footer } from "../components/footer/Footer";
+import { AppShell } from "../components/AppShell";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -55,11 +54,7 @@ export default function RootLayout({
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <ThemeProvider>
           <ToastProvider>
-            <div className="min-h-screen flex flex-col">
-              <Header />
-              <main className="flex-1 flex flex-col">{children}</main>
-              <Footer />
-            </div>
+            <AppShell>{children}</AppShell>
           </ToastProvider>
         </ThemeProvider>
       </body>

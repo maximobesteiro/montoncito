@@ -39,7 +39,9 @@
 - Includes minimal **feedback cues** (pulse, color flash, outline) to show accepted/rejected moves.
 
 ### 4. **Chat & Presence**
-- A contained chat panel in the page flow, positioned so it can become a collapsible side panel in a later layout redesign.
+- On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.
+- Below 1024px, chat starts closed. A safe-area-aware bottom entry has reserved space outside the scrollable board. It opens a bounded modal sheet with Close and backdrop dismissal. Opening the sheet clears selection and cancels drag without submitting a gameplay Action.
+- Recovered history does not raise unread; only live arrivals while closed do. Chat retains messages and drafts offline, disables Send until connected, and stays available during a Pending Action and after game over.
 - Shows connected players and presence indicators.
 - WebSocket-driven updates.
 
