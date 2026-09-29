@@ -29,7 +29,15 @@ export function DiscardPiles({
         // Top card is the last element
         const topCard = pile[pile.length - 1];
         return (
-          <div key={index} className="flex flex-col items-center gap-1">
+          <div
+            key={index}
+            className="flex flex-col items-center gap-1"
+            data-drop-discard={
+              handDiscardOnlyTargets.has(index) || handDiscardTargets.has(index)
+                ? index
+                : undefined
+            }
+          >
             <div className="text-xs font-bold brutal-border px-1 py-0.5 bg-card">
               Discard {index + 1}
             </div>
@@ -44,6 +52,11 @@ export function DiscardPiles({
                 }
                 isPlayable={playablePiles.has(index)}
                 isSelected={selectedPile === index}
+                dragSource={
+                  onCardClick && playablePiles.has(index) && topCard
+                    ? `discard:${index}`
+                    : undefined
+                }
                 ariaLabel={
                   handDiscardOnlyTargets.has(index)
                     ? `Discard Hand to pile ${index + 1}, over ${formatCardName(topCard)}`

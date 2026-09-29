@@ -16,11 +16,47 @@ vi.mock("@/lib/use-game-room", () => ({ useGameRoom: () => gameRoom.view }));
 import GameRoomPage from "./page";
 
 beforeEach(() => {
+  // jsdom has no PointerEvent constructor; use mouse coordinates plus pointer identity.
+  class TestPointerEvent extends MouseEvent {
+    readonly pointerId: number;
+    readonly pointerType: string;
+    readonly isPrimary: boolean;
+
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? "mouse";
+      this.isPrimary = init.isPrimary ?? true;
+    }
+  }
+  vi.stubGlobal("PointerEvent", TestPointerEvent);
   Element.prototype.scrollIntoView = vi.fn();
   window.sessionStorage.clear();
   gameRoom.roomId = "room-1";
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  Reflect.deleteProperty(document, "elementFromPoint");
+});
+
+function releaseOver(
+  source: Element,
+  target: () => Element,
+  pointerType: string,
+) {
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => target(),
+  });
+  fireEvent.pointerDown(source, { pointerId: 1, pointerType, button: 0 });
+  fireEvent.pointerUp(source, {
+    pointerId: 1,
+    pointerType,
+    clientX: 10,
+    clientY: 10,
+  });
+}
 
 function showGameRoom(liveChatCount = 0) {
   gameRoom.view = {
@@ -68,6 +104,344 @@ function boardState(): GameState {
   ];
   return state;
 }
+
+it("drags a legal Hand card by mouse onto an existing Build pile", () => {
+  showGameRoom();
+  const state = boardState();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+
+  const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  releaseOver(
+    hand,
+    () => screen.getByRole("button", { name: /Build pile build-1/ }),
+    "mouse",
+  );
+  fireEvent.click(hand, { detail: 1 });
+
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_HAND_TO_BUILD",
+    cardId: "two",
+    target: "build-1",
+  });
+  expect(screen.getByLabelText("Hand 2 of Clubs")).toBeTruthy();
+});
+
+it("keeps tap selection and deselection usable with pointer-generated clicks", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: boardState() };
+  render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => hand,
+  });
+  fireEvent.pointerDown(hand, {
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.pointerUp(hand, { pointerId: 1, pointerType: "mouse" });
+  fireEvent.click(hand, { detail: 1 });
+  expect(hand.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.pointerDown(hand, {
+    pointerId: 2,
+    pointerType: "mouse",
+    button: 0,
+  });
+  fireEvent.pointerUp(hand, { pointerId: 2, pointerType: "mouse" });
+  fireEvent.click(hand, { detail: 1 });
+  expect(hand.getAttribute("aria-pressed")).toBe("false");
+});
+
+it("keeps a previously selected card selected when a drag returns to its source", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: boardState() };
+  render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
+  fireEvent.click(hand);
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => hand,
+  });
+  fireEvent.pointerDown(hand, {
+    pointerId: 1,
+    pointerType: "mouse",
+    button: 0,
+    clientX: 20,
+    clientY: 200,
+  });
+  fireEvent.pointerMove(hand, {
+    pointerId: 1,
+    pointerType: "mouse",
+    clientX: 60,
+    clientY: 200,
+  });
+  fireEvent.pointerUp(hand, {
+    pointerId: 1,
+    pointerType: "mouse",
+    clientX: 20,
+    clientY: 200,
+  });
+  expect(hand.getAttribute("aria-pressed")).toBe("true");
+});
+
+it("scrolls toward off-screen Build targets while a touch drag holds at the screen edge", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: boardState() };
+  let scrollStep: FrameRequestCallback | undefined;
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    value: (step: FrameRequestCallback) => {
+      scrollStep = step;
+      return 1;
+    },
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {});
+  try {
+    render(<GameRoomPage />);
+    const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
+    fireEvent.pointerDown(hand, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 50,
+      clientY: 150,
+    });
+    fireEvent.pointerMove(hand, {
+      pointerId: 1,
+      pointerType: "touch",
+      clientX: 50,
+      clientY: 1,
+    });
+    scrollStep?.(0);
+    expect(scrollBy).toHaveBeenCalledWith(0, -12);
+    fireEvent.pointerCancel(hand, { pointerId: 1, pointerType: "touch" });
+    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1);
+  } finally {
+    scrollBy.mockRestore();
+    Reflect.deleteProperty(window, "requestAnimationFrame");
+    Reflect.deleteProperty(window, "cancelAnimationFrame");
+  }
+});
+
+it("stops a drag if pointer capture is lost before release", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  fireEvent.pointerDown(hand, { pointerId: 5, pointerType: "touch" });
+  fireEvent.lostPointerCapture(hand, { pointerId: 5, pointerType: "touch" });
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => screen.getByText("build-1 → 2"),
+  });
+  fireEvent.pointerUp(hand, { pointerId: 5, pointerType: "touch" });
+  expect(submitAction).not.toHaveBeenCalled();
+  expect(hand.getAttribute("aria-pressed")).toBe("true");
+});
+
+it("selects a held touch Hand card and ends the Turn only after dropping on an own Discard pile", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.discards[0] = [
+    { kind: "standard", id: "discard-two", rank: 2, suit: "Hearts" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+  fireEvent.pointerDown(hand, { pointerId: 2, pointerType: "touch" });
+  expect(hand.getAttribute("aria-pressed")).toBe("true");
+  expect(
+    screen
+      .getByRole("button", { name: "New Build pile" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(
+    screen.getByRole("button", { name: "Discard Hand to pile 1" }),
+  ).toBeTruthy();
+  expect(submitAction).not.toHaveBeenCalled();
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () =>
+      screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
+  });
+  fireEvent.pointerUp(hand, { pointerId: 2, pointerType: "touch" });
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 0,
+  });
+  expect(screen.getByLabelText("Hand 9 of Spades")).toBeTruthy();
+});
+
+it("drags a touch Hand card to an empty own Discard pile", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  render(<GameRoomPage />);
+  releaseOver(
+    screen.getByRole("button", { name: "Hand 9 of Spades" }),
+    () => screen.getByRole("button", { name: "Discard pile 2, empty" }),
+    "touch",
+  );
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 1,
+  });
+});
+
+it("drags the Stock top by touch to a new Build pile", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.stock.faceDown = [
+    { kind: "standard", id: "stock-ace", rank: 1, suit: "Clubs" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+  releaseOver(
+    screen.getByRole("button", { name: "Stock top Ace of Clubs" }),
+    () => screen.getByRole("button", { name: "New Build pile" }),
+    "touch",
+  );
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_STOCK_TO_BUILD",
+    target: "new",
+  });
+});
+
+it("drags a wild Hand card to a new Build pile by touch", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  render(<GameRoomPage />);
+  releaseOver(
+    screen.getByRole("button", { name: "Hand Joker" }),
+    () => screen.getByRole("button", { name: "New Build pile" }),
+    "touch",
+  );
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_HAND_TO_BUILD",
+    cardId: "joker",
+    target: "new",
+  });
+});
+
+it("drags only the own Discard top by mouse to Build", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.discards[0] = [
+    { kind: "standard", id: "covered", rank: 3, suit: "Hearts" },
+    { kind: "standard", id: "discard-two", rank: 2, suit: "Hearts" },
+  ];
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  render(<GameRoomPage />);
+  releaseOver(
+    screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
+    () => screen.getByRole("button", { name: /Build pile build-1/ }),
+    "mouse",
+  );
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_DISCARD_TO_BUILD",
+    pileIndex: 0,
+    target: "build-1",
+  });
+});
+
+it("keeps a source selected after illegal or outside releases and never discards a wild Hand card", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  render(<GameRoomPage />);
+  const king = screen.getByRole("button", { name: "Hand King of Diamonds" });
+  releaseOver(king, () => screen.getAllByText("Discard 1")[1]!, "touch");
+  expect(king.getAttribute("aria-pressed")).toBe("true");
+  expect(screen.queryByRole("button", { name: /Discard pile/ })).toBeNull();
+  releaseOver(king, () => document.body, "mouse");
+  expect(king.getAttribute("aria-pressed")).toBe("true");
+  const two = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  releaseOver(
+    two,
+    () => screen.getByRole("button", { name: "New Build pile" }),
+    "mouse",
+  );
+  expect(two.getAttribute("aria-pressed")).toBe("true");
+  expect(submitAction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "PLAY_HAND_TO_BUILD",
+    cardId: "two",
+    target: "build-1",
+  });
+});
+
+it.each(["connecting", "synchronizing", "connected"])(
+  "blocks drag during %s when not ready for another Action",
+  (connectionStatus) => {
+    showGameRoom();
+    const state = boardState();
+    if (connectionStatus === "connected") state.turn.activePlayer = "player-2";
+    const submitAction = vi.fn(() => true);
+    gameRoom.view = { ...gameRoom.view, state, connectionStatus, submitAction };
+    render(<GameRoomPage />);
+    const hand = screen.getByLabelText("Hand 2 of Clubs");
+    releaseOver(hand, () => screen.getByText("New Build pile"), "touch");
+    expect(submitAction).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("button", { name: "Hand 2 of Clubs" }),
+    ).toBeNull();
+  },
+);
+
+it("blocks drag while an Action is pending, including after a previous pointer press", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  fireEvent.pointerDown(hand, { pointerId: 3, pointerType: "touch" });
+  gameRoom.view = {
+    ...gameRoom.view,
+    pendingAction: {
+      actionId: "pending",
+      action: { kind: "PLAY_HAND_TO_BUILD" },
+    },
+  };
+  rerender(<GameRoomPage />);
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => screen.getByText("build-1 → 2"),
+  });
+  fireEvent.pointerUp(hand, { pointerId: 3, pointerType: "touch" });
+  expect(submitAction).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Hand 2 of Clubs")).toBeTruthy();
+});
+
+it("does not submit a drag released after disconnect", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  fireEvent.pointerDown(hand, { pointerId: 4, pointerType: "touch" });
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "connecting" };
+  rerender(<GameRoomPage />);
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => screen.getByText("build-1 → 2"),
+  });
+  fireEvent.pointerUp(hand, { pointerId: 4, pointerType: "touch" });
+  expect(submitAction).not.toHaveBeenCalled();
+});
 
 it("plays a legal Hand card to Build on server update", () => {
   showGameRoom();

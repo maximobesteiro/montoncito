@@ -30,6 +30,7 @@ export function StockPile({
       onClick={onTopCardClick}
       isPlayable={isPlayable}
       isSelected={isSelected}
+      dragSource={onTopCardClick && isPlayable ? "stock" : undefined}
       cardAriaLabel={
         onTopCardClick && remainingCount > 0
           ? `Stock top ${formatCardName(stock.faceDown[remainingCount - 1]!)}`
