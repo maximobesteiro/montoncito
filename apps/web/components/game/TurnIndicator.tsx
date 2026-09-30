@@ -14,6 +14,27 @@ export function TurnIndicator({
   const activePlayer = gameState.byId[gameState.turn.activePlayer];
   const isMyTurn = currentPlayerId === gameState.turn.activePlayer;
 
+  if (gameState.phase === "gameover") {
+    const winner = gameState.winner;
+    return (
+      <div
+        role="status"
+        className="p-4 brutal-border brutal-shadow bg-active-bg text-center break-words"
+      >
+        <p className="text-base font-semibold">Game Over</p>
+        <h2 className="mt-1 text-3xl sm:text-4xl font-bold">
+          {winner
+            ? `${gameState.byId[winner]?.name || winner} wins!`
+            : "No winner"}
+          {winner && winner === currentPlayerId && " (You)"}
+        </h2>
+        <p className="mt-2 font-semibold">
+          Final board is read-only. You can still chat while connected.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`
@@ -24,26 +45,13 @@ export function TurnIndicator({
       `}
     >
       <div className="text-2xl font-bold">
-        {gameState.phase === "gameover"
-          ? "Game Over"
-          : `Turn ${gameState.turn.number}`}
+        {`Turn ${gameState.turn.number}`}
       </div>
       <div className="text-base font-semibold mt-1">
-        {gameState.phase === "gameover" ? (
-          gameState.winner ? (
-            <span>
-              Winner:{" "}
-              {gameState.byId[gameState.winner]?.name || gameState.winner}
-            </span>
-          ) : (
-            <span>No winner</span>
-          )
-        ) : (
-          <span>
-            Active: {activePlayer?.name || gameState.turn.activePlayer}
-            {isMyTurn && " (Your Turn)"}
-          </span>
-        )}
+        <span>
+          Active: {activePlayer?.name || gameState.turn.activePlayer}
+          {isMyTurn && " (Your Turn)"}
+        </span>
       </div>
     </div>
   );
