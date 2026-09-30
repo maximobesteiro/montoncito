@@ -78,7 +78,8 @@ export function setPendingGameRoomAction(
 ): GameRoomSession {
   if (session.status !== "synchronized" || session.pendingAction)
     return session;
-  return { ...session, pendingAction: action };
+  const { lastActionResult: _lastActionResult, ...ready } = session;
+  return { ...ready, pendingAction: action };
 }
 
 export function receiveGameRoomActionAccepted(
@@ -107,6 +108,12 @@ function receiveActionResult(
 ): GameRoomSession {
   const updated = applyAuthoritativeState(session, result);
   if (updated.status !== "synchronized") return updated;
+  if (
+    session.status === "synchronized" &&
+    session.pendingAction?.actionId !== result.actionId &&
+    (session.pendingAction || !("code" in result))
+  )
+    return updated;
   const hasDifferentPending =
     session.status === "synchronized" &&
     session.pendingAction?.actionId !== result.actionId;
@@ -122,7 +129,8 @@ export function failGameRoomSession(
   session: GameRoomSession,
   problem: ProtocolFailure,
 ): GameRoomSession {
-  if (session.status === "removed") return session;
+  if (session.status === "removed" || session.status === "failed")
+    return session;
   return { status: "failed", problem };
 }
 
@@ -147,7 +155,8 @@ function applyAuthoritativeState(
   session: GameRoomSession,
   update: SyncSnapshot,
 ): GameRoomSession {
-  if (session.status === "removed") return session;
+  if (session.status === "removed" || session.status === "failed")
+    return session;
   if (session.status === "synchronized") {
     if (update.seq < session.seq) return session;
     if (update.seq === session.seq) {
@@ -165,6 +174,9 @@ function applyAuthoritativeState(
     state: update.state,
     ...(session.status === "synchronized" && session.pendingAction
       ? { pendingAction: session.pendingAction }
+      : {}),
+    ...(session.status === "synchronized" && session.lastActionResult
+      ? { lastActionResult: session.lastActionResult }
       : {}),
   };
 }

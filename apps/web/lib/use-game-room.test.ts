@@ -313,6 +313,69 @@ describe("useGameRoom reconnect behavior", () => {
     expect(renderHook().submissionError).toMatch(/did not submit/i);
   });
 
+  it("keeps rejection feedback until dismissal or submission and ignores mismatched rejection IDs while pending", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.fire("room.sync.snapshot", snapshot);
+    renderHook().submitAction({ kind: "END_TURN" });
+    const pending = renderHook().pendingAction!;
+    const rejection = {
+      ...snapshot,
+      actionId: pending.actionId,
+      code: "ILLEGAL_ACTION",
+      message: "Cannot end this Turn.",
+    };
+    socket.fire("room.action.rejected", {
+      ...rejection,
+      actionId: "550e8400-e29b-41d4-a716-446655440099",
+    });
+    expect(renderHook().pendingAction).toEqual(pending);
+    expect(renderHook().lastActionResult).toBeNull();
+    socket.fire("room.action.rejected", rejection);
+    expect(renderHook().pendingAction).toBeNull();
+    expect(renderHook().lastActionResult).toMatchObject({
+      message: "Cannot end this Turn.",
+    });
+    renderHook().dismissActionResult();
+    expect(renderHook().lastActionResult).toBeNull();
+    socket.fire("room.action.rejected", {
+      ...rejection,
+      message: "Try a different Action.",
+    });
+    expect(renderHook().lastActionResult).toMatchObject({
+      message: "Try a different Action.",
+    });
+    expect(renderHook().submitAction({ kind: "END_TURN" })).toBe(true);
+    expect(renderHook().lastActionResult).toBeNull();
+  });
+
+  it("stops transport and retry after a terminal protocol failure", async () => {
+    renderHook();
+    harness.effect?.();
+    await flushPromises();
+    const socket = harness.socket!;
+    socket.fire("room.sync.snapshot", snapshot);
+    socket.fire("room.state", {
+      ...snapshot,
+      state: { ...snapshot.state, turn: { ...snapshot.state.turn, number: 3 } },
+    });
+    expect(renderHook().connectionStatus).toBe("failed");
+    expect(renderHook().sendChat("Still connected?")).toBe(false);
+    expect(socket.connected).toBe(false);
+    socket.fire("disconnect", "transport close");
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(harness.apiFetch).toHaveBeenCalledTimes(1);
+    socket.fire("room.action.accepted", {
+      ...snapshot,
+      seq: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440099",
+    });
+    expect(renderHook().connectionStatus).toBe("failed");
+    expect(renderHook().submitAction({ kind: "END_TURN" })).toBe(false);
+  });
+
   it("rolls back a local submission when the socket cannot emit", async () => {
     renderHook();
     harness.effect?.();

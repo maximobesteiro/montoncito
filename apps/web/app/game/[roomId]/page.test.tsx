@@ -129,6 +129,219 @@ function boardState(): GameState {
   return state;
 }
 
+it("marks the pending source and target without moving cards across updates and reconnect", () => {
+  showGameRoom();
+  const state = boardState();
+  const action = {
+    kind: "PLAY_HAND_TO_BUILD",
+    cardId: "two",
+    target: "build-1",
+  };
+  gameRoom.view = {
+    ...gameRoom.view,
+    state,
+    pendingAction: { actionId: "pending", action },
+  };
+  const { rerender } = render(<GameRoomPage />);
+  const checkPending = () => {
+    expect(screen.getByLabelText("Hand 2 of Clubs").textContent).toContain(
+      "Pending",
+    );
+    expect(
+      within(screen.getByRole("region", { name: "Build piles" })).getByText(
+        "Pending",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Hand / })).toBeNull();
+  };
+  checkPending();
+  gameRoom.view = { ...gameRoom.view, seq: 1, connectionStatus: "connecting" };
+  rerender(<GameRoomPage />);
+  checkPending();
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "synchronizing" };
+  rerender(<GameRoomPage />);
+  checkPending();
+  gameRoom.view = {
+    ...gameRoom.view,
+    connectionStatus: "connected",
+    pendingAction: null,
+    lastActionResult: { actionId: "pending", seq: 1, state },
+  };
+  rerender(<GameRoomPage />);
+  expect(screen.queryByText("Pending")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByText(/Action accepted|success/i)).toBeNull();
+});
+
+it("announces a readable rejection on the latest board, replaces it, and offers Dismiss", () => {
+  showGameRoom();
+  const state = boardState();
+  const dismissActionResult = vi.fn();
+  gameRoom.view = {
+    ...gameRoom.view,
+    state,
+    seq: 2,
+    dismissActionResult,
+    lastActionResult: {
+      actionId: "first",
+      code: "STALE_BASE_SEQ",
+      state,
+      seq: 2,
+    },
+  };
+  const { rerender } = render(<GameRoomPage />);
+  expect(screen.getByRole("alert").textContent).toContain(
+    "The board changed before your Action arrived",
+  );
+  expect(screen.getByRole("button", { name: "Hand 2 of Clubs" })).toBeTruthy();
+  const latest = structuredClone(state);
+  latest.center.buildPiles[0]!.nextRank = 3;
+  gameRoom.view = {
+    ...gameRoom.view,
+    state: latest,
+    seq: 3,
+    lastActionResult: {
+      actionId: "second",
+      code: "ILLEGAL_ACTION",
+      message: "That card cannot go on this Build pile.",
+      state: latest,
+      seq: 3,
+    },
+  };
+  rerender(<GameRoomPage />);
+  expect(screen.getByText("build-1 → 3")).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toContain(
+    "That card cannot go on this Build pile.",
+  );
+  expect(screen.queryByText(/The board changed before/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+  expect(dismissActionResult).toHaveBeenCalledTimes(1);
+  gameRoom.view = { ...gameRoom.view, lastActionResult: null };
+  rerender(<GameRoomPage />);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("labels the retained board stale, clears unsubmitted selection, and requires fresh selection after recovery", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Hand 2 of Clubs" }));
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "connecting" };
+  rerender(<GameRoomPage />);
+  expect(screen.getByText(/Reconnecting to the Game room/)).toBeTruthy();
+  expect(screen.getByText(/Board is stale and read-only/)).toBeTruthy();
+  expect(screen.getByLabelText("Hand 2 of Clubs")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Hand / })).toBeNull();
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "synchronizing" };
+  rerender(<GameRoomPage />);
+  expect(screen.getByText(/Synchronizing Game room/)).toBeTruthy();
+  expect(screen.queryByText(/Reconnecting to the Game room/)).toBeNull();
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "connected" };
+  rerender(<GameRoomPage />);
+  expect(screen.queryByText(/Board is stale/)).toBeNull();
+  expect(
+    screen
+      .getByRole("button", { name: "Hand 2 of Clubs" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+  fireEvent.click(screen.getByText("build-1 → 2"));
+  expect(submitAction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Hand 2 of Clubs" }));
+  fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
+  expect(submitAction).toHaveBeenCalledTimes(1);
+});
+
+it.each(["failed", "removed"])(
+  "shows terminal %s with a Lobby link and no playable stale cards",
+  (connectionStatus) => {
+    showGameRoom();
+    const submitAction = vi.fn(() => true);
+    gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+    const { rerender } = render(<GameRoomPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Hand 2 of Clubs" }));
+    gameRoom.view = {
+      ...gameRoom.view,
+      connectionStatus,
+      problem: "The Game room is no longer available.",
+    };
+    rerender(<GameRoomPage />);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "no longer available",
+    );
+    expect(
+      screen
+        .getByRole("link", { name: "Return to Lobby" })
+        .getAttribute("href"),
+    ).toBe("/");
+    expect(screen.queryByRole("region", { name: "Game board" })).toBeNull();
+    expect(submitAction).not.toHaveBeenCalled();
+  },
+);
+
+it("reports an unsubmitted attempt without pending marks or moving the card", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => false);
+  gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  fireEvent.click(screen.getByRole("button", { name: "Hand 2 of Clubs" }));
+  fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
+  gameRoom.view = {
+    ...gameRoom.view,
+    submissionError: "Action did not submit. Please try again.",
+  };
+  rerender(<GameRoomPage />);
+  expect(screen.getByRole("alert").textContent).toContain("did not submit");
+  expect(screen.queryByText(/Action pending/)).toBeNull();
+  expect(screen.queryByText("Pending")).toBeNull();
+  expect(screen.getByRole("button", { name: "Hand 2 of Clubs" })).toBeTruthy();
+});
+
+it.each([
+  {
+    action: { kind: "PLAY_STOCK_TO_BUILD", target: "new" },
+    source: "Your Stock",
+    target: "Build piles",
+  },
+  {
+    action: { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, target: "build-1" },
+    source: "Alice Discard pile 1",
+    target: "Build piles",
+  },
+  {
+    action: { kind: "DISCARD_FROM_HAND", cardId: "nine", pileIndex: 1 },
+    source: "Your Hand",
+    target: "Alice Discard pile 2",
+  },
+])(
+  "marks the source and destination of pending $action.kind while keeping gameplay locked",
+  ({ action, source, target }) => {
+    showGameRoom();
+    const state = historyState();
+    gameRoom.view = {
+      ...gameRoom.view,
+      state,
+      pendingAction: { actionId: "pending", action },
+    };
+    render(<GameRoomPage />);
+    expect(
+      within(screen.getByRole("group", { name: source })).getByText("Pending"),
+    ).toBeTruthy();
+    expect(
+      within(
+        screen.getByRole(target === "Build piles" ? "region" : "group", {
+          name: target,
+        }),
+      ).getByText("Pending"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", {
+        name: /^(Hand |Stock top |Discard pile |Build pile |New Build pile)/,
+      }),
+    ).toBeNull();
+  },
+);
+
 it("opens mobile chat closed by default, cancels selection and drag, and restores the board on Close", () => {
   vi.mocked(window.matchMedia).mockReturnValue({
     matches: true,

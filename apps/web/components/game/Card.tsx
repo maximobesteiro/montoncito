@@ -25,6 +25,7 @@ interface CardProps {
   ariaLabel?: string;
   isSelected?: boolean;
   dragSource?: string;
+  isPending?: boolean;
 }
 
 const sizeStyles: Record<
@@ -71,6 +72,7 @@ export function Card({
   ariaLabel,
   isSelected = false,
   dragSource,
+  isPending = false,
 }: CardProps) {
   const displayValue = () => {
     if (card.kind === "joker") {
@@ -110,6 +112,7 @@ export function Card({
     ${onClick ? "cursor-pointer hover:scale-105" : ""}
     ${dragSource ? "touch-none" : ""}
     ${isPlayable ? "ring-4 ring-btn-primary ring-offset-2" : ""}
+    ${isPending ? "outline outline-4 outline-dashed outline-foreground" : ""}
     transition-all
   `;
 
@@ -144,6 +147,9 @@ export function Card({
       data-drag-source={dragSource}
       style={style}
     >
+      {isPending && (
+        <span className="absolute bottom-0 bg-card px-1 text-xs">Pending</span>
+      )}
       <div
         className={`absolute left-1 top-1 leading-none text-center ${sizes.cornerValue}`}
       >

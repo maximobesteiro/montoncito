@@ -2,6 +2,7 @@
 
 import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
 import type { ReactNode } from "react";
+import type { PlayerAction } from "@mont/game-room";
 import { BuildPiles } from "./BuildPiles";
 import { PlayerArea } from "./PlayerArea";
 import { OpponentArea } from "./OpponentArea";
@@ -25,6 +26,7 @@ interface GameBoardProps {
   handDiscardTargets?: Set<number>;
   handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
+  pendingAction?: PlayerAction;
 }
 
 export function GameBoard({
@@ -45,6 +47,7 @@ export function GameBoard({
   handDiscardTargets,
   handDiscardOnlyTargets,
   onHandDiscardClick,
+  pendingAction,
 }: GameBoardProps) {
   const currentPlayer = gameState.byId[currentPlayerId];
   const opponents = gameState.players
@@ -67,6 +70,11 @@ export function GameBoard({
             buildPiles={gameState.center.buildPiles}
             onPileClick={onBuildPileClick}
             playablePiles={playableBuildPiles}
+            pendingTarget={
+              pendingAction && "target" in pendingAction
+                ? pendingAction.target
+                : undefined
+            }
           />
           {currentPlayer && (
             <PlayerArea
@@ -84,6 +92,7 @@ export function GameBoard({
               handDiscardTargets={handDiscardTargets}
               handDiscardOnlyTargets={handDiscardOnlyTargets}
               onHandDiscardClick={onHandDiscardClick}
+              pendingAction={pendingAction}
             />
           )}
         </div>
