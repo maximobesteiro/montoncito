@@ -20,6 +20,53 @@ const snapshot = {
 };
 
 describe("Game room session transitions", () => {
+  it("retains a rejection across broadcasts and unrelated acceptance until the next submission", () => {
+    const rejected = receiveGameRoomActionRejected(
+      receiveGameRoomSnapshot(createGameRoomSession(), snapshot),
+      {
+        ...snapshot,
+        actionId: "550e8400-e29b-41d4-a716-446655440000",
+        code: "NOT_YOUR_TURN",
+      },
+    );
+    const update = {
+      ...snapshot,
+      seq: 1,
+      state: { ...snapshot.state, turn: { ...snapshot.state.turn, number: 2 } },
+    };
+    const broadcast = receiveGameRoomUpdate(rejected, update);
+    expect(broadcast).toMatchObject({
+      lastActionResult: { code: "NOT_YOUR_TURN" },
+    });
+    const accepted = receiveGameRoomActionAccepted(broadcast, {
+      ...update,
+      actionId: "550e8400-e29b-41d4-a716-446655440001",
+    });
+    expect(accepted).toMatchObject({
+      lastActionResult: { code: "NOT_YOUR_TURN" },
+    });
+    const pending = setPendingGameRoomAction(accepted, {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440002",
+      baseSeq: 1,
+      action: { kind: "END_TURN" },
+    });
+    expect(pending).not.toHaveProperty("lastActionResult");
+  });
+
+  it("cannot recover a terminal failure through an Action result", () => {
+    const failed = failGameRoomSession(createGameRoomSession(), {
+      version: 1,
+      code: "SEQUENCE_CONFLICT",
+      message: "Conflicting state",
+    });
+    expect(
+      receiveGameRoomActionAccepted(failed, {
+        ...snapshot,
+        actionId: "550e8400-e29b-41d4-a716-446655440000",
+      }),
+    ).toBe(failed);
+  });
   it("parses the fixed ruleset version in a Game room snapshot", () => {
     expect(SyncSnapshotSchema.parse(snapshot).state.rulesetVersion).toBe(1);
     expect(
@@ -31,7 +78,10 @@ describe("Game room session transitions", () => {
     expect(
       SyncSnapshotSchema.safeParse({
         ...snapshot,
-        state: { ...snapshot.state, rules: { ...snapshot.state.rules, kingsAreWild: false } },
+        state: {
+          ...snapshot.state,
+          rules: { ...snapshot.state.rules, kingsAreWild: false },
+        },
       }).success,
     ).toBe(false);
     expect(

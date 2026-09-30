@@ -168,6 +168,7 @@ export function GameRoomBoard({
 
   useEffect(() => {
     if (!canInteract) {
+      setSelectedSource(null);
       cancelDrag();
     }
   }, [canInteract]);
@@ -353,10 +354,11 @@ export function GameRoomBoard({
     >
       {pendingAction && (
         <p role="status" className="font-semibold">
-          Action pending: {pendingAction.action.kind}
+          Action pending. Waiting for the server before you can play again.
         </p>
       )}
       <GameBoard
+        pendingAction={pendingAction?.action}
         chat={chat}
         gameState={gameState}
         currentPlayerId={currentPlayerId}

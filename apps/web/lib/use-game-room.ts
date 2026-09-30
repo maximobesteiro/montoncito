@@ -51,6 +51,7 @@ export type GameRoomView = {
   submissionError: string | null;
   pendingAction: ActionSubmission | null;
   lastActionResult: ActionAccepted | ActionRejected | null;
+  dismissActionResult: () => void;
   submitAction: (action: PlayerAction) => boolean;
   chatMessages: ChatMessage[];
   liveChatCount: number;
@@ -75,6 +76,14 @@ export function useGameRoom(roomId: string): GameRoomView {
   const synchronizedRef = useRef(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
+
+  const dismissActionResult = useCallback(() => {
+    updateGameRoomSession(sessionRef, setSession, (previous) => {
+      if (previous.status !== "synchronized") return previous;
+      const { lastActionResult: _lastActionResult, ...dismissed } = previous;
+      return dismissed;
+    });
+  }, []);
 
   const submitAction = useCallback(
     (action: PlayerAction): boolean => {
@@ -175,8 +184,28 @@ export function useGameRoom(roomId: string): GameRoomView {
       setConnectionStatus("removed");
     };
 
+    const isTerminal = () =>
+      sessionRef.current.status === "failed" ||
+      sessionRef.current.status === "removed";
+
+    const stopFailedSession = () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      retryTimer = null;
+      synchronizedRef.current = false;
+      chatReadyRef.current = false;
+      setConnectionStatus("failed");
+      socket?.disconnect();
+    };
+
+    const receiveSessionTransition = (
+      transition: (session: GameRoomSession) => GameRoomSession,
+    ) => {
+      const updated = updateGameRoomSession(sessionRef, setSession, transition);
+      if (updated.status === "failed") stopFailedSession();
+    };
+
     const scheduleRenewal = () => {
-      if (disposed || renewalInFlight || retryTimer) return;
+      if (disposed || isTerminal() || renewalInFlight || retryTimer) return;
       renewalInFlight = true;
       const renew = async () => {
         try {
@@ -185,7 +214,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             `/rooms/${encodeURIComponent(roomId)}/socket-token`,
             { method: "POST", clientId },
           );
-          if (disposed || !socket) return;
+          if (disposed || isTerminal() || !socket) return;
           renewalAttempt = 0;
           renewalInFlight = false;
           socket.auth = { token: wsJoinToken };
@@ -196,7 +225,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             markRemoved();
             return;
           }
-          if (disposed) return;
+          if (disposed || isTerminal()) return;
           setConnectionStatus("connecting");
           const delay = Math.min(1000 * 2 ** renewalAttempt, 15000);
           renewalAttempt += 1;
@@ -227,6 +256,10 @@ export function useGameRoom(roomId: string): GameRoomView {
         });
         socketRef.current = socket;
         socket.on("connect", () => {
+          if (isTerminal()) {
+            socket?.disconnect();
+            return;
+          }
           chatHistoryReadyRef.current = false;
           socket?.emit("chat.history.request", {
             version: GAME_ROOM_PROTOCOL_VERSION,
@@ -250,7 +283,7 @@ export function useGameRoom(roomId: string): GameRoomView {
             chatReadyRef.current = false;
             synchronizedRef.current = false;
             updateGameRoomSession(sessionRef, setSession, () => synchronized);
-            setConnectionStatus("failed");
+            stopFailedSession();
             return;
           }
           if (
@@ -285,7 +318,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           if (restored) socket?.emit("room.action.submit", restored);
         });
         socket.on("room.state", (payload: unknown) => {
-          updateGameRoomSession(sessionRef, setSession, (previous) =>
+          receiveSessionTransition((previous) =>
             receiveGameRoomUpdate(previous, payload),
           );
         });
@@ -294,7 +327,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           if (result.success) {
             clearMatchingPendingAction(roomId, result.data, pendingActionRef);
           }
-          updateGameRoomSession(sessionRef, setSession, (previous) =>
+          receiveSessionTransition((previous) =>
             receiveGameRoomActionAccepted(previous, payload),
           );
         });
@@ -303,7 +336,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           if (result.success) {
             clearMatchingPendingAction(roomId, result.data, pendingActionRef);
           }
-          updateGameRoomSession(sessionRef, setSession, (previous) =>
+          receiveSessionTransition((previous) =>
             receiveGameRoomActionRejected(previous, payload),
           );
         });
@@ -323,9 +356,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           updateGameRoomSession(sessionRef, setSession, (previous) =>
             failGameRoomSession(previous, failure),
           );
-          chatReadyRef.current = false;
-          synchronizedRef.current = false;
-          setConnectionStatus("failed");
+          stopFailedSession();
         });
         socket.on("event", (payload: unknown) => {
           if (isChatMessage(payload)) {
@@ -359,6 +390,7 @@ export function useGameRoom(roomId: string): GameRoomView {
           }
         });
         socket.on("connect_error", () => {
+          if (isTerminal()) return;
           chatReadyRef.current = false;
           synchronizedRef.current = false;
           setConnectionStatus("connecting");
@@ -367,7 +399,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         socket.on("disconnect", (reason) => {
           chatReadyRef.current = false;
           synchronizedRef.current = false;
-          if (!disposed && reason !== "io client disconnect") {
+          if (!disposed && !isTerminal() && reason !== "io client disconnect") {
             setConnectionStatus("connecting");
             scheduleRenewal();
           }
@@ -424,6 +456,7 @@ export function useGameRoom(roomId: string): GameRoomView {
         ? (session.lastActionResult ?? null)
         : null,
     submitAction,
+    dismissActionResult,
     chatMessages,
     liveChatCount,
     sendChat,

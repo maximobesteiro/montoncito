@@ -9,6 +9,7 @@ interface HandProps {
   onCardClick?: (cardId: string) => void;
   playableCards?: Set<string>;
   selectedCardId?: string | null;
+  pendingCardId?: string;
 }
 
 export function Hand({
@@ -16,6 +17,7 @@ export function Hand({
   onCardClick,
   playableCards = new Set(),
   selectedCardId,
+  pendingCardId,
 }: HandProps) {
   return (
     <div className="flex gap-2 flex-wrap">
@@ -37,6 +39,7 @@ export function Hand({
           }
           ariaLabel={`Hand ${formatCardName(card)}`}
           isSelected={selectedCardId === card.id}
+          isPending={pendingCardId === card.id}
           dragSource={
             onCardClick && playableCards.has(card.id)
               ? `hand:${card.id}`

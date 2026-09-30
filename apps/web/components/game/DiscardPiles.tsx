@@ -15,6 +15,7 @@ interface DiscardPilesProps {
   handDiscardTargets?: Set<number>;
   handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
+  pendingPile?: number;
 }
 
 export function DiscardPiles({
@@ -27,6 +28,7 @@ export function DiscardPiles({
   handDiscardTargets = new Set(),
   handDiscardOnlyTargets = new Set(),
   onHandDiscardClick,
+  pendingPile,
 }: DiscardPilesProps) {
   const [expandedPiles, setExpandedPiles] = useState<Set<number>>(new Set());
   const id = useId();
@@ -52,9 +54,12 @@ export function DiscardPiles({
               if ((event.target as Element).closest("button")) return;
               if (isHandDiscardTarget) onHandDiscardClick?.(index);
             }}
-            className="flex flex-col items-center gap-1"
+            className={`flex flex-col items-center gap-1 ${pendingPile === index ? "outline outline-4 outline-dashed" : ""}`}
             data-drop-discard={isHandDiscardTarget ? index : undefined}
           >
+            {pendingPile === index && (
+              <span className="text-xs font-bold">Pending</span>
+            )}
             {pile.length > 1 && (
               <div className="text-xs font-bold brutal-border px-1 py-0.5 bg-card">
                 Discard {index + 1}

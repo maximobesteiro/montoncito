@@ -10,6 +10,7 @@ interface BuildPilesProps {
   size?: CardSize;
   onPileClick?: (buildId: BuildPileTarget) => void;
   playablePiles?: Set<BuildPileTarget>;
+  pendingTarget?: BuildPileTarget;
 }
 
 export function BuildPiles({
@@ -17,6 +18,7 @@ export function BuildPiles({
   size = "md",
   onPileClick,
   playablePiles = new Set(),
+  pendingTarget,
 }: BuildPilesProps) {
   return (
     <section aria-label="Build piles" className="min-w-0 flex flex-col gap-2">
@@ -64,9 +66,12 @@ export function BuildPiles({
           ) : (
             <div
               key={pile.id}
-              className="brutal-border bg-surface p-2 brutal-shadow-sm"
+              className={`brutal-border bg-surface p-2 brutal-shadow-sm ${pendingTarget === pile.id ? "outline outline-4 outline-dashed" : ""}`}
             >
               {content}
+              {pendingTarget === pile.id && (
+                <span className="text-xs font-bold">Pending</span>
+              )}
             </div>
           );
         })}
@@ -87,8 +92,13 @@ export function BuildPiles({
             New Build pile
           </button>
         ) : (
-          <div className="brutal-border bg-surface p-2 brutal-shadow-sm">
+          <div
+            className={`brutal-border bg-surface p-2 brutal-shadow-sm ${pendingTarget === "new" ? "outline outline-4 outline-dashed" : ""}`}
+          >
             New Build pile
+            {pendingTarget === "new" && (
+              <span className="block text-xs font-bold">Pending</span>
+            )}
           </div>
         )}
       </div>

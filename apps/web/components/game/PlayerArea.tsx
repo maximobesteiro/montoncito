@@ -1,6 +1,7 @@
 "use client";
 
 import type { PlayerState } from "@mont/core-game";
+import type { PlayerAction } from "@mont/game-room";
 import { Hand } from "./Hand";
 import { StockPile } from "./StockPile";
 import { DiscardPiles } from "./DiscardPiles";
@@ -20,6 +21,7 @@ interface PlayerAreaProps {
   handDiscardTargets?: Set<number>;
   handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
+  pendingAction?: PlayerAction;
 }
 
 export function PlayerArea({
@@ -37,6 +39,7 @@ export function PlayerArea({
   handDiscardTargets,
   handDiscardOnlyTargets,
   onHandDiscardClick,
+  pendingAction,
 }: PlayerAreaProps) {
   return (
     <div
@@ -54,8 +57,19 @@ export function PlayerArea({
 
       <div className="player-cards">
         <div className="player-stock-hand">
-          <div role="group" aria-label="Your Stock">
+          <div
+            role="group"
+            aria-label="Your Stock"
+            className={
+              pendingAction?.kind === "PLAY_STOCK_TO_BUILD"
+                ? "outline outline-4 outline-dashed"
+                : ""
+            }
+          >
             <h4 className="text-sm font-semibold mb-2">Stock</h4>
+            {pendingAction?.kind === "PLAY_STOCK_TO_BUILD" && (
+              <span className="text-xs font-bold">Pending</span>
+            )}
             <StockPile
               stock={player.stock}
               onTopCardClick={onStockClick}
@@ -70,6 +84,11 @@ export function PlayerArea({
               onCardClick={onHandCardClick}
               playableCards={playableHandCards}
               selectedCardId={selectedHandCard}
+              pendingCardId={
+                pendingAction && "cardId" in pendingAction
+                  ? pendingAction.cardId
+                  : undefined
+              }
             />
           </div>
         </div>
@@ -85,6 +104,11 @@ export function PlayerArea({
             handDiscardTargets={handDiscardTargets}
             handDiscardOnlyTargets={handDiscardOnlyTargets}
             onHandDiscardClick={onHandDiscardClick}
+            pendingPile={
+              pendingAction && "pileIndex" in pendingAction
+                ? pendingAction.pileIndex
+                : undefined
+            }
           />
         </div>
       </div>

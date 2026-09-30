@@ -1,10 +1,23 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 import { useGameRoom } from "@/lib/use-game-room";
 import { GameRoomBoard } from "@/components/game/GameRoomBoard";
 import { GameRoomChat } from "@/components/game/GameRoomChat";
+import type { ActionRejected } from "@mont/game-room";
+
+const rejectionReasons: Record<ActionRejected["code"], string> = {
+  STALE_BASE_SEQ:
+    "The board changed before your Action arrived. Review the latest board and try again.",
+  ACTION_ID_CONFLICT:
+    "This Action ID was already used for a different Action. Try again.",
+  NOT_YOUR_TURN: "It is not your Turn. Wait for your Turn to play.",
+  ILLEGAL_ACTION:
+    "That Action is not allowed. Choose a legal source and destination.",
+  GAME_FINISHED: "The game has finished. No more gameplay Actions are allowed.",
+};
 
 export default function GameRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -18,6 +31,7 @@ export default function GameRoomPage() {
     submissionError,
     pendingAction,
     lastActionResult,
+    dismissActionResult,
     submitAction,
     chatMessages,
     liveChatCount,
@@ -32,6 +46,9 @@ export default function GameRoomPage() {
           <p className="mt-2" role="alert">
             {problem}
           </p>
+          <Link href="/" className="brutal-button mt-4 inline-block">
+            Return to Lobby
+          </Link>
         </section>
       </main>
     );
@@ -57,22 +74,40 @@ export default function GameRoomPage() {
           <p className="font-mono text-sm">{roomId}</p>
           {connectionStatus === "connecting" && (
             <p role="status" className="text-sm font-semibold">
-              Reconnecting to the Game room…
+              Reconnecting to the Game room… Board is stale and read-only.
             </p>
           )}
           {connectionStatus === "synchronizing" && (
             <p role="status" className="text-sm font-semibold">
-              Synchronizing Game room…
+              Synchronizing Game room… Board is stale and read-only.
             </p>
           )}
         </div>
-        <p className="font-mono text-sm" aria-live="polite">
-          Sequence {seq}
-        </p>
+        <p className="font-mono text-sm">Sequence {seq}</p>
       </header>
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[2fr_1fr]">
         {currentPlayerId && (
           <div className="lg:col-span-2">
+            {lastActionResult && "code" in lastActionResult && (
+              <section className="brutal-border mb-4 bg-card p-4">
+                <p
+                  key={lastActionResult.actionId}
+                  className="font-semibold"
+                  role="alert"
+                >
+                  Action rejected.{" "}
+                  {lastActionResult.message ??
+                    rejectionReasons[lastActionResult.code]}
+                </p>
+                <button
+                  type="button"
+                  className="brutal-button mt-2"
+                  onClick={dismissActionResult}
+                >
+                  Dismiss
+                </button>
+              </section>
+            )}
             <GameRoomBoard
               key={`${roomId}:${currentPlayerId}`}
               seq={seq}
@@ -98,14 +133,6 @@ export default function GameRoomPage() {
             {submissionError && (
               <p className="mt-2 font-semibold" role="alert">
                 {submissionError}
-              </p>
-            )}
-            {lastActionResult && "code" in lastActionResult && (
-              <p className="mt-2 font-semibold" role="alert">
-                Action rejected: {lastActionResult.code}
-                {lastActionResult.message
-                  ? ` — ${lastActionResult.message}`
-                  : ""}
               </p>
             )}
           </div>
