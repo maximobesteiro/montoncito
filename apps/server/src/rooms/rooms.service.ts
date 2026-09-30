@@ -415,6 +415,18 @@ export class RoomsService {
       players: playersOrdered,
       config,
     });
+    game.state = {
+      ...game.state,
+      byId: Object.fromEntries(
+        playersOrdered.map((id) => [
+          id,
+          {
+            ...game.state.byId[id]!,
+            name: this.profiles.getOrCreate(id).displayName,
+          },
+        ]),
+      ),
+    };
     room.gameId = game.meta.id;
     room.status = 'in_progress';
 

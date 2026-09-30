@@ -7,7 +7,7 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { createStartedGame, type GameState } from "@mont/core-game";
+import { applyMove, createStartedGame, type GameState } from "@mont/core-game";
 
 const gameRoom = vi.hoisted(() => ({
   view: {} as Record<string, unknown>,
@@ -128,6 +128,76 @@ function boardState(): GameState {
   ];
   return state;
 }
+
+it("announces the named viewer as winner after the final Stock play and keeps the final board read-only", () => {
+  showGameRoom();
+  const state = boardState();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  fireEvent.pointerDown(
+    screen.getByRole("button", { name: "Hand 2 of Clubs" }),
+    {
+      pointerId: 1,
+      pointerType: "touch",
+    },
+  );
+  const final = structuredClone(state);
+  final.phase = "gameover";
+  final.winner = "player-1";
+  final.byId["player-1"]!.stock.faceDown = [];
+  gameRoom.view = { ...gameRoom.view, state: final, seq: 1 };
+  rerender(<GameRoomPage />);
+  expect(
+    screen.getByRole("heading", { name: "Alice wins! (You)" }),
+  ).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toContain("Alice wins!");
+  expect(screen.getByText(/Final board is read-only/)).toBeTruthy();
+  expect(screen.getByText("Stock (0)")).toBeTruthy();
+  expect(screen.getByText("build-1 → 2")).toBeTruthy();
+  expect(screen.queryByText(/Your Turn|Active:/)).toBeNull();
+  expect(
+    screen.queryByRole("button", {
+      name: /^(Hand |Stock top |Discard pile |Build pile |New Build pile|End Turn)/,
+    }),
+  ).toBeNull();
+  fireEvent.pointerUp(screen.getByLabelText("Hand 2 of Clubs"), {
+    pointerId: 1,
+    pointerType: "touch",
+  });
+  expect(submitAction).not.toHaveBeenCalled();
+});
+
+it("shows the server's no-moves fallback winner rather than the last active player", () => {
+  showGameRoom();
+  const state = boardState();
+  state.deck.drawPile = [];
+  state.deck.recyclePile = [];
+  state.center.buildPiles = [];
+  state.byId["player-1"]!.hand.cards = [
+    { kind: "standard", id: "last", rank: 9, suit: "Clubs" },
+  ];
+  state.byId["player-1"]!.stock.faceDown = [
+    { kind: "standard", id: "s1", rank: 8, suit: "Clubs" },
+    { kind: "standard", id: "s2", rank: 8, suit: "Hearts" },
+  ];
+  state.byId["player-2"]!.stock.faceDown = [
+    { kind: "standard", id: "s3", rank: 8, suit: "Spades" },
+  ];
+  const result = applyMove(state, {
+    kind: "DISCARD_FROM_HAND",
+    cardId: "last",
+    pileIndex: 0,
+  });
+  expect(result.accepted).toBe(true);
+  expect(result.state.winner).toBe("player-2");
+  gameRoom.view = { ...gameRoom.view, state: result.state, seq: 1 };
+  render(<GameRoomPage />);
+  expect(screen.getByRole("heading", { name: "Bob wins!" })).toBeTruthy();
+  expect(screen.queryByText(/Active:|Your Turn/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "End Turn" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /^Hand / })).toBeNull();
+});
 
 it("marks the pending source and target without moving cards across updates and reconnect", () => {
   showGameRoom();
