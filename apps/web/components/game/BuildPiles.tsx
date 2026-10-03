@@ -1,6 +1,10 @@
 "use client";
 
-import type { BuildPile, BuildPileTarget } from "@mont/core-game";
+import {
+  topBuildCard,
+  type BuildPile,
+  type BuildPileTarget,
+} from "@mont/core-game";
 import type { CardSize } from "./Card";
 import { Pile } from "./Pile";
 import { formatCardName } from "@/lib/format-card-name";
@@ -25,6 +29,8 @@ export function BuildPiles({
       <h3 className="text-lg font-bold">Build piles</h3>
       <div className="flex gap-4 flex-wrap items-start">
         {buildPiles.map((pile) => {
+          // Build ordering belongs to the core, unlike Stock and Discard ordering.
+          const topCard = topBuildCard(pile);
           const isPlayable = playablePiles.has(pile.id);
           const nextRank = pile.nextRank;
           const label = `${pile.id} ${nextRank ? `→ ${nextRank}` : "(Complete)"}`;
@@ -32,10 +38,9 @@ export function BuildPiles({
           const content = (
             <Pile
               cards={pile.cards}
+              topCard={topCard}
               cardAriaLabel={
-                pile.cards.length
-                  ? `Build top ${formatCardName(pile.cards[pile.cards.length - 1]!)}`
-                  : undefined
+                topCard ? `Build top ${formatCardName(topCard)}` : undefined
               }
               size={size}
               label={label}
