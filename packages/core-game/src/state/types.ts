@@ -11,9 +11,24 @@ export type Card =
   | { kind: "joker"; id: string };
 
 // --- Deck / board ------------------------------------------------------------
+/** Ordered cards for the shared bottom-to-top operations; last element is top. */
+export type OrderedPile = Card[];
+/** Build card storage. Version 1 still stores top first pending normalization. */
+export type BuildPileCards = Card[];
+/** Goal pile; last element is the playable top. */
+export type StockPile = OrderedPile;
+/** One personal face-up pile; last element is the playable top. */
+export type DiscardPile = OrderedPile;
+/** Draw storage. Version 1 still draws from the first element pending normalization. */
+export type DrawPile = Card[];
+/** Cards awaiting shuffle, with no directly playable or drawable top. */
+export type RecyclePile = Card[];
+/** Unordered cards available in a player's Hand. */
+export type HandCards = Card[];
+
 export interface Deck {
-  drawPile: Card[]; // face-down
-  recyclePile: Card[];
+  drawPile: DrawPile; // face-down
+  recyclePile: RecyclePile;
 }
 
 /** Retained state for deterministic random operations. */
@@ -26,7 +41,7 @@ export interface RandomGeneratorState {
 /** Shared Build piles ascend from 1 through 12. */
 export interface BuildPile {
   id: string;
-  cards: Card[]; // convention: index 0 = top (consistent across engine)
+  cards: BuildPileCards; // version 1: index 0 = top
   /** Next required rank; null means pile just completed. */
   nextRank: Rank | null;
 }
@@ -36,16 +51,16 @@ export type BuildPileTarget = string | "new";
 // --- Player zones ------------------------------------------------------------
 /** Goal pile; top is last element for easy peek/pop. */
 export interface Stock {
-  faceDown: Card[];
+  faceDown: StockPile;
 }
 
 /** Unordered multiset. */
 export interface Hand {
-  cards: Card[];
+  cards: HandCards;
 }
 
 /** Configurable number of personal discards; top = last element. */
-export type DiscardArea = Card[][];
+export type DiscardArea = DiscardPile[];
 
 export interface PlayerState {
   id: PlayerId;
