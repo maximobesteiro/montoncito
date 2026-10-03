@@ -6,6 +6,7 @@ import { Card, type CardSize, pileSizeConfig } from "./Card";
 
 interface PileProps {
   cards: GameCard[];
+  topCard?: GameCard;
   size?: CardSize;
   label?: ReactNode;
   onClick?: () => void;
@@ -20,6 +21,7 @@ interface PileProps {
 
 export function Pile({
   cards,
+  topCard = cards[cards.length - 1],
   size = "md",
   label,
   onClick,
@@ -31,7 +33,6 @@ export function Pile({
   className = "",
   children,
 }: PileProps) {
-  const topCard = cards[cards.length - 1];
   const config = pileSizeConfig[size];
 
   const defaultCardContent = topCard ? (

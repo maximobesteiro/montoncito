@@ -7,7 +7,16 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { applyMove, createStartedGame, type GameState } from "@mont/core-game";
+import {
+  applyMove,
+  createStartedGame,
+  deserialize,
+  serialize,
+  type Card,
+  type GameState,
+  type Move,
+  type Rank,
+} from "@mont/core-game";
 
 const gameRoom = vi.hoisted(() => ({
   view: {} as Record<string, unknown>,
@@ -128,6 +137,197 @@ function boardState(): GameState {
   ];
   return state;
 }
+
+it("renders the accepted Ace then 2 as the visible and accessible Build top", () => {
+  showGameRoom();
+  const state = boardState();
+  state.center.buildPiles = [];
+  const ace = applyMove(state, {
+    kind: "PLAY_HAND_TO_BUILD",
+    cardId: "ace",
+    target: "new",
+  });
+  expect(ace.accepted).toBe(true);
+  const buildId = ace.state.center.buildPiles[0]!.id;
+  gameRoom.view = { ...gameRoom.view, state: ace.state, seq: 1 };
+  const { rerender } = render(<GameRoomPage />);
+  expect(
+    screen.getByLabelText("Build top Ace of Hearts").textContent,
+  ).toContain("A");
+
+  const two = applyMove(ace.state, {
+    kind: "PLAY_HAND_TO_BUILD",
+    cardId: "two",
+    target: buildId,
+  });
+  expect(two.accepted).toBe(true);
+  gameRoom.view = { ...gameRoom.view, state: two.state, seq: 2 };
+  rerender(<GameRoomPage />);
+  const top = screen.getByLabelText("Build top 2 of Clubs");
+  expect(top.textContent).toContain("2");
+  expect(top.textContent).toContain("♣");
+  expect(screen.queryByLabelText("Build top Ace of Hearts")).toBeNull();
+  expect(screen.queryByLabelText("Hand 2 of Clubs")).toBeNull();
+});
+
+const buildPlacements: {
+  name: string;
+  card: Card;
+  newPile: boolean;
+  value: string;
+  suit: string;
+}[] = [
+  {
+    name: "Ace of Hearts",
+    card: { kind: "standard", id: "placed", rank: 1, suit: "Hearts" },
+    newPile: true,
+    value: "A",
+    suit: "♥",
+  },
+  {
+    name: "King of Diamonds",
+    card: { kind: "standard", id: "placed", rank: 13, suit: "Diamonds" },
+    newPile: true,
+    value: "K",
+    suit: "♦",
+  },
+  {
+    name: "Joker",
+    card: { kind: "joker", id: "placed" },
+    newPile: true,
+    value: "J",
+    suit: "🃏",
+  },
+  {
+    name: "2 of Clubs",
+    card: { kind: "standard", id: "placed", rank: 2, suit: "Clubs" },
+    newPile: false,
+    value: "2",
+    suit: "♣",
+  },
+  {
+    name: "King of Diamonds",
+    card: { kind: "standard", id: "placed", rank: 13, suit: "Diamonds" },
+    newPile: false,
+    value: "K",
+    suit: "♦",
+  },
+  {
+    name: "Joker",
+    card: { kind: "joker", id: "placed" },
+    newPile: false,
+    value: "J",
+    suit: "🃏",
+  },
+];
+
+it.each(
+  (["Hand", "Stock", "Discard"] as const).flatMap((source) =>
+    buildPlacements.map((placement) => ({ source, ...placement })),
+  ),
+)(
+  "renders accepted $source $name with newPile=$newPile and preserves cards while pending",
+  ({ source, card, name, newPile, value, suit }) => {
+    showGameRoom();
+    let state = boardState();
+    state.center.buildPiles = [];
+    if (!newPile) {
+      const starter = applyMove(state, {
+        kind: "PLAY_HAND_TO_BUILD",
+        cardId: "ace",
+        target: "new",
+      });
+      expect(starter.accepted).toBe(true);
+      state = starter.state;
+    }
+    const player = state.byId["player-1"]!;
+    const covered: Card = {
+      kind: "standard",
+      id: "covered-source",
+      rank: 7,
+      suit: "Spades",
+    };
+    if (source === "Hand") player.hand.cards = [covered, card];
+    if (source === "Stock") player.stock.faceDown = [covered, card];
+    if (source === "Discard") player.discards[0] = [covered, card];
+    const before = structuredClone(state);
+    const target = newPile ? "new" : state.center.buildPiles[0]!.id;
+    const action: Move =
+      source === "Hand"
+        ? { kind: "PLAY_HAND_TO_BUILD", cardId: card.id, target }
+        : source === "Stock"
+          ? { kind: "PLAY_STOCK_TO_BUILD", target }
+          : { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, target };
+    const sourceLabel =
+      source === "Discard"
+        ? `Discard pile 1, ${name}`
+        : `${source === "Stock" ? "Stock top" : "Hand"} ${name}`;
+    gameRoom.view = { ...gameRoom.view, state, seq: 1 };
+    const { rerender } = render(<GameRoomPage />);
+    fireEvent.click(screen.getByRole("button", { name: sourceLabel }));
+    if (!newPile)
+      expect(
+        screen.getByLabelText("Build top Ace of Hearts").textContent,
+      ).toContain("A");
+
+    gameRoom.view = {
+      ...gameRoom.view,
+      pendingAction: { actionId: "pending", action },
+    };
+    rerender(<GameRoomPage />);
+    expect(screen.getByLabelText(sourceLabel)).toBeTruthy();
+    if (newPile) expect(screen.queryByLabelText(/^Build top /)).toBeNull();
+    else
+      expect(
+        screen.getByLabelText("Build top Ace of Hearts").textContent,
+      ).toContain("A");
+
+    const result = applyMove(state, action);
+    expect(result.accepted).toBe(true);
+    const expectedPlayer = structuredClone(before.byId["player-1"]!);
+    if (source === "Hand")
+      expectedPlayer.hand.cards = expectedPlayer.hand.cards.filter(
+        (c) => c.id !== card.id,
+      );
+    if (source === "Stock") expectedPlayer.stock.faceDown = [covered];
+    if (source === "Discard") expectedPlayer.discards[0] = [covered];
+    expect(result.state.byId["player-1"]).toEqual(expectedPlayer);
+    expect(result.state.byId["player-2"]).toEqual(before.byId["player-2"]);
+    expect(state).toEqual(before);
+
+    gameRoom.view = {
+      ...gameRoom.view,
+      state: result.state,
+      seq: 2,
+      pendingAction: null,
+    };
+    rerender(<GameRoomPage />);
+    const checkTop = () => {
+      const top = screen.getByLabelText(`Build top ${name}`);
+      expect(top.textContent).toContain(value);
+      expect(top.textContent).toContain(suit);
+      expect(screen.queryByLabelText(sourceLabel)).toBeNull();
+    };
+    checkTop();
+    if (source === "Stock")
+      expect(
+        screen.getByLabelText("Stock top 7 of Spades").textContent,
+      ).toContain("7");
+    if (source === "Discard")
+      expect(
+        screen.getByLabelText("Discard pile 1, 7 of Spades").textContent,
+      ).toContain("7");
+
+    // A recovered snapshot must render the same authoritative top, even read-only.
+    gameRoom.view = {
+      ...gameRoom.view,
+      state: deserialize(serialize(result.state)),
+      connectionStatus: "synchronizing",
+    };
+    rerender(<GameRoomPage />);
+    checkTop();
+  },
+);
 
 it("announces the named viewer as winner after the final Stock play and keeps the final board read-only", () => {
   showGameRoom();
@@ -1198,25 +1398,24 @@ it("plays a legal Hand card to Build on server update", () => {
     screen.queryByRole("button", { name: /Build pile build-1/ }),
   ).toBeNull();
 
-  const accepted = structuredClone(state);
-  const hand = accepted.byId["player-1"]!.hand;
-  hand.cards = hand.cards.filter((c) => c.id !== "two");
-  accepted.center.buildPiles[0]!.cards.unshift({
-    kind: "standard",
-    id: "two",
-    rank: 2,
-    suit: "Clubs",
+  const result = applyMove(state, {
+    kind: "PLAY_HAND_TO_BUILD",
+    cardId: "two",
+    target: "build-1",
   });
-  accepted.center.buildPiles[0]!.nextRank = 3;
+  expect(result.accepted).toBe(true);
   gameRoom.view = {
     ...gameRoom.view,
-    state: accepted,
+    state: result.state,
     seq: 1,
     pendingAction: null,
   };
   rerender(<GameRoomPage />);
   expect(screen.queryByRole("button", { name: "Hand 2 of Clubs" })).toBeNull();
   expect(screen.getByText("build-1 → 3")).toBeTruthy();
+  expect(screen.getByLabelText("Build top 2 of Clubs").textContent).toContain(
+    "2",
+  );
 });
 
 it("discards a non-wild Hand card and follows the next Turn", () => {
@@ -1325,22 +1524,36 @@ it("selects the legal Stock top, switches sources, and follows accepted Stock pr
     target: "build-1",
   });
 
-  const accepted = structuredClone(state);
-  accepted.byId["player-1"]!.stock.faceDown.pop();
-  accepted.center.buildPiles[0]!.nextRank = 3;
-  gameRoom.view = { ...gameRoom.view, state: accepted, seq: 1 };
+  const result = applyMove(state, {
+    kind: "PLAY_STOCK_TO_BUILD",
+    target: "build-1",
+  });
+  expect(result.accepted).toBe(true);
+  gameRoom.view = { ...gameRoom.view, state: result.state, seq: 1 };
   rerender(<GameRoomPage />);
   expect(screen.getByText("Stock (1)")).toBeTruthy();
   expect(
     screen.queryByRole("button", { name: "Stock top 7 of Clubs" }),
   ).toBeNull();
   expect(screen.getByText("build-1 → 3")).toBeTruthy();
+  expect(screen.getByLabelText("Build top 2 of Hearts").textContent).toContain(
+    "2",
+  );
 });
 
 it("plays only the top of an own Discard pile and clears selection on Build completion", () => {
   showGameRoom();
   const state = boardState();
   state.center.buildPiles[0]!.nextRank = 12;
+  state.center.buildPiles[0]!.cards = Array.from(
+    { length: 11 },
+    (_, index) => ({
+      kind: "standard",
+      id: `built-${11 - index}`,
+      rank: (11 - index) as Rank,
+      suit: "Spades",
+    }),
+  );
   state.byId["player-1"]!.discards = [
     [
       { kind: "standard", id: "covered-ace", rank: 1, suit: "Hearts" },
@@ -1379,18 +1592,15 @@ it("plays only the top of an own Discard pile and clears selection on Build comp
     target: "build-1",
   });
 
-  const accepted = structuredClone(state);
-  accepted.byId["player-1"]!.discards[0]!.pop();
-  accepted.center.buildPiles = [];
-  accepted.deck.recyclePile.push({
-    kind: "standard",
-    id: "queen",
-    rank: 12,
-    suit: "Spades",
+  const result = applyMove(state, {
+    kind: "PLAY_DISCARD_TO_BUILD",
+    pileIndex: 0,
+    target: "build-1",
   });
-  gameRoom.view = { ...gameRoom.view, state: accepted, seq: 1 };
+  expect(result.accepted).toBe(true);
+  gameRoom.view = { ...gameRoom.view, state: result.state, seq: 1 };
   rerender(<GameRoomPage />);
-  expect(screen.getByText("Recycle pile: 1 cards")).toBeTruthy();
+  expect(screen.getByText("Recycle pile: 12 cards")).toBeTruthy();
   expect(screen.queryByText("build-1 → 12")).toBeNull();
   expect(
     screen
