@@ -1,7 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { applyMove, createStartedGame } from "../src";
+import {
+  applyMove,
+  createInitialState,
+  createStartedGame,
+  peekTopCard,
+  type Card,
+} from "../src";
 
 describe("createStartedGame", () => {
+  it("stores Draw cards bottom-to-top while accepting an immutable deal-order input", () => {
+    const deck: Card[] = [
+      { kind: "standard", id: "first", rank: 1, suit: "Hearts" },
+      { kind: "standard", id: "second", rank: 2, suit: "Clubs" },
+    ];
+    Object.freeze(deck);
+    const initial = createInitialState([{ id: "P1" }, { id: "P2" }], deck);
+    expect(initial.deck.drawPile.map((card) => card.id)).toEqual([
+      "second",
+      "first",
+    ]);
+    expect(peekTopCard(initial.deck.drawPile)?.id).toBe("first");
+    expect(deck.map((card) => card.id)).toEqual(["first", "second"]);
+  });
   it("creates a playable game with a complete card pack per player", () => {
     const state = createStartedGame({
       players: ["P1", "P2"],
@@ -108,7 +128,7 @@ describe("createStartedGame", () => {
       cursor: first.rng.cursor,
       stockP1: first.byId.P1?.stock.faceDown.map((card) => card.id),
       handP1: first.byId.P1?.hand.cards.map((card) => card.id),
-      drawStart: first.deck.drawPile.slice(0, 5).map((card) => card.id),
+      drawStart: first.deck.drawPile.slice(-5).reverse().map((card) => card.id),
     }).toEqual({
       activePlayer: "P1",
       cursor: 108,

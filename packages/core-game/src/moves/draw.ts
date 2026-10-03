@@ -2,6 +2,7 @@ import { ApplyResult, GameEvent, GameState } from "../state/types";
 import { getActivePlayer } from "../state/selectors";
 import { rejectMove } from "../state/reject";
 import { shuffleWithRngState } from "../utils/random";
+import { removeTopCard } from "../state/piles";
 
 export function drawToHandUpTo(
   state: GameState,
@@ -19,11 +20,14 @@ export function drawToHandUpTo(
   while (hand.length < state.rules.handSize) {
     if (drawPile.length === 0 && recyclePile.length > 0) {
       const shuffled = shuffleWithRngState(recyclePile, rng);
-      drawPile = shuffled.cards;
+      // Shuffle output is a deal-order sequence, not pile storage order.
+      drawPile = shuffled.cards.slice().reverse();
       recyclePile = [];
       rng = shuffled.rng;
     }
-    const card = drawPile.shift();
+    const removed = removeTopCard(drawPile);
+    const card = removed.card;
+    drawPile = removed.pile;
     if (!card) break;
     hand.push(card);
     drew++;

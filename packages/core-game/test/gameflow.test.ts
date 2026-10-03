@@ -82,7 +82,7 @@ describe("play to build flow (hand, wild king, stock)", () => {
 
     // Deck order matters:
     // - First 2 cards are dealt to stocks round-robin: P1 stock, P2 stock
-    // - Then P1 draws up to handSize from the FRONT of the deck.
+    // - createInitialState accepts a deal-order sequence; Draw storage is bottom-to-top.
     //
     // We want:
     //   P1 stock top = 4  (so later we can place it when pile requires 4)
@@ -143,6 +143,10 @@ describe("play to build flow (hand, wild king, stock)", () => {
     });
     s = r.state;
     expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(3);
+    expect(s.center.buildPiles[0]?.cards.map((card) => card.id)).toEqual([
+      "H1",
+      "H2",
+    ]);
 
     // Play King (wild) -> B1 (should count as required rank=3)
     r = applyMove(s, {
@@ -158,9 +162,10 @@ describe("play to build flow (hand, wild king, stock)", () => {
     s = r.state;
     expect(s.center.buildPiles.find((b) => b.id === "B1")?.nextRank).toBe(5);
 
-    // Pile should have 4 cards placed so far (1,2,K,4). We store top at index 0.
+    // Pile stores the accepted placements bottom-to-top.
     const b1 = s.center.buildPiles.find((b) => b.id === "B1")!;
     expect(b1.cards.length).toBe(4);
+    expect(b1.cards.map((card) => card.id)).toEqual(["H1", "H2", "HK", "S4"]);
 
     // Stock should now be empty for P1
     expect(s.byId["P1"].stock.faceDown.length).toBe(0);

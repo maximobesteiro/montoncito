@@ -138,7 +138,7 @@ describe("explicit core outcomes", () => {
   it("refills from the Draw pile without consuming random generator state", () => {
     const state = turn();
     state.byId.P1!.hand.cards = [ace("held")];
-    state.deck.drawPile = [ace("draw-1"), ace("draw-2")];
+    state.deck.drawPile = [ace("draw-2"), ace("draw-1")];
     state.deck.recyclePile = [ace("recycle")];
     const before = structuredClone(state);
     freeze(state);
@@ -161,7 +161,7 @@ describe("explicit core outcomes", () => {
   it("automatically refills an active Hand emptied by a play", () => {
     const state = turn();
     state.byId.P1!.hand.cards = [ace("play")];
-    state.deck.drawPile = [ace("refill-1"), ace("refill-2")];
+    state.deck.drawPile = [ace("refill-2"), ace("refill-1")];
 
     const result = applyMove(state, {
       kind: "PLAY_HAND_TO_BUILD",

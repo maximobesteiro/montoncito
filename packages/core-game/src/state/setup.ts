@@ -1,6 +1,7 @@
 import { createInitialState } from "./initial";
 import { Card, GameState, PlayerId, Rank, RulesConfig, Suit } from "./types";
 import { nextRandom, shuffleWithRngState } from "../utils/random";
+import { placeTopCard, removeTopCard } from "./piles";
 
 const suits: Suit[] = ["Clubs", "Diamonds", "Hearts", "Spades"];
 
@@ -62,15 +63,18 @@ export function createStartedGame(options: StartedGameOptions): GameState {
     selected.rng,
   );
   const byId = { ...initial.byId };
-  let cardIndex = 0;
+  // Preserve the shuffled deal sequence at the bottom-to-top storage boundary.
+  let drawPile = shuffled.cards.slice().reverse();
 
   for (let cardNumber = 0; cardNumber < initial.rules.stockSize; cardNumber += 1) {
     for (const playerId of options.players) {
-      const card = shuffled.cards[cardIndex++];
+      const removed = removeTopCard(drawPile);
+      const card = removed.card;
+      drawPile = removed.pile;
       if (card) {
         byId[playerId] = {
           ...byId[playerId]!,
-          stock: { faceDown: [...byId[playerId]!.stock.faceDown, card] },
+          stock: { faceDown: placeTopCard(byId[playerId]!.stock.faceDown, card) },
         };
       }
     }
@@ -78,7 +82,9 @@ export function createStartedGame(options: StartedGameOptions): GameState {
 
   for (let cardNumber = 0; cardNumber < initial.rules.handSize; cardNumber += 1) {
     for (const playerId of options.players) {
-      const card = shuffled.cards[cardIndex++];
+      const removed = removeTopCard(drawPile);
+      const card = removed.card;
+      drawPile = removed.pile;
       if (card) {
         byId[playerId] = {
           ...byId[playerId]!,
@@ -93,7 +99,7 @@ export function createStartedGame(options: StartedGameOptions): GameState {
     phase: "turn",
     turn: { number: 1, activePlayer, hasDiscarded: false },
     byId,
-    deck: { drawPile: shuffled.cards.slice(cardIndex), recyclePile: [] },
+    deck: { drawPile, recyclePile: [] },
     rng: shuffled.rng,
   };
 }

@@ -32,7 +32,7 @@ const PlayerStateSchema = z.object({
 });
 
 export const AuthoritativeStateSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   rulesetVersion: z.literal(1),
   id: z.string().min(1),
   phase: z.enum(["lobby", "turn", "gameover"]),

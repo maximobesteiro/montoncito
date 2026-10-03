@@ -6,7 +6,7 @@ import type {
   BuildPile,
   BuildPileTarget,
 } from "@mont/core-game";
-import { isWild } from "@mont/core-game";
+import { isWild, peekTopCard } from "@mont/core-game";
 
 /**
  * Check if a card matches the required rank for a build pile
@@ -69,7 +69,7 @@ export function getValidMoves(
   }
 
   // Check stock top card
-  const stockTop = player.stock.faceDown[player.stock.faceDown.length - 1];
+  const stockTop = peekTopCard(player.stock.faceDown);
   if (stockTop) {
     if (canStartBuildPile(stockTop)) {
       result.stockToBuild.push({ buildId: "new" });
@@ -86,7 +86,7 @@ export function getValidMoves(
   for (let i = 0; i < player.discards.length; i++) {
     const discardPile = player.discards[i];
     if (!discardPile || discardPile.length === 0) continue;
-    const topCard = discardPile[discardPile.length - 1];
+    const topCard = peekTopCard(discardPile);
     if (!topCard) continue;
 
     if (canStartBuildPile(topCard)) {

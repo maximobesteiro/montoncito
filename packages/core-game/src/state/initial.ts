@@ -7,6 +7,7 @@ import {
   RulesConfig,
 } from "./types";
 
+/** Accept cards in deal order and store the Draw pile bottom-to-top. */
 export function createInitialState(
   players: { id: PlayerId; name?: string }[],
   deck: Card[],
@@ -34,7 +35,7 @@ export function createInitialState(
   const buildPiles: BuildPile[] = [];
 
   return {
-    version: 1,
+    version: 2,
     rulesetVersion: 1,
     id: opts?.id ?? "match",
     phase: "lobby",
@@ -45,7 +46,7 @@ export function createInitialState(
     },
     players: players.map((p) => p.id),
     byId,
-    deck: { drawPile: deck.slice(), recyclePile: [] },
+    deck: { drawPile: deck.slice().reverse(), recyclePile: [] },
     center: { buildPiles },
     nextBuildPileId: 1,
     winner: null,

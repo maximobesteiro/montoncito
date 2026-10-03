@@ -37,7 +37,7 @@ export function denseBoardState(discardPiles: 1 | 2 | 3 | 4): GameState {
   state.center.buildPiles = Array.from({ length: 18 }, (_, index) => ({
     id: `build-${index + 1}`,
     nextRank: 3,
-    cards: [card(`build-${index}-two`, 2), card(`build-${index}-ace`, 1)],
+    cards: [card(`build-${index}-ace`, 1), card(`build-${index}-two`, 2)],
   }));
   return state;
 }

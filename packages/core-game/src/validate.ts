@@ -7,6 +7,7 @@ import {
 import { isWild } from "./utils/isWild";
 import { must } from "./utils/guards";
 import { playerHasAnyPlacement } from "./rules/win";
+import { peekTopCard } from "./state/piles";
 
 function matchesRequired(
   card: Card,
@@ -66,7 +67,7 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
     case "PLAY_STOCK_TO_BUILD": {
       if (state.phase !== "turn") return "Not your turn";
       const active = getActivePlayer(state);
-      const top = active.stock.faceDown[active.stock.faceDown.length - 1];
+      const top = peekTopCard(active.stock.faceDown);
       if (!top) return "No stock card to play";
       const target = move.target;
       if (target === "new")
@@ -90,7 +91,7 @@ export function validateMove(state: GameState, move: Move): RuleReason | null {
 
       // Assert the pile exists (strict-mode friendly)
       const source = must(active.discards[pi], "Discard pile missing");
-      const top = source[source.length - 1];
+      const top = peekTopCard(source);
       if (!top) return "Discard pile is empty";
 
       const target = move.target;

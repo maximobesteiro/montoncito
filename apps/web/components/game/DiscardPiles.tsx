@@ -1,6 +1,7 @@
 "use client";
 
 import type { DiscardArea } from "@mont/core-game";
+import { peekTopCard } from "@mont/core-game";
 import { useId, useState } from "react";
 import { formatCardName } from "@/lib/format-card-name";
 import { Card, pileSizeConfig } from "./Card";
@@ -35,8 +36,7 @@ export function DiscardPiles({
   return (
     <div className="flex flex-wrap items-start gap-2">
       {discards.map((pile, index) => {
-        // Top card is the last element
-        const topCard = pile[pile.length - 1];
+        const topCard = peekTopCard(pile);
         const isHandDiscardTarget =
           handDiscardOnlyTargets.has(index) || handDiscardTargets.has(index);
         const expanded = pile.length > 1 && expandedPiles.has(index);

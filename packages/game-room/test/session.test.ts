@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createStartedGame } from "@mont/core-game";
+import { applyMove, createStartedGame, topBuildCard } from "@mont/core-game";
 import {
   createGameRoomSession,
   failGameRoomSession,
@@ -11,7 +11,13 @@ import {
   receiveGameRoomActionRejected,
   setPendingGameRoomAction,
 } from "../src/session.js";
-import { ActionSubmissionSchema, SyncSnapshotSchema } from "../src/protocol.js";
+import {
+  ActionAcceptedSchema,
+  ActionRejectedSchema,
+  ActionSubmissionSchema,
+  RoomStateUpdateSchema,
+  SyncSnapshotSchema,
+} from "../src/protocol.js";
 
 const snapshot = {
   version: 1,
@@ -20,6 +26,71 @@ const snapshot = {
 };
 
 describe("Game room session transitions", () => {
+  it("keeps the authoritative Build top while pending and restores it after reconnect", () => {
+    const initial = createStartedGame({ players: ["P1", "P2"], seed: 1 });
+    initial.byId[initial.turn.activePlayer]!.hand.cards = [
+      { kind: "standard", id: "ace", rank: 1, suit: "Hearts" },
+      { kind: "standard", id: "two", rank: 2, suit: "Clubs" },
+      { kind: "standard", id: "held", rank: 7, suit: "Spades" },
+    ];
+    const ace = applyMove(initial, {
+      kind: "PLAY_HAND_TO_BUILD", cardId: "ace", target: "new",
+    });
+    expect(ace.accepted).toBe(true);
+    const buildId = ace.state.center.buildPiles[0]!.id;
+    const synchronized = receiveGameRoomSnapshot(createGameRoomSession(), {
+      version: 1, seq: 1, state: ace.state,
+    });
+    const action = {
+      kind: "PLAY_HAND_TO_BUILD" as const, cardId: "two", target: buildId,
+    };
+    const pending = setPendingGameRoomAction(synchronized, {
+      version: 1,
+      actionId: "550e8400-e29b-41d4-a716-446655440000",
+      baseSeq: 1,
+      action,
+    });
+    if (synchronized.status !== "synchronized" || pending.status !== "synchronized")
+      throw new Error("Expected synchronized sessions");
+    expect(pending.state).toBe(synchronized.state);
+    expect(topBuildCard(pending.state.center.buildPiles[0]!)?.id).toBe("ace");
+    const two = applyMove(ace.state, action);
+    expect(two.accepted).toBe(true);
+    const restored = receiveGameRoomSnapshot(markGameRoomConnected(pending), {
+      version: 1, seq: 2, state: two.state,
+    });
+    expect(restored.status).toBe("synchronized");
+    if (restored.status !== "synchronized")
+      throw new Error("Expected recovered session");
+    expect(topBuildCard(restored.state.center.buildPiles[0]!)?.id).toBe("two");
+    expect(restored.state.center.buildPiles[0]!.cards.map((card) => card.id)).toEqual([
+      "ace", "two",
+    ]);
+  });
+  it.each([
+    { name: "sync", schema: SyncSnapshotSchema, extras: {} },
+    { name: "update", schema: RoomStateUpdateSchema, extras: {} },
+    {
+      name: "acceptance", schema: ActionAcceptedSchema,
+      extras: { actionId: "550e8400-e29b-41d4-a716-446655440000" },
+    },
+    {
+      name: "rejection", schema: ActionRejectedSchema,
+      extras: {
+        actionId: "550e8400-e29b-41d4-a716-446655440000",
+        code: "ILLEGAL_ACTION",
+      },
+    },
+  ])("requires state version 2 in protocol-1 $name frames", ({ schema, extras }) => {
+    const input = { ...snapshot, ...extras };
+    expect(schema.safeParse(input).success).toBe(true);
+    for (const version of [1, 3]) {
+      expect(schema.safeParse({
+        ...input, state: { ...input.state, version },
+      }).success).toBe(false);
+    }
+    expect(schema.safeParse({ ...input, version: 2 }).success).toBe(false);
+  });
   it("retains a rejection across broadcasts and unrelated acceptance until the next submission", () => {
     const rejected = receiveGameRoomActionRejected(
       receiveGameRoomSnapshot(createGameRoomSession(), snapshot),

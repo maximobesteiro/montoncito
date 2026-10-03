@@ -1,7 +1,6 @@
 import type { Card } from "./types";
 
-// These operations use last-as-top arrays. Version-1 Build and Draw consumers
-// retain their legacy orientation until the normalization migration.
+// Build, Stock, Discard and Draw piles all use bottom-to-top arrays.
 
 /** Select the last card of a bottom-to-top pile. No gameplay validation. */
 export function peekTopCard(pile: readonly Card[]): Card | undefined {

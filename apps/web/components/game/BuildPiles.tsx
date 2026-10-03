@@ -29,7 +29,6 @@ export function BuildPiles({
       <h3 className="text-lg font-bold">Build piles</h3>
       <div className="flex gap-4 flex-wrap items-start">
         {buildPiles.map((pile) => {
-          // Build ordering belongs to the core, unlike Stock and Discard ordering.
           const topCard = topBuildCard(pile);
           const isPlayable = playablePiles.has(pile.id);
           const nextRank = pile.nextRank;
@@ -38,7 +37,6 @@ export function BuildPiles({
           const content = (
             <Pile
               cards={pile.cards}
-              topCard={topCard}
               cardAriaLabel={
                 topCard ? `Build top ${formatCardName(topCard)}` : undefined
               }
