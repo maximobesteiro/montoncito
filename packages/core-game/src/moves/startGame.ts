@@ -1,17 +1,20 @@
 import { ApplyResult, GameEvent, GameState } from "../state/types";
 import { firstPlayerId } from "../state/selectors";
 import { refillHand } from "./draw";
+import { placeTopCard, removeTopCard } from "../state/piles";
 
 function dealStockRoundRobin(s: GameState): GameState {
   const per = s.rules.stockSize;
   const order = s.players;
   const byId = { ...s.byId };
-  const deck = s.deck.drawPile.slice();
+  let deck = s.deck.drawPile;
 
   // Deal one card at a time to each player's stock until stockSize reached (or deck runs out)
   for (let k = 0; k < per; k++) {
     for (const pid of order) {
-      const card = deck.shift();
+      const removed = removeTopCard(deck);
+      const card = removed.card;
+      deck = removed.pile;
       if (!card) break;
       const ps = byId[pid];
       const next = ps
@@ -22,7 +25,7 @@ function dealStockRoundRobin(s: GameState): GameState {
             discards: Array.from({ length: s.rules.discardPiles }, () => []),
             stock: { faceDown: [] },
           };
-      next.stock = { faceDown: [...next.stock.faceDown, card] };
+      next.stock = { faceDown: placeTopCard(next.stock.faceDown, card) };
       byId[pid] = next;
     }
   }

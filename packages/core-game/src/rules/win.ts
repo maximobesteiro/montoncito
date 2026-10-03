@@ -1,6 +1,7 @@
 import { Card, GameState, PlayerId, Rank } from "../state/types";
 import { isWild } from "../utils/isWild";
 import { hasRefillSource } from "../state/selectors";
+import { peekTopCard } from "../state/piles";
 
 /**
  * Returns true if `card` can satisfy the `required` rank for a build pile
@@ -30,14 +31,14 @@ export function playerHasAnyPlacement(state: GameState, pid: PlayerId): boolean 
   for (const c of ps.hand.cards) candidates.push(c);
 
   // Stock top (top is last element)
-  const stockTop = ps.stock.faceDown[ps.stock.faceDown.length - 1];
+  const stockTop = peekTopCard(ps.stock.faceDown);
   if (stockTop) candidates.push(stockTop);
 
   // Each discard top (top is last element)
   for (let i = 0; i < ps.discards.length; i++) {
     const d = ps.discards[i];
     if (!d) continue; // strict mode: skip if index not present
-    const top = d[d.length - 1];
+    const top = peekTopCard(d);
     if (top) candidates.push(top);
   }
 

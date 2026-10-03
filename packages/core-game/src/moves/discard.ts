@@ -3,6 +3,7 @@ import { getActivePlayer } from "../state/selectors";
 import { must } from "../utils/guards";
 import { rejectMove } from "../state/reject";
 import { endTurn } from "./endTurn";
+import { placeTopCard } from "../state/piles";
 
 export function discardFromHand(
   state: GameState,
@@ -30,9 +31,10 @@ export function discardFromHand(
 
   // push onto chosen discard stack (top = last element)
   const discards = active.discards.slice();
-  const stack = must(discards[pileIndex], "Discard pile missing").slice();
-  stack.push(card);
-  discards[pileIndex] = stack;
+  discards[pileIndex] = placeTopCard(
+    must(discards[pileIndex], "Discard pile missing"),
+    card,
+  );
 
   // write back player
   const byId = {

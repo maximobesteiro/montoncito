@@ -13,14 +13,14 @@ export type Card =
 // --- Deck / board ------------------------------------------------------------
 /** Ordered cards for the shared bottom-to-top operations; last element is top. */
 export type OrderedPile = Card[];
-/** Build card storage. Version 1 still stores top first pending normalization. */
-export type BuildPileCards = Card[];
+/** Shared ascending Build cards; last element is the top. */
+export type BuildPileCards = OrderedPile;
 /** Goal pile; last element is the playable top. */
 export type StockPile = OrderedPile;
 /** One personal face-up pile; last element is the playable top. */
 export type DiscardPile = OrderedPile;
-/** Draw storage. Version 1 still draws from the first element pending normalization. */
-export type DrawPile = Card[];
+/** Face-down Draw cards; last element is next to draw. */
+export type DrawPile = OrderedPile;
 /** Cards awaiting shuffle, with no directly playable or drawable top. */
 export type RecyclePile = Card[];
 /** Unordered cards available in a player's Hand. */
@@ -41,7 +41,7 @@ export interface RandomGeneratorState {
 /** Shared Build piles ascend from 1 through 12. */
 export interface BuildPile {
   id: string;
-  cards: BuildPileCards; // version 1: index 0 = top
+  cards: BuildPileCards;
   /** Next required rank; null means pile just completed. */
   nextRank: Rank | null;
 }
@@ -88,7 +88,7 @@ export interface RulesConfig {
 
 // --- Full game state ---------------------------------------------------------
 export interface GameState {
-  version: 1;
+  version: 2;
   /** Fixed gameplay policy, independent of state and transport versions. */
   rulesetVersion: 1;
   id: string;

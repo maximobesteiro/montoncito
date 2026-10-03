@@ -161,6 +161,10 @@ it("renders the accepted Ace then 2 as the visible and accessible Build top", ()
     target: buildId,
   });
   expect(two.accepted).toBe(true);
+  expect(two.state.center.buildPiles[0]!.cards.map((card) => card.id)).toEqual([
+    "ace",
+    "two",
+  ]);
   gameRoom.view = { ...gameRoom.view, state: two.state, seq: 2 };
   rerender(<GameRoomPage />);
   const top = screen.getByLabelText("Build top 2 of Clubs");
@@ -1549,8 +1553,8 @@ it("plays only the top of an own Discard pile and clears selection on Build comp
     { length: 11 },
     (_, index) => ({
       kind: "standard",
-      id: `built-${11 - index}`,
-      rank: (11 - index) as Rank,
+      id: `built-${index + 1}`,
+      rank: (index + 1) as Rank,
       suit: "Spades",
     }),
   );

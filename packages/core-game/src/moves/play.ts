@@ -4,6 +4,7 @@ import { isWild } from "../utils/isWild";
 import { rejectMove } from "../state/reject";
 import { refillHand } from "./draw";
 import { must } from "../utils/guards";
+import { peekTopCard, placeTopCard, removeTopCard } from "../state/piles";
 
 function newBuildId(state: GameState): string {
   return `B${state.nextBuildPileId}`;
@@ -37,7 +38,7 @@ function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { 
   const rankOrNull: Rank | null = isWild(card) ? pile.nextRank : (card as Extract<Card, { kind: "standard" }>).rank;
   const updated: BuildPile = {
     ...pile,
-    cards: [card, ...pile.cards],
+    cards: placeTopCard(pile.cards, card),
     nextRank: computeNextRankAfterPlace(pile.nextRank, rankOrNull, 12),
   };
   const events: GameEvent[] = [];
@@ -49,7 +50,14 @@ function placeOnBuild(state: GameState, target: BuildPileTarget, card: Card): { 
   const nextPiles = piles.slice();
   if (updated.nextRank === null) {
     nextPiles.splice(index, 1);
-    state = { ...state, deck: { ...state.deck, recyclePile: [...state.deck.recyclePile, ...updated.cards] } };
+    // Retain the version-1 completion sequence as the deterministic shuffle input.
+    state = {
+      ...state,
+      deck: {
+        ...state.deck,
+        recyclePile: [...state.deck.recyclePile, ...updated.cards.slice().reverse()],
+      },
+    };
   } else {
     nextPiles[index] = updated;
   }
@@ -77,23 +85,28 @@ function playFrom(state: GameState, source: Source, target: BuildPileTarget, car
     hand.splice(index, 1);
     byId = { ...byId, [active.id]: { ...active, hand: { cards: hand } } };
   } else if (source === "stock") {
-    card = active.stock.faceDown[active.stock.faceDown.length - 1];
+    card = peekTopCard(active.stock.faceDown);
     if (!card) return rejectMove(state, "No stock card to play");
   } else {
     const discard = active.discards[pileIndex!];
-    card = discard?.[discard.length - 1];
+    card = discard && peekTopCard(discard);
     if (!card) return rejectMove(state, "Discard pile is empty");
   }
   const placed = placeOnBuild(state, target, card!);
   if ("accepted" in placed) return placed;
   if (source === "stock") {
-    byId = { ...byId, [active.id]: { ...active, stock: { faceDown: active.stock.faceDown.slice(0, -1) } } };
+    byId = {
+      ...byId,
+      [active.id]: {
+        ...active,
+        stock: { faceDown: removeTopCard(active.stock.faceDown).pile },
+      },
+    };
   } else if (source === "discard") {
     const discards = active.discards.slice();
-    discards[pileIndex!] = must(
-      discards[pileIndex!],
-      "Discard pile missing",
-    ).slice(0, -1);
+    discards[pileIndex!] = removeTopCard(
+      must(discards[pileIndex!], "Discard pile missing"),
+    ).pile;
     byId = { ...byId, [active.id]: { ...active, discards } };
   }
   let finalState = { ...placed.state, byId };

@@ -1,12 +1,12 @@
 "use client";
 
 import type { Card as GameCard } from "@mont/core-game";
+import { peekTopCard } from "@mont/core-game";
 import type { ReactNode } from "react";
 import { Card, type CardSize, pileSizeConfig } from "./Card";
 
 interface PileProps {
   cards: GameCard[];
-  topCard?: GameCard;
   size?: CardSize;
   label?: ReactNode;
   onClick?: () => void;
@@ -21,7 +21,6 @@ interface PileProps {
 
 export function Pile({
   cards,
-  topCard = cards[cards.length - 1],
   size = "md",
   label,
   onClick,
@@ -34,6 +33,7 @@ export function Pile({
   children,
 }: PileProps) {
   const config = pileSizeConfig[size];
+  const topCard = peekTopCard(cards);
 
   const defaultCardContent = topCard ? (
     <Card

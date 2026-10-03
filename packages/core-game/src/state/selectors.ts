@@ -1,5 +1,6 @@
 import { BuildPile, GameState, PlayerId, PlayerState, Rank } from "./types";
 import { must } from "../utils/guards";
+import { peekTopCard } from "./piles";
 
 export function getActivePlayer(state: GameState): PlayerState {
   const p = state.byId[state.turn.activePlayer];
@@ -29,7 +30,7 @@ export function getBuildPile(state: GameState, buildId: string): BuildPile {
 }
 
 export function topBuildCard(pile: BuildPile) {
-  return pile.cards[0];
+  return peekTopCard(pile.cards);
 }
 
 export function computeNextRankAfterPlace(

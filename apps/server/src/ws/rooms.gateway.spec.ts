@@ -336,7 +336,7 @@ describe('Game room synchronization over Socket.IO', () => {
       version: 1,
       actionId,
       seq: 1,
-      state: { turn: { number: 2 } },
+      state: { version: 2, rulesetVersion: 1, turn: { number: 2 } },
     });
     await expect(acceptedForObserver).resolves.toMatchObject({
       actionId,

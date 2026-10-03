@@ -1,18 +1,28 @@
 import { GameState } from "./state/types";
 
-export interface SnapshotV1 {
-  v: 1;
+export interface SnapshotV2 {
+  v: 2;
   payload: GameState;
 }
 
 export function serialize(state: GameState): string {
-  const snap: SnapshotV1 = { v: 1, payload: state };
+  assertSupportedStateVersions(state);
+  const snap: SnapshotV2 = { v: 2, payload: state };
   return JSON.stringify(snap);
 }
 
 export function deserialize(s: string): GameState {
   const parsed = JSON.parse(s) as { v?: number; payload?: unknown };
-  if (parsed?.v !== 1)
+  if (parsed?.v !== 2)
     throw new Error(`Unsupported snapshot version: ${parsed?.v}`);
+  assertSupportedStateVersions(parsed.payload);
   return parsed.payload as GameState;
+}
+
+function assertSupportedStateVersions(payload: unknown): void {
+  const state = payload as { version?: unknown; rulesetVersion?: unknown } | null;
+  if (state?.version !== 2)
+    throw new Error(`Unsupported game-state version: ${state?.version}`);
+  if (state.rulesetVersion !== 1)
+    throw new Error(`Unsupported ruleset version: ${state.rulesetVersion}`);
 }

@@ -136,7 +136,11 @@ A Lobby retains disconnected members while another member remains online. When n
 
 ## 10) Versioning & Compatibility
 
+- **Game-state version 2** stores Build, Stock, Discard, and Draw piles as bottom-to-top arrays with the last element as top. Named array types retain the existing JSON shapes; a Discard area remains index-addressed piles. The Hand is unordered and Recycle has no directly available top. Reducers, selectors, validation, and board consumers use the core's immutable pile operations. See [ADR-0006](../docs/adr/0006-uniform-card-pile-ordering.md).
+- **Serialized snapshot envelope version 2** requires embedded game-state version 2 and ruleset version 1. Version-1 snapshots and unsupported or mismatched version combinations are explicitly rejected. There is no migration or orientation guessing.
+- **Deterministic compatibility:** the same seed, rules, players, and accepted Actions preserve dealt cards, available source tops, Turn order, future draws, and `mulberry32-v1` state. Setup accepts cards in deal order, converting a copy to Draw storage. Shuffle output is reversed at the Draw storage boundary; completed Builds enter Recycle in reverse placement order to retain the legacy shuffle-input sequence. These conversions consume no randomness.
 - **Protocol version 1** is required by the shared Game room schemas.
+- Protocol-1 synchronization, Accepted/Rejected Action, and room-update frames require embedded state version 2. Protocol 1 alone cannot identify old clients, and mixed old/new deployments are not guaranteed compatible. Deploy the coordinated core, server, shared Game room, and web changes together.
 - **Ruleset version 1** identifies the fixed King-and-Joker wild policy in Authoritative state and Game room snapshots. It remains fixed for a match, independently of the game-state version and protocol version. Discard pile count remains configurable.
 - Server advertises supported versions in `GET /version`.
 - Unsupported protocol versions fail before Action processing.
