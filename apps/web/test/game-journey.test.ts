@@ -1091,6 +1091,80 @@ it.each(["started", "kicked", "deleted"] as const)(
   20_000,
 );
 
+it("checks unresolved admission before retrying Save after the match starts", async () => {
+  server.scenario("seeded");
+  const host = await client(1440, "Moki");
+  const guest = await client(390, "moki");
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    const hostHeaders = { "x-client-id": host.id };
+    const guestHeaders = { "x-client-id": guest.id };
+    const room = await (
+      await host.page.request.get(`${server.url}/rooms/by-slug/${slug}`, {
+        headers: hostHeaders,
+      })
+    ).json();
+    await guest.page.goto(`http://localhost:4173/room/${slug}`);
+    await guest.page.addStyleTag({ content: css });
+    await guest.page.addScriptTag({ content: script });
+    const input = guest.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await input.fill("Unresolved replacement");
+    let joins = 0;
+    await guest.page.route(
+      `${server.url}/rooms/${room.id}/join`,
+      async (route) => {
+        joins++;
+        expect((await route.fetch()).status()).toBe(201);
+        await route.abort("failed");
+      },
+    );
+    await guest.page.route(`${server.url}/profile`, async (route) => {
+      if (route.request().method() === "GET")
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: "{}",
+        });
+      else await route.continue();
+    });
+    await input.press("Enter");
+    await guest.page
+      .getByRole("alert")
+      .getByText(/Couldn't confirm whether you joined/)
+      .waitFor();
+    expect(await input.inputValue()).toBe("Unresolved replacement");
+    await host.page.request.post(`${server.url}/rooms/${room.id}/ready`, {
+      headers: guestHeaders,
+      data: { ready: true },
+    });
+    expect(
+      (
+        await host.page.request.post(`${server.url}/rooms/${room.id}/start`, {
+          headers: hostHeaders,
+        })
+      ).ok(),
+    ).toBe(true);
+    await guest.page.unroute(`${server.url}/profile`);
+    await input.press("Enter");
+    await guest.page.waitForURL(`**/game/${room.id}`);
+    expect(joins).toBe(1);
+    expect(
+      await guest.page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("Unresolved replacement");
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
 it("recovers an ordinary admission when its response is lost", async () => {
   const host = await client(1440, "Ordinary host");
   const guest = await client(390, "Ordinary guest");

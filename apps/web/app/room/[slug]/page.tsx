@@ -68,6 +68,7 @@ export default function WaitingRoomPage() {
   const [needsNickname, setNeedsNickname] = useState(false);
   const [admitted, setAdmitted] = useState(false);
   const [admissionAttempt, setAdmissionAttempt] = useState(0);
+  const unresolvedAdmission = useRef<string | null>(null);
   const retryAdmission = useRef<null | ((draft: string) => Promise<void>)>(
     null,
   );
@@ -246,7 +247,49 @@ export default function WaitingRoomPage() {
             }
           });
         };
+        const reconcileAdmission = async () => {
+          try {
+            const confirmed = await apiFetch<GuestProfile>("/profile", {
+              clientId,
+            });
+            if (cancelled) return null;
+            setAdmissionProfile(confirmed);
+            rememberGuestProfile(confirmed);
+            const current = await apiFetch<RoomView>(`/rooms/${view.id}`, {
+              clientId,
+            });
+            if (cancelled) return null;
+            if (current.players.some((player) => player.id === clientId)) {
+              const token = await apiFetch<{ wsJoinToken: string }>(
+                `/rooms/${view.id}/socket-token`,
+                { method: "POST", clientId },
+              );
+              if (cancelled) return null;
+              connectMembership({ ...current, ...token, profile: confirmed });
+              unresolvedAdmission.current = null;
+              return null;
+            }
+            unresolvedAdmission.current = null;
+            return confirmed;
+          } catch (failure) {
+            if (cancelled) return null;
+            if (failure instanceof ApiHttpError && failure.status === 404) {
+              unresolvedAdmission.current = null;
+              throw new Error(
+                "This Lobby no longer exists. You have not joined. Return home to choose another Lobby.",
+              );
+            }
+            throw new Error(
+              "Couldn't confirm whether you joined. The request may have completed. Retry to check membership before confirming another replacement.",
+            );
+          }
+        };
         const admit = async (draft?: string) => {
+          if (
+            unresolvedAdmission.current === view.id &&
+            !(await reconcileAdmission())
+          )
+            return;
           try {
             const joined = await apiFetch<Admission>(`/rooms/${view.id}/join`, {
               method: "POST",
@@ -255,6 +298,8 @@ export default function WaitingRoomPage() {
                 draft === undefined ? {} : { displayName: draft },
               ),
             });
+            if (cancelled) return;
+            unresolvedAdmission.current = null;
             connectMembership(joined);
           } catch (failure) {
             if (cancelled) return;
@@ -267,46 +312,11 @@ export default function WaitingRoomPage() {
             if (!(failure instanceof ApiHttpError)) {
               // The response may have been lost after commit. Resolve through
               // public reads before describing the result or repeating admission.
-              let confirmedName: string;
-              try {
-                const confirmed = await apiFetch<GuestProfile>("/profile", {
-                  clientId,
-                });
-                if (cancelled) return;
-                setAdmissionProfile(confirmed);
-                rememberGuestProfile(confirmed);
-                confirmedName = confirmed.displayName;
-                const current = await apiFetch<RoomView>(`/rooms/${view.id}`, {
-                  clientId,
-                });
-                if (cancelled) return;
-                if (current.players.some((player) => player.id === clientId)) {
-                  const token = await apiFetch<{ wsJoinToken: string }>(
-                    `/rooms/${view.id}/socket-token`,
-                    { method: "POST", clientId },
-                  );
-                  connectMembership({
-                    ...current,
-                    ...token,
-                    profile: confirmed,
-                  });
-                  return;
-                }
-              } catch (recoveryFailure) {
-                if (
-                  recoveryFailure instanceof ApiHttpError &&
-                  recoveryFailure.status === 404
-                ) {
-                  throw new Error(
-                    "This Lobby no longer exists. You have not joined. Return home to choose another Lobby.",
-                  );
-                }
-                throw new Error(
-                  "Couldn't confirm whether you joined. The request may have completed. Retry to check membership before confirming another replacement.",
-                );
-              }
+              unresolvedAdmission.current = view.id;
+              const confirmed = await reconcileAdmission();
+              if (!confirmed) return;
               throw new Error(
-                `Your confirmed nickname is ${confirmedName}. You are not currently a member of this Lobby. Retry to request admission.`,
+                `Your confirmed nickname is ${confirmed.displayName}. You are not currently a member of this Lobby. Retry to request admission.`,
               );
             }
             throw new Error(
