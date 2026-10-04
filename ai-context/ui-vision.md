@@ -37,6 +37,7 @@
   - **Opponent Area(s)** – compact visual of other players’ stock/discards.
 - Layout adapts fluidly between desktop and mobile; orientation awareness is required (e.g. vertical stack on mobile).
 - Core design goal: clarity of *whose turn it is* and *what moves are available*.
+- Board labels and new Game room chat messages keep each player's confirmed nickname captured at match start, including after game over. The board offers no nickname editor. Editing on the homepage or in another Lobby updates the shared preference for future matches. Chat history retains the sender name stored at send time.
 
 ### 3. **Action Panel / Interaction Layer**
 - Displays available moves (playable cards, discard options) based on current reducer state.

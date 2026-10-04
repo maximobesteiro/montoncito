@@ -52,6 +52,10 @@ _Avoid_: Nickname, account
 The player-facing name a guest can choose or receive automatically. Changing a Nickname does not change Guest identity.
 _Avoid_: username, real name, guest ID
 
+**Match identity**:
+A player's Guest identity and confirmed Nickname captured when a match starts. The board and new Game room chat messages use that Nickname through game over. Later Nickname changes apply to future matches. Earlier chat messages retain the sender name from their own send time.
+_Avoid_: current profile, editor draft
+
 **Lobby**:
 A pre-game space where players discover, create, or join a match before the game room begins.
 _Avoid_: room, waiting room
