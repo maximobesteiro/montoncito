@@ -1,6 +1,6 @@
 "use client";
 
-import type { Stock } from "@mont/core-game";
+import { peekTopCard, type Stock } from "@mont/core-game";
 import { formatCardName } from "@/lib/format-card-name";
 import type { CardSize } from "./Card";
 import { Pile } from "./Pile";
@@ -21,11 +21,12 @@ export function StockPile({
   isSelected = false,
 }: StockPileProps) {
   const remainingCount = stock.faceDown.length;
+  const topCard = peekTopCard(stock.faceDown);
 
   return (
     <Pile
       cards={stock.faceDown}
-      presentation={{ kind: "top" }}
+      presentation={{ kind: "stacked", coveredFaceUp: false }}
       size={size}
       label={`Stock (${remainingCount})`}
       onClick={onTopCardClick}
@@ -33,11 +34,10 @@ export function StockPile({
       isSelected={isSelected}
       dragSource={onTopCardClick && isPlayable ? "stock" : undefined}
       cardAriaLabel={
-        remainingCount > 0
-          ? `Stock top ${formatCardName(stock.faceDown[remainingCount - 1]!)}`
-          : undefined
+        topCard ? `Stock top ${formatCardName(topCard)}` : undefined
       }
       faceUp={true}
+      coveredCardAriaLabel={() => "Covered Stock card"}
     />
   );
 }

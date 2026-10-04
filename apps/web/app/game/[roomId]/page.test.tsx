@@ -138,6 +138,201 @@ function boardState(): GameState {
   return state;
 }
 
+it.each([
+  { count: 0, covered: 0 },
+  { count: 1, covered: 0 },
+  { count: 2, covered: 1 },
+  { count: 3, covered: 2 },
+  { count: 20, covered: 2 },
+])(
+  "shows $covered Stock backs for $count cards while retaining the exact count and legal top",
+  ({ count, covered }) => {
+    showGameRoom();
+    const state = boardState();
+    const cards: Card[] = Array.from({ length: count }, (_, index) => ({
+      kind: "standard",
+      id: `stock-${index}`,
+      rank: index === count - 1 ? 1 : 7,
+      suit: "Hearts",
+    }));
+    state.byId["player-1"]!.stock.faceDown = cards;
+    const before = structuredClone(state);
+    gameRoom.view = { ...gameRoom.view, state };
+    render(<GameRoomPage />);
+    const stock = within(screen.getByRole("group", { name: "Your Stock" }));
+    expect(stock.getByText(`Stock (${count})`)).toBeTruthy();
+    expect(stock.queryAllByText("🂠")).toHaveLength(covered);
+    expect(stock.queryByText(/7/)).toBeNull();
+    expect(stock.queryAllByRole("button")).toHaveLength(count ? 1 : 0);
+    if (count) {
+      const top = stock.getByRole("button", {
+        name: "Stock top Ace of Hearts",
+      });
+      expect(top.getAttribute("data-drag-source")).toBe("stock");
+      fireEvent.click(top);
+      expect(top.getAttribute("aria-pressed")).toBe("true");
+      for (const back of stock.queryAllByText("🂠")) fireEvent.click(back);
+      expect(top.getAttribute("aria-pressed")).toBe("true");
+      expect(gameRoom.view.submitAction).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "New Build pile" }));
+      expect(gameRoom.view.submitAction).toHaveBeenCalledWith({
+        kind: "PLAY_STOCK_TO_BUILD",
+        target: "new",
+      });
+    } else {
+      expect(stock.getByText("—")).toBeTruthy();
+    }
+    expect(state).toEqual(before);
+  },
+);
+
+it.each([
+  { count: 0, coveredNames: [] },
+  { count: 1, coveredNames: [] },
+  { count: 2, coveredNames: ["Ace of Spades"] },
+  { count: 3, coveredNames: ["Ace of Spades", "2 of Spades"] },
+  { count: 8, coveredNames: ["6 of Spades", "7 of Spades"] },
+])(
+  "shows recent face-up Build layers capped at two for $count cards and keeps only the destination interactive",
+  ({ count, coveredNames }) => {
+    showGameRoom();
+    const state = boardState();
+    const cards: Card[] = Array.from({ length: count }, (_, index) => ({
+      kind: "standard",
+      id: `build-${index}`,
+      rank: (index + 1) as Rank,
+      suit: "Spades",
+    }));
+    state.center.buildPiles = [
+      { id: "stack", cards, nextRank: (count + 1) as Rank },
+    ];
+    const before = structuredClone(state);
+    gameRoom.view = { ...gameRoom.view, state };
+    render(<GameRoomPage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hand King of Diamonds" }),
+    );
+    const target = screen.getByRole("button", {
+      name: `Build pile stack, next ${count + 1}`,
+    });
+    const build = within(target);
+    expect(build.getByText(`stack → ${count + 1}`)).toBeTruthy();
+    expect(target.getAttribute("data-drop-build")).toBe("stack");
+    expect(target.getAttribute("data-legal-target")).toBe("true");
+    expect(build.queryAllByRole("button")).toHaveLength(0);
+    expect(build.queryAllByText("🂠")).toHaveLength(0);
+    expect(
+      build
+        .queryAllByLabelText(/^Covered Build/)
+        .map((card) => card.getAttribute("aria-label")),
+    ).toEqual(coveredNames.map((name) => `Covered Build ${name}`));
+    for (const name of coveredNames) {
+      const card = build.getByLabelText(`Covered Build ${name}`);
+      expect(card.textContent).toContain("♠");
+      expect(card.hasAttribute("data-drag-source")).toBe(false);
+      fireEvent.click(card);
+    }
+    expect(
+      screen
+        .getByRole("button", { name: "Hand King of Diamonds" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    expect(gameRoom.view.submitAction).not.toHaveBeenCalled();
+    fireEvent.click(
+      count ? build.getByLabelText(/^Build top/) : build.getByText("—"),
+    );
+    expect(gameRoom.view.submitAction).toHaveBeenCalledWith({
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "king",
+      target: "stack",
+    });
+    expect(state).toEqual(before);
+  },
+);
+
+it.each(["mouse", "touch"])(
+  "ignores a %s drop on a covered Build layer and still accepts a drop on its top",
+  (pointerType) => {
+    showGameRoom();
+    const state = boardState();
+    state.center.buildPiles[0]!.cards.push({
+      kind: "standard",
+      id: "built-two",
+      rank: 2,
+      suit: "Spades",
+    });
+    state.center.buildPiles[0]!.nextRank = 3;
+    const submitAction = vi.fn(() => true);
+    gameRoom.view = { ...gameRoom.view, state, submitAction };
+    render(<GameRoomPage />);
+    const source = screen.getByRole("button", {
+      name: "Hand King of Diamonds",
+    });
+    releaseOver(
+      source,
+      () => screen.getByLabelText("Covered Build Ace of Spades"),
+      pointerType,
+    );
+    expect(submitAction).not.toHaveBeenCalled();
+    expect(source.getAttribute("aria-pressed")).toBe("true");
+    releaseOver(
+      source,
+      () => screen.getByLabelText("Build top 2 of Spades"),
+      pointerType,
+    );
+    expect(submitAction).toHaveBeenCalledWith({
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "king",
+      target: "build-1",
+    });
+  },
+);
+
+it("retains capped stacks and exact counts on the authoritative board while a Stock-to-Build Action is pending", () => {
+  showGameRoom();
+  const state = boardState();
+  state.byId["player-1"]!.stock.faceDown = [
+    { kind: "standard", id: "stock-older", rank: 7, suit: "Hearts" },
+    { kind: "standard", id: "stock-covered", rank: 8, suit: "Hearts" },
+    { kind: "standard", id: "stock-top", rank: 4, suit: "Hearts" },
+  ];
+  state.center.buildPiles = [
+    {
+      id: "stack",
+      nextRank: 4,
+      cards: [
+        { kind: "standard", id: "built-1", rank: 1, suit: "Clubs" },
+        { kind: "standard", id: "built-2", rank: 2, suit: "Clubs" },
+        { kind: "standard", id: "built-3", rank: 3, suit: "Clubs" },
+      ],
+    },
+  ];
+  gameRoom.view = {
+    ...gameRoom.view,
+    state,
+    pendingAction: {
+      actionId: "pending",
+      action: { kind: "PLAY_STOCK_TO_BUILD", target: "stack" },
+    },
+  };
+  render(<GameRoomPage />);
+  const stock = within(screen.getByRole("group", { name: "Your Stock" }));
+  const builds = within(screen.getByRole("region", { name: "Build piles" }));
+  expect(stock.getByText("Stock (3)")).toBeTruthy();
+  expect(stock.getByText("Pending")).toBeTruthy();
+  expect(stock.getAllByLabelText("Covered Stock card")).toHaveLength(2);
+  expect(stock.getByLabelText("Stock top 4 of Hearts")).toBeTruthy();
+  expect(builds.getByText("Pending")).toBeTruthy();
+  expect(builds.getAllByLabelText(/^Covered Build/)).toHaveLength(2);
+  expect(builds.getByLabelText("Build top 3 of Clubs")).toBeTruthy();
+  expect(stock.queryAllByRole("button")).toHaveLength(0);
+  expect(builds.queryAllByRole("button")).toHaveLength(0);
+  for (const card of stock.getAllByLabelText("Covered Stock card"))
+    fireEvent.click(card);
+  fireEvent.click(builds.getByLabelText("Covered Build 2 of Clubs"));
+  expect(gameRoom.view.submitAction).not.toHaveBeenCalled();
+});
+
 it("renders the accepted Ace then 2 as the visible and accessible Build top", () => {
   showGameRoom();
   const state = boardState();

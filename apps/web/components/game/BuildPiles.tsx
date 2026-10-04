@@ -37,7 +37,10 @@ export function BuildPiles({
           const content = (
             <Pile
               cards={pile.cards}
-              presentation={{ kind: "top" }}
+              presentation={{ kind: "stacked", coveredFaceUp: true }}
+              coveredCardAriaLabel={(card) =>
+                `Covered Build ${formatCardName(card)}`
+              }
               cardAriaLabel={
                 topCard ? `Build top ${formatCardName(topCard)}` : undefined
               }

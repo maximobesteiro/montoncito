@@ -4,6 +4,15 @@ import type { Card as GameCard } from "@mont/core-game";
 
 export type CardSize = "xs" | "sm" | "md";
 
+export const cardDimensions: Record<
+  CardSize,
+  { width: number; height: number }
+> = {
+  xs: { width: 48, height: 64 },
+  sm: { width: 56, height: 80 },
+  md: { width: 72, height: 104 },
+};
+
 interface CardProps {
   card: GameCard;
   faceUp?: boolean;
@@ -21,7 +30,6 @@ interface CardProps {
 const sizeStyles: Record<
   CardSize,
   {
-    container: string;
     value: string;
     suit: string;
     cornerValue: string;
@@ -29,21 +37,18 @@ const sizeStyles: Record<
   }
 > = {
   xs: {
-    container: "w-12 h-16",
     value: "text-xs",
     suit: "text-[10px]",
     cornerValue: "text-[9px]",
     backIcon: "text-sm",
   },
   sm: {
-    container: "w-14 h-20",
     value: "text-sm",
     suit: "text-xs",
     cornerValue: "text-[10px]",
     backIcon: "text-base",
   },
   md: {
-    container: "w-18 h-26",
     value: "text-2xl",
     suit: "text-xl",
     cornerValue: "text-xs",
@@ -93,7 +98,6 @@ export function Card({
   const sizes = sizeStyles[size];
 
   const baseStyles = `
-    ${sizes.container}
     shrink-0 relative flex flex-col items-center justify-center
     brutal-border
     bg-card
@@ -122,7 +126,7 @@ export function Card({
         {...interactiveProps}
         aria-label={ariaLabel}
         data-drag-source={dragSource}
-        style={style}
+        style={{ ...cardDimensions[size], ...style }}
       >
         <div className={sizes.backIcon}>🂠</div>
       </Element>
@@ -135,7 +139,7 @@ export function Card({
       {...interactiveProps}
       aria-label={ariaLabel}
       data-drag-source={dragSource}
-      style={style}
+      style={{ ...cardDimensions[size], ...style }}
     >
       {isPending && (
         <span className="absolute bottom-0 bg-card px-1 text-xs">Pending</span>

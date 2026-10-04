@@ -288,8 +288,9 @@ export function GameRoomBoard({
     // Pointer capture keeps the gesture on its source. Hit-test at release to find the destination.
     const hit = document.elementFromPoint(event.clientX, event.clientY);
     if (!hit || !event.currentTarget.contains(hit)) return;
-    const build =
-      hit.closest<HTMLElement>("[data-drop-build]")?.dataset.dropBuild;
+    const build = hit.closest("[data-covered-card]")
+      ? undefined
+      : hit.closest<HTMLElement>("[data-drop-build]")?.dataset.dropBuild;
     const discard = hit.closest<HTMLElement>("[data-drop-discard]")?.dataset
       .dropDiscard;
     const { source } = gesture;

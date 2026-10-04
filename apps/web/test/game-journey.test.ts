@@ -328,6 +328,42 @@ it.each([1440, 390])(
     try {
       await lobby(alice, bob);
       await synced(alice, bob, 0);
+      const stock = alice.page.getByRole("group", {
+        name: "Your Stock",
+        exact: true,
+      });
+      expect(await stock.getByText("Stock (2)", { exact: true }).count()).toBe(
+        1,
+      );
+      expect(
+        await stock.getByLabel("Covered Stock card", { exact: true }).count(),
+      ).toBe(1);
+      expect(
+        await stock
+          .getByLabel("Covered Stock card", { exact: true })
+          .textContent(),
+      ).toBe("🂠");
+      const builds = alice.page.getByRole("region", {
+        name: "Build piles",
+        exact: true,
+      });
+      expect(
+        await builds.getByLabel(/^Covered Build/).allTextContents(),
+      ).toHaveLength(2);
+      for (const name of ["9 of Clubs", "10 of Clubs"])
+        expect(
+          await builds
+            .getByLabel(`Covered Build ${name}`, { exact: true })
+            .isVisible(),
+        ).toBe(true);
+      const coveredBuild = (await builds
+        .getByLabel("Covered Build 9 of Clubs", { exact: true })
+        .boundingBox())!;
+      const buildTop = (await builds
+        .getByLabel("Build top Jack of Clubs", { exact: true })
+        .boundingBox())!;
+      expect(buildTop.x - coveredBuild.x).toBe(8);
+      expect(buildTop.y - coveredBuild.y).toBe(8);
       const ownHistory = alice.page.getByRole("group", {
         name: "Alice Discard pile 1",
       });
@@ -400,6 +436,7 @@ it.each([1440, 390])(
       }
       await synced(alice, bob, 1);
       expect(alice.snapshot()!.state.center.buildPiles).toEqual([]);
+      expect(await builds.getByLabel(/^Covered Build/).count()).toBe(0);
       expect(
         await alice.page
           .getByText("Recycle pile: 12 cards", { exact: true })
@@ -414,6 +451,7 @@ it.each([1440, 390])(
         alice.page.getByRole("button", { name: "New Build pile" }),
       );
       await synced(alice, bob, 2);
+      expect(await builds.getByLabel(/^Covered Build/).count()).toBe(0);
       expect(alice.snapshot()!.state.byId[alice.id]!.hand.cards).toHaveLength(
         5,
       );
@@ -429,6 +467,12 @@ it.each([1440, 390])(
       );
       await synced(alice, bob, 3);
       expect(alice.snapshot()!.state.center.buildPiles).toHaveLength(2);
+      expect(await stock.getByText("Stock (1)", { exact: true }).count()).toBe(
+        1,
+      );
+      expect(
+        await stock.getByLabel("Covered Stock card", { exact: true }).count(),
+      ).toBe(0);
       const discard = getValidMoves(alice.snapshot()!.state, alice.id)
         .canDiscard[0]!;
       await tap(
@@ -468,6 +512,15 @@ it.each([1440, 390])(
       expect(alice.snapshot()!.state.byId[alice.id]!.stock.faceDown).toEqual(
         [],
       );
+      expect(await stock.getByText("Stock (0)", { exact: true }).count()).toBe(
+        1,
+      );
+      expect(await stock.getByLabel(/^Stock top/).count()).toBe(0);
+      expect(
+        await builds
+          .getByLabel("Covered Build Ace of Clubs", { exact: true })
+          .count(),
+      ).toBe(1);
       expect(
         await ownHistory
           .getByRole("button", { name: "Close", exact: true })
