@@ -9,6 +9,7 @@ import type { RoomView } from '../rooms/rooms.dto';
 import type { ServerEvent, RoomChatMessage } from '../ws/events';
 import type { Profile } from './profiles.service';
 import type { SyncSnapshot } from '@mont/game-room';
+import { GameService } from '../game/game.service';
 
 type Membership = RoomView & { wsJoinToken: string };
 
@@ -208,8 +209,17 @@ describe('Lobby nicknames through REST and WebSocket', () => {
         socket.emit('room.sync.request', { version: 1 });
       });
     const before = await sync();
+    expect(before.state.byId.host.name).toBe('Zibble');
     expect((await rename('host', 'moki')).status).toBe(200);
     expect(await sync()).toEqual(before);
+    expect((await chat('during the match')).playerName).toBe('Zibble');
+    const gameHistory = new Promise<{ messages: RoomChatMessage[] }>(
+      (resolve) => socket.once('chat.history', resolve),
+    );
+    socket.emit('chat.history.request', { version: 1 });
+    expect(
+      (await gameHistory).messages.map((message) => message.playerName),
+    ).toEqual(['Boppo', 'Zibble', 'Zibble']);
     expect(before.seq).toBe(0);
   });
 
@@ -228,6 +238,79 @@ describe('Lobby nicknames through REST and WebSocket', () => {
     expect(exhausted.suggestions).toEqual([]);
     expect((await rename('shared', 'Custom!')).status).toBe(200);
   });
+
+  it.each(['before', 'after'] as const)(
+    'captures an accepted save %s start and keeps that identity for post-game chat',
+    async (ordering) => {
+      // Control only setup so a real public Action can finish the match.
+      const games = app.get<GameService>(GameService);
+      const createGame = games.create.bind(games) as GameService['create'];
+      jest.spyOn(games, 'create').mockImplementation((params) => {
+        const game = createGame(params);
+        game.state.turn.activePlayer = 'host';
+        game.state.byId.host.stock.faceDown = [
+          { kind: 'standard', id: 'winning-ace', rank: 1, suit: 'Clubs' },
+        ];
+        return game;
+      });
+      await rename('host', 'Boppo');
+      await rename('guest', 'Moki');
+      const room = (await create('host')).body as Membership;
+      await join(room.id, 'guest');
+      const socket = await connect(room.wsJoinToken);
+      await api()
+        .post(`/rooms/${room.id}/ready`)
+        .set('x-client-id', 'guest')
+        .send({ ready: true })
+        .expect(201);
+      if (ordering === 'before') await rename('host', 'Zibble').expect(200);
+      await api()
+        .post(`/rooms/${room.id}/start`)
+        .set('x-client-id', 'host')
+        .expect(201);
+      const sync = () =>
+        new Promise<SyncSnapshot>((resolve) => {
+          socket.once('room.sync.snapshot', resolve);
+          socket.emit('room.sync.request', { version: 1 });
+        });
+      const capturedName = ordering === 'before' ? 'Zibble' : 'Boppo';
+      const started = await sync();
+      expect(started.state.byId.host.name).toBe(capturedName);
+      if (ordering === 'after') await rename('host', 'Zibble').expect(200);
+      expect(await sync()).toEqual(started);
+      const accepted = new Promise<SyncSnapshot>((resolve) =>
+        socket.once('room.action.accepted', resolve),
+      );
+      socket.emit('room.action.submit', {
+        version: 1,
+        actionId: crypto.randomUUID(),
+        baseSeq: 0,
+        action: { kind: 'PLAY_STOCK_TO_BUILD', target: 'new' },
+      });
+      expect(await accepted).toMatchObject({
+        seq: 1,
+        state: { phase: 'gameover', winner: 'host' },
+      });
+      await rename('host', 'Future name').expect(200);
+      const finished = await sync();
+      const message = new Promise<RoomChatMessage>((resolve) => {
+        const listener = (event: ServerEvent) => {
+          if (event.type !== 'CHAT_MESSAGE') return;
+          socket.off('event', listener);
+          resolve(event);
+        };
+        socket.on('event', listener);
+      });
+      socket.emit('chat', { text: 'Good game' });
+      expect(await message).toMatchObject({ playerName: capturedName });
+      expect(await sync()).toEqual(finished);
+      expect(finished.seq).toBe(1);
+      const next = (await create('host')).body as Membership;
+      expect(next.players).toEqual([
+        expect.objectContaining({ id: 'host', displayName: 'Future name' }),
+      ]);
+    },
+  );
 
   it('confirms a replacement and admission together, validating the target and every joined Lobby', async () => {
     await rename('host', 'Moki');

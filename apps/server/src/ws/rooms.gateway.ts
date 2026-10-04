@@ -213,9 +213,11 @@ export class RoomsGateway
     const text = data?.text?.trim();
     if (!text || text.length === 0 || text.length > 500) return;
 
-    // Get player name from profile
-    const profile = this.profiles.get(claims.playerId);
-    const playerName = profile?.displayName ?? 'Unknown';
+    // A started match keeps its captured identity, including after game over.
+    const playerName = room.gameId
+      ? (this.games.get(room.gameId).state.byId[claims.playerId]?.name ??
+        'Unknown')
+      : (this.profiles.get(claims.playerId)?.displayName ?? 'Unknown');
 
     // Broadcast chat message to all players in the room
     const message = {

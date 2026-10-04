@@ -606,67 +606,92 @@ it("ignores a late Lobby save after departure and retains a newer confirmed brow
   }
 }, 20_000);
 
-it("discards an in-flight Lobby editor when the host starts the match", async () => {
-  const host = await client(1440, "Boppo");
-  const guest = await client(390, "Moki");
-  let release!: () => void;
-  const delivery = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  try {
-    await host.page.getByRole("button", { name: /Create a Game/ }).click();
-    await host.page.waitForURL("**/room/**");
-    const slug = host.page.url().split("/").pop()!;
-    await guest.page.getByRole("button", { name: /Join a Game/ }).click();
-    await guest.page.getByPlaceholder("Enter game ID").fill(slug);
-    await guest.page.getByRole("button", { name: "Confirm" }).click();
-    await guest.page.getByText("Moki (you)", { exact: true }).waitFor();
-    await guest.page.getByRole("checkbox", { name: "I'm Ready" }).click();
-    await host.page.locator('[title="Ready"]').waitFor();
-    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
-    await guest.page.route(`${server.url}/profile`, async (route) => {
-      if (route.request().method() !== "PATCH") return route.continue();
-      await delivery;
-      await route.continue();
+it.each(["before", "after"] as const)(
+  "discards a delayed Lobby save accepted %s match start",
+  async (ordering) => {
+    const host = await client(1440, "Boppo");
+    const guest = await client(390, "Moki");
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    await guest.page
-      .getByRole("textbox", { name: "Nickname", exact: true })
-      .fill("Zibble");
-    await guest.page.getByRole("button", { name: "Save", exact: true }).click();
-    await guest.page.getByRole("button", { name: "Saving..." }).waitFor();
-    await host.page
-      .getByRole("button", { name: "Start game", exact: true })
-      .click();
-    await guest.page.waitForURL("**/game/**");
-    await vi.waitFor(() =>
-      expect(guest.snapshot()?.state.byId[guest.id]?.name).toBe("Moki"),
-    );
-    const snapshot = guest.snapshot();
-    release();
-    await vi.waitFor(async () => {
-      const response = await guest.page.request.get(`${server.url}/profile`, {
-        headers: { "x-client-id": guest.id },
+    let accepted!: () => void;
+    const saved = new Promise<void>((resolve) => {
+      accepted = resolve;
+    });
+    try {
+      await host.page.getByRole("button", { name: /Create a Game/ }).click();
+      await host.page.waitForURL("**/room/**");
+      const slug = host.page.url().split("/").pop()!;
+      await guest.page.getByRole("button", { name: /Join a Game/ }).click();
+      await guest.page.getByPlaceholder("Enter game ID").fill(slug);
+      await guest.page.getByRole("button", { name: "Confirm" }).click();
+      await guest.page.getByText("Moki (you)", { exact: true }).waitFor();
+      await guest.page.getByRole("checkbox", { name: "I'm Ready" }).click();
+      await host.page.locator('[title="Ready"]').waitFor();
+      await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+      await guest.page.route(`${server.url}/profile`, async (route) => {
+        if (route.request().method() !== "PATCH") return route.continue();
+        if (ordering === "before") {
+          const response = await route.fetch();
+          accepted();
+          await delivery;
+          await route.fulfill({ response });
+        } else {
+          await delivery;
+          await route.continue();
+        }
       });
-      expect(await response.json()).toMatchObject({ displayName: "Zibble" });
-    });
-    expect(guest.snapshot()).toEqual(snapshot);
-    expect(
       await guest.page
         .getByRole("textbox", { name: "Nickname", exact: true })
-        .count(),
-    ).toBe(0);
-    expect(
-      await guest.page.evaluate(
-        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
-        guest.id,
-      ),
-    ).toBe("Moki");
-  } finally {
-    release();
-    await host.close();
-    await guest.close();
-  }
-}, 20_000);
+        .fill("Zibble");
+      await guest.page
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await guest.page.getByRole("button", { name: "Saving..." }).waitFor();
+      if (ordering === "before") await saved;
+      await host.page
+        .getByRole("button", { name: "Start game", exact: true })
+        .click();
+      await guest.page.waitForURL("**/game/**");
+      await vi.waitFor(() =>
+        expect(guest.snapshot()?.state.byId[guest.id]?.name).toBe(
+          ordering === "before" ? "Zibble" : "Moki",
+        ),
+      );
+      const snapshot = guest.snapshot();
+      release();
+      await vi.waitFor(async () => {
+        const response = await guest.page.request.get(`${server.url}/profile`, {
+          headers: { "x-client-id": guest.id },
+        });
+        expect(await response.json()).toMatchObject({ displayName: "Zibble" });
+      });
+      expect(guest.snapshot()).toEqual(snapshot);
+      expect(
+        await guest.page
+          .getByRole("textbox", { name: "Nickname", exact: true })
+          .count(),
+      ).toBe(0);
+      expect(
+        await guest.page.evaluate(
+          (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+          guest.id,
+        ),
+      ).toBe("Moki");
+      const home = await guest.page.context().newPage();
+      await home.goto("http://localhost:4173/");
+      await home.addStyleTag({ content: css });
+      await home.addScriptTag({ content: script });
+      await home.getByText("Playing as Zibble", { exact: true }).waitFor();
+    } finally {
+      release();
+      await host.close();
+      await guest.close();
+    }
+  },
+  20_000,
+);
 
 it("restores a browser nickname before joining a direct invite", async () => {
   const host = await client(1440, "Boppo");
@@ -1329,6 +1354,107 @@ async function synced(
   ]);
   expect(alice.snapshot()).toEqual(bob.snapshot());
 }
+
+it.each([1440, 390])(
+  "keeps match board and chat names across a rename in another tab at %ipx",
+  async (width) => {
+    server.scenario("seeded");
+    const alice = await client(width, "Alice");
+    const bob = await client(width, "Bob");
+    try {
+      await lobby(alice, bob);
+      await synced(alice, bob, 0);
+      const captured = alice.snapshot();
+      const nextTab = async (page: Page) => {
+        const tab = await page.context().newPage();
+        tab.setDefaultTimeout(5000);
+        await tab.goto("http://localhost:4173/");
+        await tab.addStyleTag({ content: css });
+        await tab.addScriptTag({ content: script });
+        return tab;
+      };
+      const nextAlice = await nextTab(alice.page);
+      await nextAlice.getByRole("button", { name: /Create a Game/ }).click();
+      await nextAlice.waitForURL("**/room/**");
+      const nextSlug = nextAlice.url().split("/").pop()!;
+      const nextBob = await nextTab(bob.page);
+      await nextBob.getByRole("button", { name: /Join a Game/ }).click();
+      await nextBob.getByPlaceholder("Enter game ID").fill(nextSlug);
+      await nextBob.getByRole("button", { name: "Confirm" }).click();
+      await nextBob.getByText("Alice", { exact: true }).waitFor();
+      await nextAlice.getByRole("button", { name: "Edit nickname" }).click();
+      await nextAlice
+        .getByRole("textbox", { name: "Nickname", exact: true })
+        .fill("Future Alice");
+      await nextAlice
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await nextAlice
+        .getByText("Future Alice (you)", { exact: true })
+        .waitFor();
+      await nextBob.getByText("Future Alice", { exact: true }).waitFor();
+      expect(
+        await nextAlice.evaluate(
+          (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+          alice.id,
+        ),
+      ).toBe("Future Alice");
+      expect(alice.snapshot()).toEqual(captured);
+      expect(bob.snapshot()).toEqual(captured);
+      for (const page of [alice.page, bob.page]) {
+        expect(
+          await page.getByRole("button", { name: "Edit nickname" }).count(),
+        ).toBe(0);
+        expect(
+          await page.getByRole("region", { name: "Game board" }).innerText(),
+        ).not.toContain("Future Alice");
+      }
+      await chat(alice.page, "Still Alice in this match");
+      await chat(bob.page);
+      const log = bob.page.getByRole("log", { name: "Chat messages" });
+      await log
+        .getByText("Still Alice in this match", { exact: true })
+        .waitFor();
+      expect(
+        await log
+          .getByText("Still Alice in this match", { exact: true })
+          .locator("..")
+          .innerText(),
+      ).toBe("Alice: Still Alice in this match");
+      expect(
+        await log
+          .getByText("From the Lobby", { exact: true })
+          .locator("..")
+          .innerText(),
+      ).toBe("Alice: From the Lobby");
+      await nextBob.getByRole("checkbox", { name: "I'm Ready" }).click();
+      await nextAlice
+        .getByRole("button", { name: "Start game", exact: true })
+        .click();
+      await nextBob.waitForURL("**/game/**");
+      await nextBob.getByRole("region", { name: "Game board" }).waitFor();
+      await nextBob
+        .getByRole("heading", { name: "Future Alice", exact: true })
+        .waitFor();
+      await chat(nextAlice, "New match name");
+      await chat(nextBob);
+      const nextMessage = nextBob
+        .getByRole("log")
+        .getByText("New match name", { exact: true });
+      await nextMessage.waitFor();
+      expect(await nextMessage.locator("..").innerText()).toBe(
+        "Future Alice: New match name",
+      );
+      expect(alice.snapshot()).toEqual(captured);
+      expect(alice.errors).toEqual([]);
+      expect(bob.errors).toEqual([]);
+    } finally {
+      await alice.close();
+      await bob.close();
+    }
+  },
+  30_000,
+);
 
 it.each([1440, 390])(
   "plays a seeded Lobby-to-winner match with two live clients at %ipx",

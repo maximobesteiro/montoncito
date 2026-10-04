@@ -1,6 +1,6 @@
 # Lobby-to-winner verification
 
-Coverage for [#65](https://github.com/maximobesteiro/montoncito/issues/65), the homepage nickname slice [#88](https://github.com/maximobesteiro/montoncito/issues/88), and live Lobby nicknames [#89](https://github.com/maximobesteiro/montoncito/issues/89).
+Coverage for [#65](https://github.com/maximobesteiro/montoncito/issues/65), the homepage nickname slice [#88](https://github.com/maximobesteiro/montoncito/issues/88), live Lobby nicknames [#89](https://github.com/maximobesteiro/montoncito/issues/89), and fixed match identities [#91](https://github.com/maximobesteiro/montoncito/issues/91).
 
 ## Run
 
@@ -31,6 +31,10 @@ The nickname journeys exercise the actual homepage/editor and real profile API a
 Live Lobby journeys verify own-row-only editing for the host and a ready guest, removal of visible guest IDs, two-client rename delivery, capitalization conflicts, retained rejected drafts and confirmed names, and readiness preservation. Generated suggestions are exhausted through real REST memberships to verify custom-name recovery and conflict feedback for another joined Lobby. Controlled response delays verify departure and match-start navigation discard pending editor results and preserve newer browser preferences and match snapshots.
 
 Additional delayed readiness and settings responses verify that older REST rosters cannot overwrite names already delivered through WebSocket updates. Suggestion coverage distinguishes an exhausted pool from a pool whose only available name is already the draft.
+
+Match identity journeys at both widths start a match, open another Lobby in shared-storage browser tabs, rename there, and verify the original board and newly sent chat keep the captured name and Sequence number. Carried Lobby chat keeps its stored sender name. A subsequent Lobby and match use the new name. Delayed saves accepted before and after start verify navigation removes the editor, late responses cannot reopen it, and a fresh homepage recovers the accepted profile for future use.
+
+Focused public REST/WebSocket coverage verifies both accepted save/start orderings against synchronization snapshots. A controlled initial Stock pile permits a real WebSocket Action to finish the match, then another rename and chat prove post-game messages still use the captured name without changing the final snapshot or Sequence number.
 
 `apps/server/src/profiles/lobby-nicknames.spec.ts` starts the real Nest REST and Socket.IO application on an ephemeral port. It tests simultaneous conflicting renames, concurrent admissions and rename/admission races, idempotent joins, unrelated-Lobby reuse, atomic validation across multiple Lobbies, filtered and exhausted suggestions, fan-out to every affected Lobby, chat names at send time, and unchanged active match snapshots and Sequence numbers.
 

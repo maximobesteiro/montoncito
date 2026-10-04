@@ -39,6 +39,8 @@ describe('Game room synchronization over Socket.IO', () => {
       config: { seed: 1 },
     });
     gameId = game.meta.id;
+    game.state.byId.P1.name = 'Alice';
+    game.state.byId.P2.name = 'Bob';
     roomPlayers = [{ id: 'P1' }, { id: 'P2' }];
     roomGameId = gameId;
     chatMessages = [];
