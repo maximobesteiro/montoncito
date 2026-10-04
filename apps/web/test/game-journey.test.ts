@@ -383,6 +383,87 @@ it("edits only your Lobby row, delivers live renames, preserves readiness and re
   }
 }, 20_000);
 
+it.each(["ready", "settings"])(
+  "retains a live nickname after a delayed %s response",
+  async (operation) => {
+    const host = await client(1440, "Boppo");
+    const guest = await client(390, "Moki");
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      await host.page.getByRole("button", { name: /Create a Game/ }).click();
+      await host.page.waitForURL("**/room/**");
+      const slug = host.page.url().split("/").pop()!;
+      await guest.page.getByRole("button", { name: /Join a Game/ }).click();
+      await guest.page.getByPlaceholder("Enter game ID").fill(slug);
+      await guest.page.getByRole("button", { name: "Confirm" }).click();
+      await guest.page.getByText("Moki (you)", { exact: true }).waitFor();
+      const target = operation === "ready" ? guest : host;
+      const path =
+        operation === "ready"
+          ? `${server.url}/rooms/*/ready`
+          : `${server.url}/rooms/*`;
+      await target.page.route(path, async (route) => {
+        if (
+          route.request().method() !==
+          (operation === "ready" ? "POST" : "PATCH")
+        )
+          return route.continue();
+        const response = await route.fetch();
+        await delivery;
+        await route.fulfill({ response });
+      });
+      if (operation === "ready") {
+        await guest.page.getByRole("checkbox", { name: "I'm Ready" }).click();
+        await host.page.locator('[title="Ready"]').waitFor();
+      } else {
+        await host.page.getByRole("combobox").selectOption("private");
+        await vi.waitFor(async () =>
+          expect(await guest.page.getByRole("combobox").inputValue()).toBe(
+            "private",
+          ),
+        );
+      }
+      await target.page.getByRole("button", { name: "Edit nickname" }).click();
+      await target.page
+        .getByRole("textbox", { name: "Nickname", exact: true })
+        .fill("Zibble");
+      await target.page
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await target.page.getByText("Zibble (you)", { exact: true }).waitFor();
+      const completed = target.page.waitForResponse(
+        (response) =>
+          response.url().includes("/rooms/") &&
+          response.request().method() ===
+            (operation === "ready" ? "POST" : "PATCH"),
+      );
+      release();
+      await completed;
+      await target.page.waitForTimeout(50);
+      expect(
+        await target.page
+          .getByText("Zibble (you)", { exact: true })
+          .isVisible(),
+      ).toBe(true);
+      expect(
+        await target.page
+          .getByText(operation === "ready" ? "Moki (you)" : "Boppo (you)", {
+            exact: true,
+          })
+          .count(),
+      ).toBe(0);
+    } finally {
+      release();
+      await host.close();
+      await guest.close();
+    }
+  },
+  20_000,
+);
+
 it("handles exhausted generated names across joined Lobbies and explains a conflict in another Lobby", async () => {
   const guest = await client(390, "Custom nickname");
   const page = guest.page;
@@ -396,6 +477,7 @@ it("handles exhausted generated names across joined Lobbies and explains a confl
       })
     ).json();
     for (const name of profile.suggestions as string[]) {
+      if (name === "Moki") continue;
       const id = crypto.randomUUID();
       const headers = { "x-client-id": id };
       await page.request.patch(`${server.url}/profile`, {
@@ -412,6 +494,33 @@ it("handles exhausted generated names across joined Lobbies and explains a confl
       expect(joined.status()).toBe(201);
     }
     await page.getByRole("button", { name: "Edit nickname" }).click();
+    const input = page.getByRole("textbox", { name: "Nickname", exact: true });
+    await input.fill("Moki");
+    await page.getByRole("button", { name: "Shuffle" }).click();
+    await page
+      .getByRole("alert")
+      .getByText(
+        "Your draft is the only available generated nickname. You can save it or enter your own.",
+      )
+      .waitFor();
+    expect(await input.inputValue()).toBe("Moki");
+    const otherId = crypto.randomUUID();
+    const otherHeaders = { "x-client-id": otherId };
+    await page.request.patch(`${server.url}/profile`, {
+      headers: otherHeaders,
+      data: { displayName: "Moki" },
+    });
+    const lastRoom = await (
+      await page.request.post(`${server.url}/rooms`, { headers: otherHeaders })
+    ).json();
+    expect(
+      (
+        await page.request.post(`${server.url}/rooms/${lastRoom.id}/join`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).status(),
+    ).toBe(201);
+    await input.fill("Custom nickname");
     await page.getByRole("button", { name: "Shuffle" }).click();
     await page
       .getByRole("alert")
@@ -419,7 +528,6 @@ it("handles exhausted generated names across joined Lobbies and explains a confl
         "No generated nicknames are available. Enter your own nickname.",
       )
       .waitFor();
-    const input = page.getByRole("textbox", { name: "Nickname", exact: true });
     expect(await input.inputValue()).toBe("Custom nickname");
     await input.fill("moki");
     await input.press("Enter");

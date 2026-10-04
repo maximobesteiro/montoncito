@@ -30,6 +30,8 @@ The nickname journeys exercise the actual homepage/editor and real profile API a
 
 Live Lobby journeys verify own-row-only editing for the host and a ready guest, removal of visible guest IDs, two-client rename delivery, capitalization conflicts, retained rejected drafts and confirmed names, and readiness preservation. Generated suggestions are exhausted through real REST memberships to verify custom-name recovery and conflict feedback for another joined Lobby. Controlled response delays verify departure and match-start navigation discard pending editor results and preserve newer browser preferences and match snapshots.
 
+Additional delayed readiness and settings responses verify that older REST rosters cannot overwrite names already delivered through WebSocket updates. Suggestion coverage distinguishes an exhausted pool from a pool whose only available name is already the draft.
+
 `apps/server/src/profiles/lobby-nicknames.spec.ts` starts the real Nest REST and Socket.IO application on an ephemeral port. It tests simultaneous conflicting renames, concurrent admissions and rename/admission races, idempotent joins, unrelated-Lobby reuse, atomic validation across multiple Lobbies, filtered and exhausted suggestions, fan-out to every affected Lobby, chat names at send time, and unchanged active match snapshots and Sequence numbers.
 
 | Requirement                                                                    | Coverage                                                                                                                                                                                                                                                                                       |

@@ -125,7 +125,9 @@ export function NicknameEditor({
                 setError(null);
               } else {
                 setError(
-                  "No generated nicknames are available. Enter your own nickname.",
+                  available.length
+                    ? "Your draft is the only available generated nickname. You can save it or enter your own."
+                    : "No generated nicknames are available. Enter your own nickname.",
                 );
               }
             } catch {

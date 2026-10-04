@@ -80,6 +80,7 @@ export class ProfilesController {
       clientId: prof.clientId,
       displayName: prof.displayName,
       updatedAt: prof.updatedAt,
+      suggestions: this.rooms.nicknameSuggestions(clientId),
     };
   }
 }

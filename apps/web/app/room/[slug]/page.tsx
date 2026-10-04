@@ -59,6 +59,7 @@ export default function WaitingRoomPage() {
   const [editingNickname, setEditingNickname] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const nicknameSession = useRef(0);
+  const liveRoomRevision = useRef(0);
   const invalidateNicknameEditor = useCallback(() => {
     nicknameSession.current++;
     setEditingNickname(false);
@@ -97,11 +98,12 @@ export default function WaitingRoomPage() {
 
   const refetchRoom = useCallback(async () => {
     if (!clientId) return;
+    const revision = liveRoomRevision.current;
     const view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
       method: "GET",
       clientId,
     });
-    setRoom(view);
+    if (revision === liveRoomRevision.current) setRoom(view);
     return view;
   }, [clientId, sanitizedSlug]);
 
@@ -163,6 +165,7 @@ export default function WaitingRoomPage() {
         const sock = getSocketClient();
         unsub = sock.on((ev) => {
           if (ev.type === "ROOM_UPDATED") {
+            liveRoomRevision.current++;
             const updated = ev.room as RoomView;
             if (
               updated.status !== "open" ||
@@ -173,10 +176,12 @@ export default function WaitingRoomPage() {
             setRoom(ev.room as RoomView);
           }
           if (ev.type === "GAME_STARTED") {
+            liveRoomRevision.current++;
             invalidateNicknameEditor();
             router.push(`/game/${ev.roomId}`);
           }
           if (ev.type === "KICKED") {
+            liveRoomRevision.current++;
             invalidateNicknameEditor();
             sock.disconnect();
             showToast("You have been kicked from the room", "warning");
@@ -196,11 +201,13 @@ export default function WaitingRoomPage() {
             const { wsJoinToken: renewed } = await apiFetch<{
               wsJoinToken: string;
             }>(`/rooms/${view.id}/socket-token`, { method: "POST", clientId });
+            const revision = liveRoomRevision.current;
             const current = await apiFetch<RoomView>(
               `/rooms/by-slug/${sanitizedSlug}`,
               { method: "GET", clientId },
             );
-            if (!cancelled) setRoom(current);
+            if (!cancelled && revision === liveRoomRevision.current)
+              setRoom(current);
             return renewed;
           } catch (error) {
             if (
@@ -224,6 +231,7 @@ export default function WaitingRoomPage() {
     void boot();
     return () => {
       cancelled = true;
+      liveRoomRevision.current++;
       nicknameSession.current++;
       unsub?.();
       // Disconnect so server can treat this as leaving (refresh/navigation/tab close).
@@ -255,12 +263,13 @@ export default function WaitingRoomPage() {
     setSaving(true);
     setError(null);
     try {
+      const revision = liveRoomRevision.current;
       const updated = await apiFetch<RoomView>(`/rooms/${room.id}`, {
         method: "PATCH",
         clientId,
         body: JSON.stringify(patch),
       });
-      setRoom(updated);
+      if (revision === liveRoomRevision.current) setRoom(updated);
 
       const canPersist =
         updated.status === "open" && updated.ownerId === clientId;
@@ -281,12 +290,13 @@ export default function WaitingRoomPage() {
   const toggleReady = async (ready: boolean) => {
     if (!clientId || !room) return;
     try {
+      const revision = liveRoomRevision.current;
       const updated = await apiFetch<RoomView>(`/rooms/${room.id}/ready`, {
         method: "POST",
         clientId,
         body: JSON.stringify({ ready }),
       });
-      setRoom(updated);
+      if (revision === liveRoomRevision.current) setRoom(updated);
     } catch (e) {
       showToast(
         e instanceof Error ? e.message : "Failed to update ready state",

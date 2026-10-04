@@ -60,17 +60,15 @@ export async function saveGuestNickname(
   if (validation) throw new Error(validation);
   const clientId = getOrCreateClientId();
   try {
-    const current = await initializeGuestProfile(clientId);
-    const saved = await apiFetch<Omit<GuestProfile, "suggestions">>(
-      "/profile",
-      {
-        method: "PATCH",
-        clientId,
-        body: JSON.stringify({ displayName: draft }),
-      },
-    );
+    // Editors open only after profile initialization. Saving must not start a
+    // second initialization whose late response can overwrite a newer name.
+    const saved = await apiFetch<GuestProfile>("/profile", {
+      method: "PATCH",
+      clientId,
+      body: JSON.stringify({ displayName: draft }),
+    });
     if (isCurrent()) remember(saved);
-    return { ...saved, suggestions: current.suggestions };
+    return saved;
   } catch (error) {
     if (error instanceof ApiHttpError && error.status === 409) {
       throw new Error(

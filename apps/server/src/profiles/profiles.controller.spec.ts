@@ -65,6 +65,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'New Player',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -88,6 +89,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'Updated Player',
         updatedAt: '2024-01-01T01:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -124,6 +126,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'A',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -144,6 +147,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: longDisplayName,
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -163,6 +167,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'Player-123_Test!',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -182,6 +187,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: '玩家123',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
   });
