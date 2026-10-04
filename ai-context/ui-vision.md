@@ -25,6 +25,8 @@
 - The homepage shows `Playing as <nickname>` above the game menu with an inline Edit button. New guests receive a short invented nickname and can enter without completing a naming form.
 - The reusable nickname editor prefills the confirmed name and offers Shuffle, Save, and Cancel. Shuffle changes only the draft. Enter saves and Escape cancels. A failed save keeps the draft and confirmed name, with an adjacent error; controls show Saving and prevent duplicate submissions. The labeled input explains the 32-character limit and supports desktop, touch, and keyboard use.
 - Generated and custom confirmed nicknames persist in this browser for the same Guest identity. Entry through an invite initializes the same profile before joining. Successful saves display the server's trimmed canonical nickname.
+- In the pre-game Lobby, only the current guest's player row has the same inline Edit control, including the host and already-ready guests. Rows show nicknames without raw guest IDs. Saving updates every joined Lobby live without changing readiness. Nicknames must be distinct ignoring capitalization in each Lobby. A nearby conflict message retains the draft and previous confirmed name and explains that another joined Lobby may be the source of the conflict.
+- Lobby Shuffle fetches suggestions available across all current Lobby memberships. If none remain, the editor invites the guest to enter a custom name. Save checks availability again on the server. Departure, kick and match-start navigation close the editor and discard late responses; a late save cannot replace newer client state or change names in an existing match.
 
 ### 2. **Game Room / Board**
 - The heart of the UI — renders the current match state via **WebSocket** events.

@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfilesController } from './profiles.controller';
 import { ProfilesService } from './profiles.service';
+import { RoomsService } from '../rooms/rooms.service';
+import { RoomsGateway } from '../ws/rooms.gateway';
 
 describe('ProfilesController', () => {
   let controller: ProfilesController;
@@ -24,6 +26,17 @@ describe('ProfilesController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProfilesController],
       providers: [
+        {
+          provide: RoomsService,
+          useValue: {
+            renameGuest: (id: string, name: string) => ({
+              profile: mockProfilesService.setDisplayName!(id, name),
+              lobbies: [],
+            }),
+            nicknameSuggestions: () => [],
+          },
+        },
+        { provide: RoomsGateway, useValue: { emitRoomUpdated: jest.fn() } },
         {
           provide: ProfilesService,
           useValue: mockProfilesService,

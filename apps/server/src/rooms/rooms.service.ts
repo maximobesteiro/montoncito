@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { RoomDefaults } from './rooms.config';
-import { ProfilesService } from '../profiles/profiles.service';
+import { NICKNAMES, ProfilesService } from '../profiles/profiles.service';
 import { GameService } from '../game/game.service';
 import { RoomView } from './rooms.dto';
 import { generateReadableRoomSlug } from '../utils/names';
@@ -16,6 +16,9 @@ import type { RoomChatMessage } from '../ws/events';
 
 export type Visibility = 'public' | 'private';
 export type RoomStatus = 'open' | 'in_progress' | 'finished';
+
+// Locale-independent comparison, shared by admission, renames and suggestions.
+const nicknameKey = (name: string) => name.trim().toLowerCase();
 
 export type PlayerRef = {
   id: string; // clientId
@@ -130,6 +133,50 @@ export class RoomsService {
     const room = this.roomsById.get(id);
     if (!room) throw new NotFoundException('Room not found');
     return room;
+  }
+
+  public lobbiesFor(clientId: string): Room[] {
+    return [...this.roomsById.values()].filter(
+      (room) => room.status === 'open' && this.hasPlayer(room, clientId),
+    );
+  }
+
+  public nicknameSuggestions(clientId: string): string[] {
+    const lobbies = this.lobbiesFor(clientId);
+    return NICKNAMES.filter((name) =>
+      lobbies.every((room) => !this.nicknameTaken(room, clientId, name)),
+    );
+  }
+
+  public renameGuest(clientId: string, displayName: string) {
+    const lobbies = this.lobbiesFor(clientId);
+    // No await between validation and commit: admission and renames serialize
+    // on this process's event loop, across every Lobby containing the guest.
+    for (const room of lobbies)
+      this.assertNicknameAvailable(room, clientId, displayName);
+    const profile = this.profiles.setDisplayName(clientId, displayName);
+    return { profile, lobbies };
+  }
+
+  private nicknameTaken(room: Room, clientId: string, name: string): boolean {
+    return room.players.some(
+      (player) =>
+        player.id !== clientId &&
+        nicknameKey(this.profiles.getOrCreate(player.id).displayName) ===
+          nicknameKey(name),
+    );
+  }
+
+  private assertNicknameAvailable(
+    room: Room,
+    clientId: string,
+    name: string,
+  ): void {
+    if (this.nicknameTaken(room, clientId, name)) {
+      throw new ConflictException(
+        'That nickname is already used in a Lobby you are joining or have joined. Choose another nickname.',
+      );
+    }
   }
 
   public getBySlug(slug: string): Room {
@@ -268,7 +315,8 @@ export class RoomsService {
     }
 
     // Ensure the profile exists (auto-provision a temporary displayName if missing)
-    this.profiles.getOrCreate(params.clientId);
+    const profile = this.profiles.getOrCreate(params.clientId);
+    this.assertNicknameAvailable(room, params.clientId, profile.displayName);
 
     room.players.push({ id: params.clientId, isOwner: false, ready: false });
 
@@ -421,7 +469,7 @@ export class RoomsService {
         playersOrdered.map((id) => [
           id,
           {
-            ...game.state.byId[id]!,
+            ...game.state.byId[id],
             name: this.profiles.getOrCreate(id).displayName,
           },
         ]),

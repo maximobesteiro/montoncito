@@ -52,7 +52,10 @@ export function nicknameValidationError(draft: string): string | null {
   return null;
 }
 
-export async function saveGuestNickname(draft: string): Promise<GuestProfile> {
+export async function saveGuestNickname(
+  draft: string,
+  isCurrent: () => boolean = () => true,
+): Promise<GuestProfile> {
   const validation = nicknameValidationError(draft);
   if (validation) throw new Error(validation);
   const clientId = getOrCreateClientId();
@@ -66,9 +69,14 @@ export async function saveGuestNickname(draft: string): Promise<GuestProfile> {
         body: JSON.stringify({ displayName: draft }),
       },
     );
-    remember(saved);
+    if (isCurrent()) remember(saved);
     return { ...saved, suggestions: current.suggestions };
   } catch (error) {
+    if (error instanceof ApiHttpError && error.status === 409) {
+      throw new Error(
+        "That nickname is already used in a Lobby you have joined. It may be another Lobby. Choose another nickname.",
+      );
+    }
     if (error instanceof ApiHttpError && error.status === 400) {
       throw new Error(
         "That nickname could not be saved. Use 1 to 32 characters.",

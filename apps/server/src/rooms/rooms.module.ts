@@ -10,7 +10,7 @@ import { WsModule } from '../ws/ws.module';
 @Module({
   imports: [
     ConfigModule,
-    ProfilesModule,
+    forwardRef(() => ProfilesModule),
     GameModule,
     forwardRef(() => WsModule),
   ], // ConfigModule is global already, but import is harmless

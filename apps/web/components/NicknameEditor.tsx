@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { nicknameValidationError } from "@/lib/guest-profile";
 
 type NicknameEditorProps = {
@@ -8,6 +8,7 @@ type NicknameEditorProps = {
   suggestions: readonly string[];
   onSave: (draft: string) => Promise<void>;
   onCancel: () => void;
+  loadSuggestions?: () => Promise<readonly string[]>;
 };
 
 export function NicknameEditor({
@@ -15,16 +16,25 @@ export function NicknameEditor({
   suggestions,
   onSave,
   onCancel,
+  loadSuggestions,
 }: NicknameEditorProps) {
   const id = useId();
   const [draft, setDraft] = useState(nickname);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
+  const mounted = useRef(true);
+  const [shuffling, setShuffling] = useState(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const buttonClass = "brutal-button px-3 py-2 bg-card disabled:opacity-50";
 
   const save = async () => {
-    if (submitting.current) return;
+    if (submitting.current || shuffling) return;
     const validation = nicknameValidationError(draft);
     if (validation) {
       setError(validation);
@@ -36,6 +46,7 @@ export function NicknameEditor({
     try {
       await onSave(draft);
     } catch (failure) {
+      if (!mounted.current) return;
       setError(
         failure instanceof Error
           ? failure.message
@@ -43,7 +54,7 @@ export function NicknameEditor({
       );
     } finally {
       submitting.current = false;
-      setSaving(false);
+      if (mounted.current) setSaving(false);
     }
   };
 
@@ -69,7 +80,7 @@ export function NicknameEditor({
         id={id}
         autoFocus
         value={draft}
-        disabled={saving}
+        disabled={saving || shuffling}
         onChange={(event) => {
           setDraft(event.target.value);
           setError(null);
@@ -94,17 +105,46 @@ export function NicknameEditor({
         <button
           type="button"
           className={buttonClass}
-          disabled={saving || suggestions.length === 0}
-          onClick={() => {
-            const choices = suggestions.filter((name) => name !== draft);
-            if (choices.length)
-              setDraft(choices[Math.floor(Math.random() * choices.length)]!);
-            setError(null);
+          disabled={
+            saving ||
+            shuffling ||
+            (!loadSuggestions && suggestions.length === 0)
+          }
+          onClick={async () => {
+            setShuffling(true);
+            try {
+              const available = loadSuggestions
+                ? await loadSuggestions()
+                : suggestions;
+              if (!mounted.current) return;
+              const choices = available.filter(
+                (name) => name.toLowerCase() !== draft.trim().toLowerCase(),
+              );
+              if (choices.length) {
+                setDraft(choices[Math.floor(Math.random() * choices.length)]!);
+                setError(null);
+              } else {
+                setError(
+                  "No generated nicknames are available. Enter your own nickname.",
+                );
+              }
+            } catch {
+              if (mounted.current)
+                setError(
+                  "Couldn't load nickname suggestions. Please try again.",
+                );
+            } finally {
+              if (mounted.current) setShuffling(false);
+            }
           }}
         >
-          Shuffle
+          {shuffling ? "Shuffling..." : "Shuffle"}
         </button>
-        <button type="submit" className={buttonClass} disabled={saving}>
+        <button
+          type="submit"
+          className={buttonClass}
+          disabled={saving || shuffling}
+        >
           {saving ? "Saving..." : "Save"}
         </button>
         <button
