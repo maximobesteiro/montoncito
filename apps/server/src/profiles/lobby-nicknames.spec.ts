@@ -228,4 +228,114 @@ describe('Lobby nicknames through REST and WebSocket', () => {
     expect(exhausted.suggestions).toEqual([]);
     expect((await rename('shared', 'Custom!')).status).toBe(200);
   });
+
+  it('confirms a replacement and admission together, validating the target and every joined Lobby', async () => {
+    await rename('host', 'Moki');
+    await rename('other', 'Boppo');
+    await rename('guest', 'moki');
+    const target = (await create('host')).body as Membership;
+    const existing = (await create('other')).body as Membership;
+    await join(existing.id, 'guest');
+    const firstSocket = await connect(existing.wsJoinToken);
+    const targetSocket = await connect(target.wsJoinToken);
+    const updates: RoomView[] = [];
+    for (const socket of [firstSocket, targetSocket])
+      socket.on('event', (event: ServerEvent) => {
+        if (event.type === 'ROOM_UPDATED') updates.push(event.room);
+      });
+    const suggestions = await api()
+      .get(`/rooms/${target.id}/nickname-suggestions`)
+      .set('x-client-id', 'guest');
+    expect(suggestions.status).toBe(200);
+    const suggested = suggestions.body as { suggestions: string[] };
+    expect(Array.isArray(suggested.suggestions)).toBe(true);
+    expect(suggested.suggestions).not.toContain('Moki');
+    expect(suggested.suggestions).not.toContain('Boppo');
+    const replace = (displayName: string) =>
+      api()
+        .post(`/rooms/${target.id}/join`)
+        .set('x-client-id', 'guest')
+        .send({ displayName });
+    expect((await replace('boppo')).status).toBe(409);
+    expect((await replace('MOKI')).status).toBe(409);
+    expect(
+      (
+        (await api().get('/profile').set('x-client-id', 'guest'))
+          .body as Profile
+      ).displayName,
+    ).toBe('moki');
+    const joined = await replace('  New name!  ');
+    expect(joined.status).toBe(201);
+    const confirmed = joined.body as Membership & { profile: Profile };
+    expect(confirmed.profile).toMatchObject({
+      clientId: 'guest',
+      displayName: 'New name!',
+    });
+    expect(confirmed.players.filter((p) => p.id === 'guest')).toHaveLength(1);
+    const existingView = (
+      await api()
+        .get(`/rooms/by-slug/${existing.slug}`)
+        .set('x-client-id', 'guest')
+    ).body as RoomView;
+    expect(existingView.players).toContainEqual(
+      expect.objectContaining({ id: 'guest', displayName: 'New name!' }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(updates.map((room) => room.id).sort()).toEqual(
+      [existing.id, target.id].sort(),
+    );
+  });
+
+  it('rejects a taken suggestion and blocked admission without confirming the draft', async () => {
+    await rename('host', 'Moki');
+    await rename('guest', 'moki');
+    const target = (await create('host')).body as Membership;
+    const available = await api()
+      .get(`/rooms/${target.id}/nickname-suggestions`)
+      .set('x-client-id', 'guest');
+    const suggestion = (available.body as { suggestions: string[] })
+      .suggestions[0];
+    await rename('host', suggestion);
+    const replace = (displayName: string) =>
+      api()
+        .post(`/rooms/${target.id}/join`)
+        .set('x-client-id', 'guest')
+        .send({ displayName });
+    const taken = await replace(suggestion);
+    expect(taken.status).toBe(409);
+    expect((taken.body as { code: string }).code).toBe('NICKNAME_CONFLICT');
+    await rename('second', 'Second');
+    await join(target.id, 'second');
+    await api()
+      .patch(`/rooms/${target.id}`)
+      .set('x-client-id', 'host')
+      .send({ maxPlayers: 2 });
+    const full = await replace('Custom');
+    expect(full.status).toBe(409);
+    expect((full.body as { message: string }).message).toBe('Room is full');
+    await api()
+      .post(`/rooms/${target.id}/ready`)
+      .set('x-client-id', 'second')
+      .send({ ready: true });
+    await api().post(`/rooms/${target.id}/start`).set('x-client-id', 'host');
+    const started = await replace('Custom');
+    expect(started.status).toBe(409);
+    expect((started.body as { message: string }).message).toBe(
+      'Room is not open for joining',
+    );
+    expect(
+      (
+        (await api().get('/profile').set('x-client-id', 'guest'))
+          .body as Profile
+      ).displayName,
+    ).toBe('moki');
+    const targetView = (
+      await api()
+        .get(`/rooms/by-slug/${target.slug}`)
+        .set('x-client-id', 'host')
+    ).body as RoomView;
+    expect(targetView.players).not.toContainEqual(
+      expect.objectContaining({ id: 'guest' }),
+    );
+  });
 });

@@ -699,6 +699,162 @@ it("restores a browser nickname before joining a direct invite", async () => {
   }
 }, 20_000);
 
+it("resolves a direct-invite capitalization conflict only after explicit confirmation", async () => {
+  const host = await client(1440, "Moki");
+  const guest = await client(390, "moki");
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    const openInvite = async () => {
+      await guest.page.goto(`http://localhost:4173/room/${slug}`);
+      await guest.page.addStyleTag({ content: css });
+      await guest.page.addScriptTag({ content: script });
+    };
+    const stored = () =>
+      guest.page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      );
+    await openInvite();
+    const input = guest.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await input.waitFor();
+    expect(await input.inputValue()).not.toBe("Moki");
+    expect(await stored()).toBe("moki");
+    expect(
+      await guest.page.getByText("I'm Ready", { exact: true }).count(),
+    ).toBe(0);
+    await guest.page
+      .getByRole("button", { name: "Shuffle", exact: true })
+      .click();
+    expect(await stored()).toBe("moki");
+    await guest.page
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
+    await guest.page.waitForURL("http://localhost:4173/");
+    expect(await stored()).toBe("moki");
+    await openInvite();
+    await input.fill("MOKI");
+    await input.press("Enter");
+    await guest.page
+      .getByRole("alert")
+      .getByText(/already used/)
+      .waitFor();
+    expect(await input.inputValue()).toBe("MOKI");
+    expect(await stored()).toBe("moki");
+    await input.fill("  Invite guest!  ");
+    await input.press("Enter");
+    await guest.page
+      .getByText("Invite guest! (you)", { exact: true })
+      .waitFor();
+    await host.page.getByText("Invite guest!", { exact: true }).waitFor();
+    expect(await stored()).toBe("Invite guest!");
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
+it("keeps the invite draft recoverable when a suggestion is taken, then reconciles a lost admission response", async () => {
+  const host = await client(1440, "Moki");
+  const guest = await client(390, "moki");
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    // The homepage flow reaches the same pre-admission editor.
+    await guest.page.getByRole("button", { name: /Join a Game/ }).click();
+    await guest.page.getByPlaceholder("Enter game ID").fill(slug);
+    await guest.page
+      .getByRole("button", { name: "Confirm", exact: true })
+      .click();
+    const input = guest.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await input.waitFor();
+    const suggested = await input.inputValue();
+    // Public ordering: the host takes the suggestion before Save reaches admission.
+    expect(
+      (
+        await host.page.request.patch(`${server.url}/profile`, {
+          headers: { "x-client-id": host.id },
+          data: { displayName: suggested.toUpperCase() },
+        })
+      ).ok(),
+    ).toBe(true);
+    await input.press("Enter");
+    await guest.page
+      .getByRole("alert")
+      .getByText(/already used/)
+      .waitFor();
+    expect(await input.inputValue()).toBe(suggested);
+    const headers = { "x-client-id": guest.id };
+    expect(
+      await (
+        await guest.page.request.get(`${server.url}/profile`, { headers })
+      ).json(),
+    ).toMatchObject({ displayName: "moki" });
+    const view = await (
+      await guest.page.request.get(`${server.url}/rooms/by-slug/${slug}`, {
+        headers,
+      })
+    ).json();
+    expect(view.players).toHaveLength(1);
+    expect(
+      await guest.page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("moki");
+    await guest.page
+      .getByRole("button", { name: "Shuffle", exact: true })
+      .click();
+    await expect
+      .poll(async () => (await input.inputValue()).toLowerCase())
+      .not.toBe(suggested.toLowerCase());
+    await input.fill("Recovered guest");
+    let replacements = 0;
+    await guest.page.route(
+      `${server.url}/rooms/${view.id}/join`,
+      async (route) => {
+        if (route.request().postDataJSON().displayName) {
+          replacements++;
+          const response = await route.fetch();
+          expect(response.status()).toBe(201);
+          await route.abort("failed");
+        } else await route.continue();
+      },
+    );
+    await input.press("Enter");
+    await guest.page
+      .getByText("Recovered guest (you)", { exact: true })
+      .waitFor();
+    await host.page.getByText("Recovered guest", { exact: true }).waitFor();
+    const joined = await (
+      await guest.page.request.get(`${server.url}/rooms/by-slug/${slug}`, {
+        headers,
+      })
+    ).json();
+    expect(
+      joined.players.filter((p: { id: string }) => p.id === guest.id),
+    ).toHaveLength(1);
+    expect(replacements).toBe(1);
+    expect(
+      await guest.page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("Recovered guest");
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
 it("shows pending join initialization and a recoverable error inside the join dialog", async () => {
   const guest = await client(390, "Moki");
   const page = guest.page;
@@ -743,6 +899,370 @@ it("shows pending join initialization and a recoverable error inside the join di
     await guest.close();
   }
 }, 20_000);
+
+it("allows a custom invite replacement when target and joined Lobbies exhaust generated suggestions", async () => {
+  const host = await client(1440, "Moki");
+  const guest = await client(390, "moki");
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    const headers = { "x-client-id": guest.id };
+    const profile = await (
+      await guest.page.request.get(`${server.url}/profile`, { headers })
+    ).json();
+    for (const name of profile.suggestions as string[]) {
+      if (name === "Moki") continue;
+      const otherHeaders = { "x-client-id": crypto.randomUUID() };
+      await guest.page.request.patch(`${server.url}/profile`, {
+        headers: otherHeaders,
+        data: { displayName: name },
+      });
+      const room = await (
+        await guest.page.request.post(`${server.url}/rooms`, {
+          headers: otherHeaders,
+        })
+      ).json();
+      expect(
+        (
+          await guest.page.request.post(`${server.url}/rooms/${room.id}/join`, {
+            headers,
+          })
+        ).status(),
+      ).toBe(201);
+    }
+    await guest.page.goto(`http://localhost:4173/room/${slug}`);
+    await guest.page.addStyleTag({ content: css });
+    await guest.page.addScriptTag({ content: script });
+    const input = guest.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await input.waitFor();
+    expect(await input.inputValue()).toBe("moki");
+    await guest.page
+      .getByRole("button", { name: "Shuffle", exact: true })
+      .click();
+    await guest.page
+      .getByRole("alert")
+      .getByText(
+        "No generated nicknames are available. Enter your own nickname.",
+      )
+      .waitFor();
+    await input.fill("BOPPO");
+    await input.press("Enter");
+    await guest.page
+      .getByRole("alert")
+      .getByText(/another Lobby you have joined/)
+      .waitFor();
+    expect(await input.inputValue()).toBe("BOPPO");
+    await input.fill("My custom invite name");
+    await input.press("Enter");
+    await guest.page
+      .getByText("My custom invite name (you)", { exact: true })
+      .waitFor();
+    await host.page
+      .getByText("My custom invite name", { exact: true })
+      .waitFor();
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
+it.each(["started", "kicked", "deleted"] as const)(
+  "reconciles a lost replacement response after the Lobby is %s",
+  async (outcome) => {
+    server.scenario("seeded");
+    const host = await client(1440, "Moki");
+    const guest = await client(390, "moki");
+    try {
+      await host.page.getByRole("button", { name: /Create a Game/ }).click();
+      await host.page.waitForURL("**/room/**");
+      const slug = host.page.url().split("/").pop()!;
+      const hostHeaders = { "x-client-id": host.id };
+      const guestHeaders = { "x-client-id": guest.id };
+      const room = await (
+        await host.page.request.get(`${server.url}/rooms/by-slug/${slug}`, {
+          headers: hostHeaders,
+        })
+      ).json();
+      await guest.page.goto(`http://localhost:4173/room/${slug}`);
+      await guest.page.addStyleTag({ content: css });
+      await guest.page.addScriptTag({ content: script });
+      const input = guest.page.getByRole("textbox", {
+        name: "Nickname",
+        exact: true,
+      });
+      await input.fill("Confirmed replacement");
+      await guest.page.route(
+        `${server.url}/rooms/${room.id}/join`,
+        async (route) => {
+          const response = await route.fetch();
+          expect(response.status()).toBe(201);
+          if (outcome === "started") {
+            await host.page.request.post(
+              `${server.url}/rooms/${room.id}/ready`,
+              { headers: guestHeaders, data: { ready: true } },
+            );
+            expect(
+              (
+                await host.page.request.post(
+                  `${server.url}/rooms/${room.id}/start`,
+                  { headers: hostHeaders },
+                )
+              ).ok(),
+            ).toBe(true);
+          } else if (outcome === "kicked") {
+            expect(
+              (
+                await host.page.request.post(
+                  `${server.url}/rooms/${room.id}/kick/${guest.id}`,
+                  { headers: hostHeaders },
+                )
+              ).ok(),
+            ).toBe(true);
+          } else {
+            await host.page.request.post(
+              `${server.url}/rooms/${room.id}/leave`,
+              { headers: hostHeaders },
+            );
+            await host.page.request.post(
+              `${server.url}/rooms/${room.id}/leave`,
+              { headers: guestHeaders },
+            );
+          }
+          await route.abort("failed");
+        },
+      );
+      await input.press("Enter");
+      if (outcome === "started") {
+        await guest.page.waitForURL(`**/game/${room.id}`);
+      } else if (outcome === "kicked") {
+        await guest.page
+          .getByRole("alert")
+          .getByText(/Your confirmed nickname is Confirmed replacement/)
+          .waitFor();
+        expect(await input.inputValue()).toBe("Confirmed replacement");
+        expect(
+          await guest.page.evaluate(
+            (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+            guest.id,
+          ),
+        ).toBe("Confirmed replacement");
+        const view = await (
+          await host.page.request.get(`${server.url}/rooms/${room.id}`, {
+            headers: hostHeaders,
+          })
+        ).json();
+        expect(view.players).not.toContainEqual(
+          expect.objectContaining({ id: guest.id }),
+        );
+      } else {
+        await guest.page
+          .getByRole("alert")
+          .getByText(/This Lobby no longer exists/)
+          .waitFor();
+        expect(
+          (
+            await guest.page.request.get(`${server.url}/rooms/${room.id}`, {
+              headers: guestHeaders,
+            })
+          ).status(),
+        ).toBe(404);
+        let pageCount = 1;
+        for (let page = 1; page <= pageCount; page++) {
+          const listed = await (
+            await guest.page.request.get(
+              `${server.url}/rooms?limit=50&page=${page}`,
+            )
+          ).json();
+          pageCount = listed.pages;
+          expect(listed.items).not.toContainEqual(
+            expect.objectContaining({ slug }),
+          );
+        }
+      }
+    } finally {
+      await host.close();
+      await guest.close();
+    }
+  },
+  20_000,
+);
+
+it("checks unresolved admission before retrying Save after the match starts", async () => {
+  server.scenario("seeded");
+  const host = await client(1440, "Moki");
+  const guest = await client(390, "moki");
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    const hostHeaders = { "x-client-id": host.id };
+    const guestHeaders = { "x-client-id": guest.id };
+    const room = await (
+      await host.page.request.get(`${server.url}/rooms/by-slug/${slug}`, {
+        headers: hostHeaders,
+      })
+    ).json();
+    await guest.page.goto(`http://localhost:4173/room/${slug}`);
+    await guest.page.addStyleTag({ content: css });
+    await guest.page.addScriptTag({ content: script });
+    const input = guest.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await input.fill("Unresolved replacement");
+    let joins = 0;
+    await guest.page.route(
+      `${server.url}/rooms/${room.id}/join`,
+      async (route) => {
+        joins++;
+        expect((await route.fetch()).status()).toBe(201);
+        await route.abort("failed");
+      },
+    );
+    await guest.page.route(`${server.url}/profile`, async (route) => {
+      if (route.request().method() === "GET")
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: "{}",
+        });
+      else await route.continue();
+    });
+    await input.press("Enter");
+    await guest.page
+      .getByRole("alert")
+      .getByText(/Couldn't confirm whether you joined/)
+      .waitFor();
+    expect(await input.inputValue()).toBe("Unresolved replacement");
+    await host.page.request.post(`${server.url}/rooms/${room.id}/ready`, {
+      headers: guestHeaders,
+      data: { ready: true },
+    });
+    expect(
+      (
+        await host.page.request.post(`${server.url}/rooms/${room.id}/start`, {
+          headers: hostHeaders,
+        })
+      ).ok(),
+    ).toBe(true);
+    await guest.page.unroute(`${server.url}/profile`);
+    await input.press("Enter");
+    await guest.page.waitForURL(`**/game/${room.id}`);
+    expect(joins).toBe(1);
+    expect(
+      await guest.page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("Unresolved replacement");
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
+it("recovers an ordinary admission when its response is lost", async () => {
+  const host = await client(1440, "Ordinary host");
+  const guest = await client(390, "Ordinary guest");
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    let joins = 0;
+    await guest.page.route(`${server.url}/rooms/*/join`, async (route) => {
+      joins++;
+      const response = await route.fetch();
+      expect(response.status()).toBe(201);
+      await route.abort("failed");
+    });
+    await guest.page.goto(`http://localhost:4173/room/${slug}`);
+    await guest.page.addStyleTag({ content: css });
+    await guest.page.addScriptTag({ content: script });
+    await guest.page
+      .getByText("Ordinary guest (you)", { exact: true })
+      .waitFor();
+    expect(joins).toBe(1);
+    await host.page.getByText("Ordinary guest", { exact: true }).waitFor();
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
+it.each(["full", "started"] as const)(
+  "retains a %s admission error when loading conflict suggestions",
+  async (outcome) => {
+    const host = await client(1440, "Moki");
+    const guest = await client(390, "moki");
+    try {
+      await host.page.getByRole("button", { name: /Create a Game/ }).click();
+      await host.page.waitForURL("**/room/**");
+      const slug = host.page.url().split("/").pop()!;
+      const hostHeaders = { "x-client-id": host.id };
+      const otherHeaders = { "x-client-id": crypto.randomUUID() };
+      const room = await (
+        await host.page.request.get(`${server.url}/rooms/by-slug/${slug}`, {
+          headers: hostHeaders,
+        })
+      ).json();
+      await guest.page.route(
+        `${server.url}/rooms/${room.id}/nickname-suggestions`,
+        async (route) => {
+          await host.page.request.patch(`${server.url}/profile`, {
+            headers: otherHeaders,
+            data: { displayName: "Other guest" },
+          });
+          await host.page.request.post(`${server.url}/rooms/${room.id}/join`, {
+            headers: otherHeaders,
+          });
+          if (outcome === "full") {
+            await host.page.request.patch(`${server.url}/rooms/${room.id}`, {
+              headers: hostHeaders,
+              data: { maxPlayers: 2 },
+            });
+          } else {
+            await host.page.request.post(
+              `${server.url}/rooms/${room.id}/ready`,
+              { headers: otherHeaders, data: { ready: true } },
+            );
+            await host.page.request.post(
+              `${server.url}/rooms/${room.id}/start`,
+              { headers: hostHeaders },
+            );
+          }
+          await route.continue();
+        },
+      );
+      await guest.page.goto(`http://localhost:4173/room/${slug}`);
+      await guest.page.addStyleTag({ content: css });
+      await guest.page.addScriptTag({ content: script });
+      await guest.page
+        .getByText(
+          outcome === "full" ? /Room is full/ : /Room is not open for joining/,
+        )
+        .waitFor();
+      expect(
+        await guest.page
+          .getByRole("textbox", { name: "Nickname", exact: true })
+          .count(),
+      ).toBe(0);
+      expect(
+        await guest.page
+          .getByRole("button", { name: "Retry admission", exact: true })
+          .isEnabled(),
+      ).toBe(true);
+    } finally {
+      await host.close();
+      await guest.close();
+    }
+  },
+  20_000,
+);
+
 async function chat(page: Page, text?: string) {
   const open = page.getByRole("button", { name: /Open chat/ });
   if (await open.isVisible()) await open.click();
