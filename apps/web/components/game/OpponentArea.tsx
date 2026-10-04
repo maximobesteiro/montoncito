@@ -33,7 +33,11 @@ export function OpponentArea({ player, isActive = false }: OpponentAreaProps) {
       </div>
       <div>
         <h4 className="text-sm font-semibold mb-2">Discard piles</h4>
-        <DiscardPiles discards={player.discards} playerName={name} isOpponent />
+        <DiscardPiles
+          discardPiles={player.discards}
+          playerName={name}
+          isOpponent
+        />
       </div>
     </section>
   );
