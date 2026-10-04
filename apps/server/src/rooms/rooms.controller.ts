@@ -84,6 +84,11 @@ export class RoomsController {
     return roomView;
   }
 
+  @Get(':id')
+  public read(@Param('id') roomId: string) {
+    return this.rooms.toView(this.rooms.getById(roomId));
+  }
+
   @Post(':id/join')
   public join(
     @Param('id') roomId: string,

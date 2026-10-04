@@ -35,6 +35,8 @@ type RoomView = {
   gameConfig: { discardPiles: number };
 };
 
+type Admission = RoomView & { wsJoinToken: string; profile?: GuestProfile };
+
 export default function WaitingRoomPage() {
   const router = useRouter();
   const params = useParams<{ slug: string }>();
@@ -65,6 +67,7 @@ export default function WaitingRoomPage() {
   const [admissionDraft, setAdmissionDraft] = useState("");
   const [needsNickname, setNeedsNickname] = useState(false);
   const [admitted, setAdmitted] = useState(false);
+  const [admissionAttempt, setAdmissionAttempt] = useState(0);
   const retryAdmission = useRef<null | ((draft: string) => Promise<void>)>(
     null,
   );
@@ -165,16 +168,7 @@ export default function WaitingRoomPage() {
 
         // 2) Ensure membership + get ws token (idempotent join)
         // Note: response includes updated room view (including *you* in players list).
-        const admit = async (draft?: string) => {
-          const joinRes = await apiFetch<
-            RoomView & { wsJoinToken: string; profile?: GuestProfile }
-          >(`/rooms/${view.id}/join`, {
-            method: "POST",
-            clientId,
-            body: JSON.stringify(
-              draft === undefined ? {} : { displayName: draft },
-            ),
-          });
+        const connectMembership = (joinRes: Admission) => {
           if (cancelled) return;
 
           // Update local room immediately so the joining player sees themselves
@@ -252,11 +246,78 @@ export default function WaitingRoomPage() {
             }
           });
         };
+        const admit = async (draft?: string) => {
+          try {
+            const joined = await apiFetch<Admission>(`/rooms/${view.id}/join`, {
+              method: "POST",
+              clientId,
+              body: JSON.stringify(
+                draft === undefined ? {} : { displayName: draft },
+              ),
+            });
+            connectMembership(joined);
+          } catch (failure) {
+            if (cancelled) return;
+            if (
+              failure instanceof ApiHttpError &&
+              failure.code === "NICKNAME_CONFLICT"
+            ) {
+              throw failure;
+            }
+            if (!(failure instanceof ApiHttpError)) {
+              // The response may have been lost after commit. Resolve through
+              // public reads before describing the result or repeating admission.
+              let confirmedName: string;
+              try {
+                const confirmed = await apiFetch<GuestProfile>("/profile", {
+                  clientId,
+                });
+                if (cancelled) return;
+                setAdmissionProfile(confirmed);
+                rememberGuestProfile(confirmed);
+                confirmedName = confirmed.displayName;
+                const current = await apiFetch<RoomView>(`/rooms/${view.id}`, {
+                  clientId,
+                });
+                if (cancelled) return;
+                if (current.players.some((player) => player.id === clientId)) {
+                  const token = await apiFetch<{ wsJoinToken: string }>(
+                    `/rooms/${view.id}/socket-token`,
+                    { method: "POST", clientId },
+                  );
+                  connectMembership({
+                    ...current,
+                    ...token,
+                    profile: confirmed,
+                  });
+                  return;
+                }
+              } catch (recoveryFailure) {
+                if (
+                  recoveryFailure instanceof ApiHttpError &&
+                  recoveryFailure.status === 404
+                ) {
+                  throw new Error(
+                    "This Lobby no longer exists. You have not joined. Return home to choose another Lobby.",
+                  );
+                }
+                throw new Error(
+                  "Couldn't confirm whether you joined. The request may have completed. Retry to check membership before confirming another replacement.",
+                );
+              }
+              throw new Error(
+                `Your confirmed nickname is ${confirmedName}. You are not currently a member of this Lobby. Retry to request admission.`,
+              );
+            }
+            throw new Error(
+              `You have not joined. Your nickname replacement was not confirmed. ${failure instanceof Error ? failure.message : "Please try again."}`,
+            );
+          }
+        };
         retryAdmission.current = async (draft) => {
           try {
             await admit(draft);
           } catch (failure) {
-            if (cancelled) return;
             if (
               failure instanceof ApiHttpError &&
               failure.code === "NICKNAME_CONFLICT"
@@ -265,33 +326,7 @@ export default function WaitingRoomPage() {
                 "That nickname is already used in this Lobby or another Lobby you have joined. Choose another nickname and retry.",
               );
             }
-            if (!(failure instanceof ApiHttpError)) {
-              // The response may have been lost after commit. Resolve through
-              // public reads before describing the result or repeating admission.
-              try {
-                const current = await apiFetch<RoomView>(
-                  `/rooms/by-slug/${sanitizedSlug}`,
-                  { clientId },
-                );
-                const confirmed = await apiFetch<GuestProfile>("/profile", {
-                  clientId,
-                });
-                if (cancelled) return;
-                setAdmissionProfile(confirmed);
-                rememberGuestProfile(confirmed);
-                if (current.players.some((player) => player.id === clientId)) {
-                  await admit();
-                  return;
-                }
-              } catch {
-                throw new Error(
-                  "Couldn't confirm whether you joined. The request may have completed. Retry Save to check membership before confirming another replacement.",
-                );
-              }
-            }
-            throw new Error(
-              `You have not joined. Your nickname replacement was not confirmed. ${failure instanceof Error ? failure.message : "Please try again."}`,
-            );
+            throw failure;
           }
         };
         try {
@@ -312,7 +347,13 @@ export default function WaitingRoomPage() {
             if (cancelled) return;
             setSuggestions(available.suggestions);
             setAdmissionDraft(available.suggestions[0] ?? profile.displayName);
-          } catch {
+          } catch (suggestionFailure) {
+            if (
+              suggestionFailure instanceof ApiHttpError &&
+              (suggestionFailure.status === 409 ||
+                suggestionFailure.status === 404)
+            )
+              throw suggestionFailure;
             // Custom editing remains available when suggestions cannot be loaded.
             if (!cancelled) setSuggestions([]);
           }
@@ -343,6 +384,7 @@ export default function WaitingRoomPage() {
     sanitizedSlug,
     showToast,
     invalidateNicknameEditor,
+    admissionAttempt,
   ]);
 
   useEffect(() => {
@@ -535,6 +577,15 @@ export default function WaitingRoomPage() {
             <div className="mt-4 brutal-border bg-warning-bg p-3">
               <p className="font-bold">Error</p>
               <p className="text-sm">{error}</p>
+              {!admitted && !needsNickname && (
+                <button
+                  className="brutal-button mt-2 bg-card"
+                  disabled={loading}
+                  onClick={() => setAdmissionAttempt((attempt) => attempt + 1)}
+                >
+                  Retry admission
+                </button>
+              )}
             </div>
           )}
         </div>

@@ -146,7 +146,8 @@ export class RoomsService {
     targetRoomId?: string,
   ): string[] {
     const lobbies = this.lobbiesFor(clientId);
-    if (targetRoomId) lobbies.push(this.admissionRoom(targetRoomId, clientId));
+    if (targetRoomId)
+      lobbies.push(this.requireJoinableRoom(targetRoomId, clientId));
     return NICKNAMES.filter((name) =>
       lobbies.every((room) => !this.nicknameTaken(room, clientId, name)),
     );
@@ -305,7 +306,7 @@ export class RoomsService {
     };
   }
 
-  private admissionRoom(roomId: string, clientId: string): Room {
+  private requireJoinableRoom(roomId: string, clientId: string): Room {
     const room = this.getById(roomId);
     if (room.status !== 'open') {
       throw new ConflictException('Room is not open for joining');
@@ -324,7 +325,7 @@ export class RoomsService {
     clientId: string;
     displayName?: string;
   }): Room {
-    const room = this.admissionRoom(params.roomId, params.clientId);
+    const room = this.requireJoinableRoom(params.roomId, params.clientId);
     if (this.hasPlayer(room, params.clientId)) return room;
 
     // Ensure the profile exists (auto-provision a temporary displayName if missing)
