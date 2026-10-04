@@ -7,6 +7,7 @@ interface ModalProps {
   title: string;
   children: ReactNode;
   dismissible?: boolean;
+  busy?: boolean;
   onCancel: () => void;
   onConfirm?: () => void;
   confirmText?: string;
@@ -19,6 +20,7 @@ export function Modal({
   title,
   children,
   dismissible = true,
+  busy = false,
   onCancel,
   onConfirm,
   confirmText = "Confirm",
@@ -29,7 +31,7 @@ export function Modal({
 
   // Handle Escape key press
   useEffect(() => {
-    if (!isOpen || !dismissible) return;
+    if (!isOpen || !dismissible || busy) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -39,7 +41,7 @@ export function Modal({
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, dismissible, onCancel]);
+  }, [isOpen, dismissible, busy, onCancel]);
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -59,7 +61,7 @@ export function Modal({
       // Small delay to ensure modal is fully rendered
       setTimeout(() => {
         const firstInput = modalContentRef.current?.querySelector(
-          'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])'
+          'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])',
         ) as HTMLElement | null;
         firstInput?.focus();
       }, 100);
@@ -69,7 +71,7 @@ export function Modal({
   if (!isOpen) return null;
 
   const handleBackdropClick = () => {
-    if (dismissible) {
+    if (dismissible && !busy) {
       onCancel();
     }
   };
@@ -93,6 +95,7 @@ export function Modal({
         {showCloseIcon && (
           <button
             onClick={onCancel}
+            disabled={busy}
             className="absolute top-4 right-4 brutal-border w-8 h-8 flex items-center justify-center bg-card hover:bg-surface font-bold text-l cursor-pointer"
             aria-label="Close"
           >
@@ -110,6 +113,7 @@ export function Modal({
         <div className="flex gap-4 justify-end">
           <button
             onClick={onCancel}
+            disabled={busy}
             className="brutal-button bg-btn-neutral text-text-on-dark hover:bg-btn-neutral-hover"
           >
             {cancelText}
@@ -117,6 +121,7 @@ export function Modal({
           {onConfirm && (
             <button
               onClick={onConfirm}
+              disabled={busy}
               className="brutal-button bg-btn-primary text-text-on-dark hover:bg-btn-primary-hover"
             >
               {confirmText}

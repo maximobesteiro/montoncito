@@ -1,5 +1,58 @@
 import { Injectable } from '@nestjs/common';
-import { generateTemporaryHumanName } from '../utils/names';
+import { randomInt } from 'crypto';
+
+export const NICKNAMES = [
+  'Boppo',
+  'Zibble',
+  'Moki',
+  'Wumple',
+  'Fizzi',
+  'Nubbo',
+  'Pippo',
+  'Zazzu',
+  'Dibbi',
+  'Luppo',
+  'Vimzi',
+  'Tibbo',
+  'Zoppi',
+  'Bimzo',
+  'Wibbi',
+  'Nimzi',
+  'Foppo',
+  'Jibbu',
+  'Pumzi',
+  'Zubbo',
+  'Doppi',
+  'Vobbi',
+  'Kipzu',
+  'Lumzi',
+  'Bazzle',
+  'Womzi',
+  'Tuppi',
+  'Zimble',
+  'Fubbi',
+  'Nopzi',
+  'Pibzu',
+  'Dumple',
+  'Jomzi',
+  'Vuppo',
+  'Kibbi',
+  'Lopzu',
+  'Bumple',
+  'Wizzi',
+  'Tobzu',
+  'Zuppi',
+  'Fimzo',
+  'Nazzle',
+  'Pobbi',
+  'Dizzi',
+  'Jupzi',
+  'Vimble',
+  'Kumzo',
+  'Lizzi',
+  'Bopzu',
+  'Wubbo',
+];
 
 export type Profile = {
   clientId: string;
@@ -52,6 +105,6 @@ export class ProfilesService {
   }
 
   private generateTemporaryName(): string {
-    return generateTemporaryHumanName({ maxLength: 32 });
+    return NICKNAMES[randomInt(NICKNAMES.length)];
   }
 }

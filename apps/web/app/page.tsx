@@ -1,39 +1,124 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MenuButton } from "../components/MenuButton";
 import { Modal } from "../components/Modal";
 import { HowToPlayModal } from "../components/HowToPlayModal";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
+import {
+  initializeGuestProfile,
+  saveGuestNickname,
+  type GuestProfile,
+} from "@/lib/guest-profile";
+import { NicknameEditor } from "@/components/NicknameEditor";
 
 export default function Home() {
   const router = useRouter();
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
   const [gameId, setGameId] = useState("");
+  const [profile, setProfile] = useState<GuestProfile | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [entering, setEntering] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
-  const handleJoinGame = () => {
+  useEffect(() => {
+    let cancelled = false;
+    void initializeGuestProfile()
+      .then((value) => {
+        if (!cancelled) setProfile(value);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setError("Couldn't load your nickname. Try entering a game again.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleJoinGame = async () => {
     const slug = gameId.trim();
-    if (!slug) return;
-    setIsJoinModalOpen(false);
-    setGameId("");
-    router.push(`/room/${slug}`);
+    if (!slug || entering) return;
+    setEntering(true);
+    setJoinError(null);
+    try {
+      await initializeGuestProfile();
+      setIsJoinModalOpen(false);
+      setGameId("");
+      router.push(`/room/${slug}`);
+    } catch {
+      setJoinError("Couldn't load your nickname. Please try again.");
+    } finally {
+      setEntering(false);
+    }
   };
 
   const handleCreateGame = async () => {
-    const clientId = getOrCreateClientId();
-    const created = await apiFetch<{ slug: string }>(`/rooms`, {
-      method: "POST",
-      clientId,
-      body: JSON.stringify({}),
-    });
-    router.push(`/room/${created.slug}`);
+    if (entering) return;
+    setEntering(true);
+    setError(null);
+    try {
+      const clientId = getOrCreateClientId();
+      await initializeGuestProfile(clientId);
+      const created = await apiFetch<{ slug: string }>(`/rooms`, {
+        method: "POST",
+        clientId,
+        body: JSON.stringify({}),
+      });
+      router.push(`/room/${created.slug}`);
+    } catch {
+      setError("Couldn't create a game. Please try again.");
+    } finally {
+      setEntering(false);
+    }
   };
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-background p-4 sm:p-8 font-sans">
       <main className="w-full max-w-md flex flex-col gap-4">
+        <section
+          className="brutal-border bg-card p-4 flex flex-col gap-3"
+          aria-label="Guest nickname"
+        >
+          {profile ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="min-w-0 break-words">
+                  Playing as{" "}
+                  <span className="font-bold">{profile.displayName}</span>
+                </p>
+                {!editing && (
+                  <button
+                    type="button"
+                    className="brutal-button px-3 py-2"
+                    aria-label="Edit nickname"
+                    onClick={() => setEditing(true)}
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+              {editing && (
+                <NicknameEditor
+                  nickname={profile.displayName}
+                  suggestions={profile.suggestions}
+                  onCancel={() => setEditing(false)}
+                  onSave={async (draft) => {
+                    const saved = await saveGuestNickname(draft);
+                    setProfile(saved);
+                    setEditing(false);
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <p role="status">Loading nickname...</p>
+          )}
+          {error && <p role="alert">{error}</p>}
+        </section>
         <MenuButton
           title="Casual Game"
           subtitle="Join any game awaiting players"
@@ -42,12 +127,17 @@ export default function Home() {
 
         <MenuButton
           title="Join a Game"
+          disabled={entering}
           subtitle="Provide a game ID to join a specific game"
-          onClick={() => setIsJoinModalOpen(true)}
+          onClick={() => {
+            setJoinError(null);
+            setIsJoinModalOpen(true);
+          }}
         />
 
         <MenuButton
           title="Create a Game"
+          disabled={entering}
           subtitle="Start your own public or private game"
           onClick={() => void handleCreateGame()}
         />
@@ -67,20 +157,29 @@ export default function Home() {
       <Modal
         isOpen={isJoinModalOpen}
         title="Join a Game"
+        busy={entering}
+        confirmText={entering ? "Joining..." : "Confirm"}
         onCancel={() => {
           setIsJoinModalOpen(false);
           setGameId("");
+          setJoinError(null);
         }}
-        onConfirm={handleJoinGame}
+        onConfirm={() => void handleJoinGame()}
       >
         <input
           type="text"
           value={gameId}
+          disabled={entering}
           onChange={(e) => setGameId(e.target.value)}
           maxLength={10}
           placeholder="Enter game ID"
           className="w-full brutal-border px-3 py-2 bg-card"
         />
+        {joinError && (
+          <p role="alert" className="mt-3">
+            {joinError}
+          </p>
+        )}
       </Modal>
     </div>
   );

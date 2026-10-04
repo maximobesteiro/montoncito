@@ -9,6 +9,7 @@ import { RoomChat } from "@/components/RoomChat";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { appendChatMessage } from "@/lib/room-chat";
+import { initializeGuestProfile } from "@/lib/guest-profile";
 
 type RoomView = {
   id: string;
@@ -101,6 +102,8 @@ export default function WaitingRoomPage() {
       setError(null);
 
       try {
+        await initializeGuestProfile(clientId);
+        if (cancelled) return;
         // 1) Resolve room by slug (for deep-link support)
         let view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
           method: "GET",
