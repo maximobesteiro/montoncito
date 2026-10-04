@@ -141,8 +141,12 @@ export class RoomsService {
     );
   }
 
-  public nicknameSuggestions(clientId: string): string[] {
+  public nicknameSuggestions(
+    clientId: string,
+    targetRoomId?: string,
+  ): string[] {
     const lobbies = this.lobbiesFor(clientId);
+    if (targetRoomId) lobbies.push(this.admissionRoom(targetRoomId, clientId));
     return NICKNAMES.filter((name) =>
       lobbies.every((room) => !this.nicknameTaken(room, clientId, name)),
     );
@@ -173,9 +177,11 @@ export class RoomsService {
     name: string,
   ): void {
     if (this.nicknameTaken(room, clientId, name)) {
-      throw new ConflictException(
-        'That nickname is already used in a Lobby you are joining or have joined. Choose another nickname.',
-      );
+      throw new ConflictException({
+        code: 'NICKNAME_CONFLICT',
+        message:
+          'That nickname is already used in a Lobby you are joining or have joined. Choose another nickname.',
+      });
     }
   }
 
@@ -299,24 +305,36 @@ export class RoomsService {
     };
   }
 
-  public join(params: { roomId: string; clientId: string }): Room {
-    const room = this.roomsById.get(params.roomId);
-    if (!room) throw new NotFoundException('Room not found');
-
+  private admissionRoom(roomId: string, clientId: string): Room {
+    const room = this.getById(roomId);
     if (room.status !== 'open') {
       throw new ConflictException('Room is not open for joining');
     }
-    if (this.hasPlayer(room, params.clientId)) {
-      // Idempotent join: allow re-join to refresh wsJoinToken / support deep links.
-      return room;
-    }
-    if (room.players.length >= room.maxPlayers) {
+    if (
+      !this.hasPlayer(room, clientId) &&
+      room.players.length >= room.maxPlayers
+    ) {
       throw new ConflictException('Room is full');
     }
+    return room;
+  }
+
+  public join(params: {
+    roomId: string;
+    clientId: string;
+    displayName?: string;
+  }): Room {
+    const room = this.admissionRoom(params.roomId, params.clientId);
+    if (this.hasPlayer(room, params.clientId)) return room;
 
     // Ensure the profile exists (auto-provision a temporary displayName if missing)
     const profile = this.profiles.getOrCreate(params.clientId);
-    this.assertNicknameAvailable(room, params.clientId, profile.displayName);
+    const name = params.displayName ?? profile.displayName;
+    this.assertNicknameAvailable(room, params.clientId, name);
+    if (params.displayName !== undefined) {
+      // Validate all memberships before either the profile or admission changes.
+      this.renameGuest(params.clientId, name);
+    }
 
     room.players.push({ id: params.clientId, isOwner: false, ready: false });
 

@@ -8,6 +8,7 @@ import {
   Query,
   Patch,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RoomsService } from './rooms.service';
@@ -19,6 +20,8 @@ import {
 import { RoomsGateway } from '../ws/rooms.gateway';
 import { WsJoinClaims } from '../ws/auth';
 import jwt from 'jsonwebtoken';
+import { UpsertProfileSchema } from '../profiles/profiles.dto';
+import { ProfilesService } from '../profiles/profiles.service';
 
 @Controller('rooms')
 export class RoomsController {
@@ -26,6 +29,7 @@ export class RoomsController {
     private readonly rooms: RoomsService,
     private readonly ws: RoomsGateway,
     private readonly configService: ConfigService,
+    private readonly profiles: ProfilesService,
   ) {}
 
   @Post()
@@ -84,6 +88,7 @@ export class RoomsController {
   public join(
     @Param('id') roomId: string,
     @Headers('x-client-id') clientId: string | undefined,
+    @Body() body?: unknown,
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
     // Avoid broadcasting if this is an idempotent re-join.
@@ -91,9 +96,11 @@ export class RoomsController {
       .getById(roomId)
       .players.some((p) => p.id === clientId);
 
-    const room = this.rooms.join({ roomId, clientId });
-
+    const parsed = UpsertProfileSchema.partial().safeParse(body ?? {});
+    if (!parsed.success)
+      throw new BadRequestException(parsed.error.issues[0].message);
     const wsJoinToken = this.createWsJoinToken(roomId, clientId);
+    const room = this.rooms.join({ roomId, clientId, ...parsed.data });
 
     const roomView = this.rooms.toView(room);
 
@@ -101,8 +108,30 @@ export class RoomsController {
     // Note: The joining player won't receive this yet as they haven't connected to WS,
     // but they already have the updated room from this REST response
     if (!alreadyMember) this.ws.emitRoomUpdated(roomId, roomView);
+    if (!alreadyMember && parsed.data.displayName !== undefined) {
+      for (const lobby of this.rooms.lobbiesFor(clientId)) {
+        if (lobby.id !== roomId)
+          this.ws.emitRoomUpdated(lobby.id, this.rooms.toView(lobby));
+      }
+    }
 
-    return { ...roomView, wsJoinToken };
+    const profile =
+      parsed.data.displayName === undefined
+        ? undefined
+        : {
+            ...this.profiles.getOrCreate(clientId),
+            suggestions: this.rooms.nicknameSuggestions(clientId),
+          };
+    return { ...roomView, wsJoinToken, ...(profile ? { profile } : {}) };
+  }
+
+  @Get(':id/nickname-suggestions')
+  public nicknameSuggestions(
+    @Param('id') roomId: string,
+    @Headers('x-client-id') clientId: string | undefined,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing X-Client-Id header');
+    return { suggestions: this.rooms.nicknameSuggestions(clientId, roomId) };
   }
 
   @Post(':id/socket-token')

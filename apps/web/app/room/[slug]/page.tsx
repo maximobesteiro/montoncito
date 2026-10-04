@@ -12,6 +12,7 @@ import { appendChatMessage } from "@/lib/room-chat";
 import {
   initializeGuestProfile,
   saveGuestNickname,
+  rememberGuestProfile,
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
@@ -58,6 +59,15 @@ export default function WaitingRoomPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [editingNickname, setEditingNickname] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [admissionProfile, setAdmissionProfile] = useState<GuestProfile | null>(
+    null,
+  );
+  const [admissionDraft, setAdmissionDraft] = useState("");
+  const [needsNickname, setNeedsNickname] = useState(false);
+  const [admitted, setAdmitted] = useState(false);
+  const retryAdmission = useRef<null | ((draft: string) => Promise<void>)>(
+    null,
+  );
   const nicknameSession = useRef(0);
   const liveRoomRevision = useRef(0);
   const invalidateNicknameEditor = useCallback(() => {
@@ -114,11 +124,15 @@ export default function WaitingRoomPage() {
       if (!clientId) return;
       setLoading(true);
       setError(null);
+      setAdmitted(false);
+      setNeedsNickname(false);
+      setRoom(null);
 
       try {
         const profile = await initializeGuestProfile(clientId);
         if (cancelled) return;
         setSuggestions(profile.suggestions);
+        setAdmissionProfile(profile);
         // 1) Resolve room by slug (for deep-link support)
         let view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
           method: "GET",
@@ -151,75 +165,159 @@ export default function WaitingRoomPage() {
 
         // 2) Ensure membership + get ws token (idempotent join)
         // Note: response includes updated room view (including *you* in players list).
-        const joinRes = await apiFetch<RoomView & { wsJoinToken: string }>(
-          `/rooms/${view.id}/join`,
-          { method: "POST", clientId },
-        );
-        if (cancelled) return;
+        const admit = async (draft?: string) => {
+          const joinRes = await apiFetch<
+            RoomView & { wsJoinToken: string; profile?: GuestProfile }
+          >(`/rooms/${view.id}/join`, {
+            method: "POST",
+            clientId,
+            body: JSON.stringify(
+              draft === undefined ? {} : { displayName: draft },
+            ),
+          });
+          if (cancelled) return;
 
-        // Update local room immediately so the joining player sees themselves
-        const { wsJoinToken, ...joinedRoom } = joinRes;
-        setRoom(joinedRoom);
+          // Update local room immediately so the joining player sees themselves
+          const {
+            wsJoinToken,
+            profile: confirmedProfile,
+            ...joinedRoom
+          } = joinRes;
+          if (confirmedProfile) rememberGuestProfile(confirmedProfile);
+          setNeedsNickname(false);
+          setAdmitted(true);
+          setError(null);
+          setRoom(joinedRoom);
 
-        // 3) Connect to Socket.IO to receive presence + GAME_STARTED
-        const sock = getSocketClient();
-        unsub = sock.on((ev) => {
-          if (ev.type === "ROOM_UPDATED") {
-            liveRoomRevision.current++;
-            const updated = ev.room as RoomView;
-            if (
-              updated.status !== "open" ||
-              !updated.players.some((player) => player.id === clientId)
-            )
-              invalidateNicknameEditor();
-            // Update room state (including player list) in real-time
-            setRoom(ev.room as RoomView);
-          }
-          if (ev.type === "GAME_STARTED") {
-            liveRoomRevision.current++;
-            invalidateNicknameEditor();
-            router.push(`/game/${ev.roomId}`);
-          }
-          if (ev.type === "KICKED") {
-            liveRoomRevision.current++;
-            invalidateNicknameEditor();
-            sock.disconnect();
-            showToast("You have been kicked from the room", "warning");
-            router.push("/");
-          }
-          if (ev.type === "CHAT_MESSAGE") {
-            setChatMessages((prev) => appendChatMessage(prev, ev));
-          }
-          if (ev.type === "CHAT_HISTORY") {
-            setChatMessages(ev.messages);
-          }
-          // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
-          // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
-        });
-        sock.connect(wsJoinToken, async () => {
-          try {
-            const { wsJoinToken: renewed } = await apiFetch<{
-              wsJoinToken: string;
-            }>(`/rooms/${view.id}/socket-token`, { method: "POST", clientId });
-            const revision = liveRoomRevision.current;
-            const current = await apiFetch<RoomView>(
-              `/rooms/by-slug/${sanitizedSlug}`,
-              { method: "GET", clientId },
-            );
-            if (!cancelled && revision === liveRoomRevision.current)
-              setRoom(current);
-            return renewed;
-          } catch (error) {
-            if (
-              error instanceof ApiHttpError &&
-              (error.status === 403 || error.status === 404)
-            ) {
-              sock.disconnect();
-              if (!cancelled) router.push("/");
+          // 3) Connect to Socket.IO to receive presence + GAME_STARTED
+          const sock = getSocketClient();
+          unsub = sock.on((ev) => {
+            if (ev.type === "ROOM_UPDATED") {
+              liveRoomRevision.current++;
+              const updated = ev.room as RoomView;
+              if (
+                updated.status !== "open" ||
+                !updated.players.some((player) => player.id === clientId)
+              )
+                invalidateNicknameEditor();
+              // Update room state (including player list) in real-time
+              setRoom(ev.room as RoomView);
             }
-            throw error;
+            if (ev.type === "GAME_STARTED") {
+              liveRoomRevision.current++;
+              invalidateNicknameEditor();
+              router.push(`/game/${ev.roomId}`);
+            }
+            if (ev.type === "KICKED") {
+              liveRoomRevision.current++;
+              invalidateNicknameEditor();
+              sock.disconnect();
+              showToast("You have been kicked from the room", "warning");
+              router.push("/");
+            }
+            if (ev.type === "CHAT_MESSAGE") {
+              setChatMessages((prev) => appendChatMessage(prev, ev));
+            }
+            if (ev.type === "CHAT_HISTORY") {
+              setChatMessages(ev.messages);
+            }
+            // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
+            // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
+          });
+          sock.connect(wsJoinToken, async () => {
+            try {
+              const { wsJoinToken: renewed } = await apiFetch<{
+                wsJoinToken: string;
+              }>(`/rooms/${view.id}/socket-token`, {
+                method: "POST",
+                clientId,
+              });
+              const revision = liveRoomRevision.current;
+              const current = await apiFetch<RoomView>(
+                `/rooms/by-slug/${sanitizedSlug}`,
+                { method: "GET", clientId },
+              );
+              if (!cancelled && revision === liveRoomRevision.current)
+                setRoom(current);
+              return renewed;
+            } catch (error) {
+              if (
+                error instanceof ApiHttpError &&
+                (error.status === 403 || error.status === 404)
+              ) {
+                sock.disconnect();
+                if (!cancelled) router.push("/");
+              }
+              throw error;
+            }
+          });
+        };
+        retryAdmission.current = async (draft) => {
+          try {
+            await admit(draft);
+          } catch (failure) {
+            if (cancelled) return;
+            if (
+              failure instanceof ApiHttpError &&
+              failure.code === "NICKNAME_CONFLICT"
+            ) {
+              throw new Error(
+                "That nickname is already used in this Lobby or another Lobby you have joined. Choose another nickname and retry.",
+              );
+            }
+            if (!(failure instanceof ApiHttpError)) {
+              // The response may have been lost after commit. Resolve through
+              // public reads before describing the result or repeating admission.
+              try {
+                const current = await apiFetch<RoomView>(
+                  `/rooms/by-slug/${sanitizedSlug}`,
+                  { clientId },
+                );
+                const confirmed = await apiFetch<GuestProfile>("/profile", {
+                  clientId,
+                });
+                if (cancelled) return;
+                setAdmissionProfile(confirmed);
+                rememberGuestProfile(confirmed);
+                if (current.players.some((player) => player.id === clientId)) {
+                  await admit();
+                  return;
+                }
+              } catch {
+                throw new Error(
+                  "Couldn't confirm whether you joined. The request may have completed. Retry Save to check membership before confirming another replacement.",
+                );
+              }
+            }
+            throw new Error(
+              `You have not joined. Your nickname replacement was not confirmed. ${failure instanceof Error ? failure.message : "Please try again."}`,
+            );
           }
-        });
+        };
+        try {
+          await admit();
+        } catch (failure) {
+          if (
+            !(failure instanceof ApiHttpError) ||
+            failure.code !== "NICKNAME_CONFLICT"
+          )
+            throw failure;
+          if (cancelled) return;
+          setAdmissionDraft(profile.displayName);
+          try {
+            const available = await apiFetch<{ suggestions: string[] }>(
+              `/rooms/${view.id}/nickname-suggestions`,
+              { clientId },
+            );
+            if (cancelled) return;
+            setSuggestions(available.suggestions);
+            setAdmissionDraft(available.suggestions[0] ?? profile.displayName);
+          } catch {
+            // Custom editing remains available when suggestions cannot be loaded.
+            if (!cancelled) setSuggestions([]);
+          }
+          if (!cancelled) setNeedsNickname(true);
+        }
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Failed to load room");
@@ -231,6 +329,7 @@ export default function WaitingRoomPage() {
     void boot();
     return () => {
       cancelled = true;
+      retryAdmission.current = null;
       liveRoomRevision.current++;
       nicknameSession.current++;
       unsub?.();
@@ -248,11 +347,15 @@ export default function WaitingRoomPage() {
 
   useEffect(() => {
     if (!room) return;
-    if (room.status !== "open" && room.gameId) {
+    if (
+      room.status !== "open" &&
+      room.gameId &&
+      room.players.some((player) => player.id === clientId)
+    ) {
       invalidateNicknameEditor();
       router.push(`/game/${room.id}`);
     }
-  }, [room, router, invalidateNicknameEditor]);
+  }, [room, router, invalidateNicknameEditor, clientId]);
 
   const patchRoom = async (
     patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
@@ -383,6 +486,10 @@ export default function WaitingRoomPage() {
   };
 
   const handleExitClick = () => {
+    if (!admitted) {
+      router.push("/");
+      return;
+    }
     if (room && room.players.length > 1) {
       // Other players are waiting - show confirmation
       setIsLeaveModalOpen(true);
@@ -432,6 +539,41 @@ export default function WaitingRoomPage() {
           )}
         </div>
 
+        {needsNickname && admissionProfile && room && (
+          <section
+            className="brutal-border p-6 bg-card brutal-shadow space-y-3"
+            aria-label="Choose a nickname before joining"
+          >
+            <h2 className="text-2xl font-bold">Choose a nickname to join</h2>
+            <p>
+              Your confirmed nickname, {admissionProfile.displayName}, is
+              already used in this Lobby. You have not joined. Save explicitly
+              confirms your shared nickname and joins the Lobby.
+            </p>
+            {suggestions.length === 0 && (
+              <p>
+                No generated nicknames are available. Enter your own nickname or
+                retry Shuffle.
+              </p>
+            )}
+            <NicknameEditor
+              nickname={admissionDraft}
+              suggestions={suggestions}
+              loadSuggestions={async () =>
+                (
+                  await apiFetch<{ suggestions: string[] }>(
+                    `/rooms/${room.id}/nickname-suggestions`,
+                    { clientId: clientId ?? undefined },
+                  )
+                ).suggestions
+              }
+              onCancel={() => router.push("/")}
+              onSave={async (draft) => {
+                await retryAdmission.current?.(draft);
+              }}
+            />
+          </section>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-10 gap-4">
           <div className="xl:col-span-3 brutal-border p-6 bg-card brutal-shadow">
             <h2 className="text-2xl font-bold mb-3">Players</h2>
@@ -570,7 +712,7 @@ export default function WaitingRoomPage() {
               </p>
             )}
 
-            {room && (
+            {room && admitted && (
               <>
                 <div className="space-y-2">
                   <label className="block font-bold">Visibility</label>
@@ -674,12 +816,14 @@ export default function WaitingRoomPage() {
             )}
           </div>
 
-          <RoomChat
-            messages={chatMessages}
-            currentPlayerId={clientId}
-            onSendMessage={sendChatMessage}
-            className="lg:col-span-2 xl:col-span-3"
-          />
+          {admitted && (
+            <RoomChat
+              messages={chatMessages}
+              currentPlayerId={clientId}
+              onSendMessage={sendChatMessage}
+              className="lg:col-span-2 xl:col-span-3"
+            />
+          )}
         </div>
       </div>
     </div>

@@ -10,7 +10,9 @@ export type GuestProfile = {
 const initializing = new Map<string, Promise<GuestProfile>>();
 const storageKey = (id: string) => `montoncito:nickname:${id}`;
 
-function remember(profile: Pick<GuestProfile, "clientId" | "displayName">) {
+export function rememberGuestProfile(
+  profile: Pick<GuestProfile, "clientId" | "displayName">,
+) {
   try {
     localStorage.setItem(storageKey(profile.clientId), profile.displayName);
   } catch {
@@ -38,7 +40,7 @@ export function initializeGuestProfile(
     ),
   })
     .then((profile) => {
-      remember(profile);
+      rememberGuestProfile(profile);
       return profile;
     })
     .finally(() => initializing.delete(clientId));
@@ -67,7 +69,7 @@ export async function saveGuestNickname(
       clientId,
       body: JSON.stringify({ displayName: draft }),
     });
-    if (isCurrent()) remember(saved);
+    if (isCurrent()) rememberGuestProfile(saved);
     return saved;
   } catch (error) {
     if (error instanceof ApiHttpError && error.status === 409) {

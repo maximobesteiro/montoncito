@@ -4,6 +4,7 @@ export class ApiHttpError extends Error {
   constructor(
     public readonly status: number,
     message: string,
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiHttpError";
@@ -44,9 +45,16 @@ export async function apiFetch<T>(
   const res = await fetch(url.toString(), { ...init, headers });
   if (!res.ok) {
     const bodyText = await res.text().catch(() => "");
+    let code: string | undefined;
+    try {
+      code = JSON.parse(bodyText).code;
+    } catch {
+      // Non-JSON errors still retain the HTTP status and response text.
+    }
     throw new ApiHttpError(
       res.status,
       `HTTP ${res.status} ${res.statusText}: ${bodyText}`,
+      code,
     );
   }
   return (await res.json()) as T;
