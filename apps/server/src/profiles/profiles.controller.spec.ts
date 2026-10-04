@@ -14,10 +14,13 @@ describe('ProfilesController', () => {
     displayName: 'Test Player',
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:00.000Z',
+    generation: 'baac1cc9-98ad-4783-a08e-6b315adf6f06',
+    revision: 0,
   };
 
   beforeEach(async () => {
     mockProfilesService = {
+      assertCurrent: jest.fn(),
       get: jest.fn(),
       getOrCreate: jest.fn(),
       setDisplayName: jest.fn(),
@@ -61,7 +64,7 @@ describe('ProfilesController', () => {
         'client-123',
         'New Player',
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         clientId: 'client-123',
         displayName: 'New Player',
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -85,7 +88,7 @@ describe('ProfilesController', () => {
         'client-123',
         'Updated Player',
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         clientId: 'client-123',
         displayName: 'Updated Player',
         updatedAt: '2024-01-01T01:00:00.000Z',
@@ -122,7 +125,7 @@ describe('ProfilesController', () => {
         'client-123',
         'A',
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         clientId: 'client-123',
         displayName: 'A',
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -143,7 +146,7 @@ describe('ProfilesController', () => {
         'client-123',
         longDisplayName,
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         clientId: 'client-123',
         displayName: longDisplayName,
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -163,7 +166,7 @@ describe('ProfilesController', () => {
         'client-123',
         'Player-123_Test!',
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         clientId: 'client-123',
         displayName: 'Player-123_Test!',
         updatedAt: '2024-01-01T00:00:00.000Z',
@@ -183,7 +186,7 @@ describe('ProfilesController', () => {
         'client-123',
         '玩家123',
       );
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         clientId: 'client-123',
         displayName: '玩家123',
         updatedAt: '2024-01-01T00:00:00.000Z',

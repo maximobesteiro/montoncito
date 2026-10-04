@@ -3,7 +3,13 @@ import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { chromium, type Browser, type Page, type Locator } from "playwright";
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Page,
+  type Locator,
+} from "playwright";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 import { build } from "vite";
@@ -15,6 +21,7 @@ let server: {
   url: string;
   scenario: (scenario: "seeded" | "controlled" | "fallback") => void;
   close: () => Promise<void>;
+  restart: () => Promise<void>;
 };
 let css: string;
 let script: string;
@@ -123,6 +130,15 @@ async function client(width: number, name?: string) {
   await page.addScriptTag({ content: script });
   return {
     page,
+    openPage: async (path = "/") => {
+      const next = await context.newPage();
+      next.setDefaultTimeout(5000);
+      next.on("pageerror", (error) => errors.push(error.message));
+      await next.goto(`http://localhost:4173${path}`);
+      await next.addStyleTag({ content: css });
+      await next.addScriptTag({ content: script });
+      return next;
+    },
     id,
     errors,
     snapshot: () => snapshot,
@@ -134,6 +150,44 @@ async function tap(page: Page, target: Locator) {
   if (await page.evaluate(() => navigator.maxTouchPoints > 0))
     await target.tap();
   else await target.click();
+}
+
+async function delayProfileResponse(
+  target: Page | BrowserContext,
+  method: "POST" | "PATCH",
+) {
+  let release!: () => void;
+  let captured!: () => void;
+  const intercepted = new Promise<void>((resolve) => {
+    captured = resolve;
+  });
+  const delivery = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let delayNext = true;
+  await target.route(`${server.url}/profile`, async (route) => {
+    if (route.request().method() !== method || !delayNext)
+      return route.continue();
+    delayNext = false;
+    const response = await route.fetch();
+    expect(response.ok()).toBe(true);
+    captured();
+    await delivery;
+    await route.fulfill({ response });
+  });
+  return { intercepted, release };
+}
+
+function blockNicknameStorageWrites() {
+  const original = Storage.prototype.setItem;
+  Storage.prototype.setItem = function (key, value) {
+    if (
+      key.startsWith("montoncito:profile:") ||
+      key.startsWith("montoncito:nickname:")
+    )
+      throw new DOMException("Full", "QuotaExceededError");
+    return original.call(this, key, value);
+  };
 }
 
 it("initializes a playful profile and validates canonical nickname saves through REST", async () => {
@@ -167,6 +221,476 @@ it("initializes a playful profile and validates canonical nickname saves through
   expect(await initialized.json()).toMatchObject({ displayName: "小 Moki!" });
   expect((await save("x".repeat(32))).status).toBe(200);
 });
+
+it("rejects stale nickname writes and preserves a newer profile during restoration", async () => {
+  const headers = {
+    "x-client-id": crypto.randomUUID(),
+    "content-type": "application/json",
+  };
+  const initialize = (displayName: string) =>
+    fetch(`${server.url}/profile`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ displayName }),
+    }).then((response) => response.json());
+  const [first, second] = await Promise.all([
+    initialize("Remembered"),
+    initialize("Older cache"),
+  ]);
+  expect(second).toMatchObject({
+    displayName: first.displayName,
+    generation: first.generation,
+    revision: first.revision,
+  });
+  const save = (displayName: string, base: typeof first) =>
+    fetch(`${server.url}/profile`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({
+        displayName,
+        base: { generation: base.generation, revision: base.revision },
+      }),
+    });
+  expect((await save("Latest", first)).status).toBe(200);
+  const stale = await save("Stale draft", second);
+  expect(stale.status).toBe(409);
+  expect(await stale.json()).toMatchObject({ code: "STALE_PROFILE" });
+  expect(await initialize("Remembered")).toMatchObject({
+    displayName: "Latest",
+    revision: first.revision + 1,
+  });
+  const latest = await initialize("Older cache");
+  const contenders = await Promise.all([
+    save("First contender", latest),
+    save("Second contender", latest),
+  ]);
+  expect(contenders.map((response) => response.status).sort()).toEqual([
+    200, 409,
+  ]);
+  const winner = await contenders
+    .find((response) => response.status === 200)!
+    .json();
+  expect(await initialize("Remembered")).toMatchObject({
+    displayName: winner.displayName,
+    revision: latest.revision + 1,
+  });
+
+  const hostHeaders = {
+    "x-client-id": crypto.randomUUID(),
+    "content-type": "application/json",
+  };
+  const room = await (
+    await fetch(`${server.url}/rooms`, {
+      method: "POST",
+      headers: hostHeaders,
+      body: "{}",
+    })
+  ).json();
+  const admission = await fetch(`${server.url}/rooms/${room.id}/join`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      displayName: "Stale admission",
+      base: { generation: first.generation, revision: first.revision },
+    }),
+  });
+  expect(admission.status).toBe(409);
+  expect(await admission.json()).toMatchObject({ code: "STALE_PROFILE" });
+  const unchanged = await (
+    await fetch(`${server.url}/rooms/${room.id}`, { headers: hostHeaders })
+  ).json();
+  expect(
+    unchanged.players.map((player: { id: string }) => player.id),
+  ).not.toContain(headers["x-client-id"]);
+});
+
+it("synchronizes confirmed names across tabs without saving another tab's draft", async () => {
+  const guest = await client(1440);
+  try {
+    await guest.page.getByText(/^Playing as /).waitFor();
+    const other = await guest.openPage();
+    await other.getByText(/^Playing as /).waitFor();
+    await other.getByRole("button", { name: "Edit nickname" }).click();
+    const draft = other.getByRole("textbox", { name: "Nickname", exact: true });
+    await draft.fill("Unsaved in second tab");
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Latest across tabs");
+    await guest.page.getByRole("button", { name: "Save", exact: true }).click();
+    await other
+      .getByText("Playing as Latest across tabs", { exact: true })
+      .waitFor();
+    expect(await draft.inputValue()).toBe("Unsaved in second tab");
+    await draft.press("Enter");
+    await other
+      .getByRole("alert")
+      .getByText(/nickname changed/)
+      .waitFor();
+    expect(await draft.inputValue()).toBe("Unsaved in second tab");
+    expect(
+      await (
+        await other.request.get(`${server.url}/profile`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).json(),
+    ).toMatchObject({ displayName: "Latest across tabs" });
+    await guest.page.close();
+    await other.close();
+    const reopened = await guest.openPage();
+    await reopened
+      .getByText("Playing as Latest across tabs", { exact: true })
+      .waitFor();
+  } finally {
+    await guest.close();
+  }
+});
+
+it("restores the latest preference after server restart before simultaneous tab entry", async () => {
+  const guest = await client(1440);
+  try {
+    await guest.page.getByText(/^Playing as /).waitFor();
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Remember after restart");
+    await guest.page.getByRole("button", { name: "Save", exact: true }).click();
+    await guest.page
+      .getByText("Playing as Remember after restart", { exact: true })
+      .waitFor();
+    const before = await (
+      await guest.page.request.get(`${server.url}/profile`, {
+        headers: { "x-client-id": guest.id },
+      })
+    ).json();
+    await guest.page.close();
+    await server.restart();
+    const [first, second] = await Promise.all([
+      guest.openPage(),
+      guest.openPage(),
+    ]);
+    for (const page of [first, second])
+      await page
+        .getByText("Playing as Remember after restart", { exact: true })
+        .waitFor();
+    const after = await (
+      await first.request.get(`${server.url}/profile`, {
+        headers: { "x-client-id": guest.id },
+      })
+    ).json();
+    expect(after.generation).not.toBe(before.generation);
+    expect(after.revision).toBe(0);
+    const stale = await first.request.patch(`${server.url}/profile`, {
+      headers: { "x-client-id": guest.id },
+      data: {
+        displayName: "Old generation",
+        base: { generation: before.generation, revision: before.revision },
+      },
+    });
+    expect(stale.status()).toBe(409);
+    await first.getByRole("button", { name: /Create a Game/ }).click();
+    await first.getByRole("heading", { name: /^Room #/ }).waitFor();
+    await first
+      .getByText("Remember after restart (you)", { exact: true })
+      .waitFor();
+    const room = await (
+      await first.request.get(
+        `${server.url}/rooms/by-slug/${new URL(first.url()).pathname.split("/").pop()}`,
+        { headers: { "x-client-id": guest.id } },
+      )
+    ).json();
+    expect(room.players).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: guest.id,
+          displayName: "Remember after restart",
+        }),
+      ]),
+    );
+  } finally {
+    await guest.close();
+  }
+}, 15000);
+
+it("keeps the remembered nickname recoverable when restoration fails after restart", async () => {
+  const guest = await client(1440, "Retained on failure");
+  try {
+    await guest.page
+      .getByText("Playing as Retained on failure", { exact: true })
+      .waitFor();
+    await guest.page.close();
+    await server.restart();
+    await guest.page
+      .context()
+      .route(`${server.url}/profile`, (route) => route.abort("failed"));
+    const reopened = await guest.openPage();
+    await reopened
+      .getByRole("alert")
+      .getByText(/Couldn't load your nickname/)
+      .waitFor();
+    await guest.page.context().unroute(`${server.url}/profile`);
+    await reopened.getByRole("button", { name: /Create a Game/ }).click();
+    await reopened
+      .getByText("Retained on failure (you)", { exact: true })
+      .waitFor();
+    expect(
+      await (
+        await reopened.request.get(`${server.url}/profile`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).json(),
+    ).toMatchObject({ displayName: "Retained on failure" });
+  } finally {
+    await guest.close();
+  }
+}, 15000);
+
+it("keeps a new-generation confirmation when a reopened tab cannot update old stored data", async () => {
+  const guest = await client(1440, "Old stored name");
+  try {
+    await guest.page
+      .getByText("Playing as Old stored name", { exact: true })
+      .waitFor();
+    await guest.page.close();
+    await server.restart();
+    await guest.page.context().addInitScript(blockNicknameStorageWrites);
+    const reopened = await guest.openPage();
+    await reopened
+      .getByText("Playing as Old stored name", { exact: true })
+      .waitFor();
+    await reopened.getByRole("button", { name: "Edit nickname" }).click();
+    await reopened
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Newest without storage");
+    await reopened.getByRole("button", { name: "Save", exact: true }).click();
+    await reopened
+      .getByText("Playing as Newest without storage", { exact: true })
+      .waitFor();
+    expect(
+      await (
+        await reopened.request.get(`${server.url}/profile`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).json(),
+    ).toMatchObject({ displayName: "Newest without storage" });
+  } finally {
+    await guest.close();
+  }
+}, 15000);
+
+it("queues a save behind a delayed initialization without restoring its older response", async () => {
+  const guest = await client(1440);
+  let release = () => {};
+  try {
+    await guest.page.getByText(/^Playing as /).waitFor();
+    const delay = await delayProfileResponse(guest.page.context(), "POST");
+    release = delay.release;
+    const opening = guest.openPage();
+    await delay.intercepted;
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("After delayed read");
+    await guest.page.getByRole("button", { name: "Save", exact: true }).click();
+    await guest.page
+      .getByRole("button", { name: "Saving...", exact: true })
+      .waitFor();
+    release();
+    const other = await opening;
+    await other
+      .getByText("Playing as After delayed read", { exact: true })
+      .waitFor();
+    await guest.page
+      .getByText("Playing as After delayed read", { exact: true })
+      .waitFor();
+    await guest.page.context().unroute(`${server.url}/profile`);
+    await other.close();
+    await guest.page.close();
+    const reopened = await guest.openPage();
+    await reopened
+      .getByText("Playing as After delayed read", { exact: true })
+      .waitFor();
+  } finally {
+    release();
+    await guest.close();
+  }
+}, 15000);
+
+it("ignores an older save response after a stale tab reviews and confirms a newer draft", async () => {
+  const guest = await client(1440);
+  let release = () => {};
+  try {
+    await guest.page.getByText(/^Playing as /).waitFor();
+    const other = await guest.openPage();
+    await other.getByText(/^Playing as /).waitFor();
+    for (const page of [guest.page, other])
+      await page.getByRole("button", { name: "Edit nickname" }).click();
+    const delay = await delayProfileResponse(guest.page, "PATCH");
+    release = delay.release;
+    await guest.page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Delayed accepted name");
+    await guest.page.getByRole("button", { name: "Save", exact: true }).click();
+    await delay.intercepted;
+    const input = other.getByRole("textbox", { name: "Nickname", exact: true });
+    await input.fill("Newer reviewed name");
+    await input.press("Enter");
+    await other
+      .getByRole("alert")
+      .getByText(/nickname changed/)
+      .waitFor();
+    await other
+      .getByText("Playing as Delayed accepted name", { exact: true })
+      .waitFor();
+    expect(await input.inputValue()).toBe("Newer reviewed name");
+    await input.press("Enter");
+    await other
+      .getByText("Playing as Newer reviewed name", { exact: true })
+      .waitFor();
+    release();
+    await guest.page.getByRole("button", { name: "Edit nickname" }).waitFor();
+    await guest.page
+      .getByText("Playing as Newer reviewed name", { exact: true })
+      .waitFor();
+    await guest.page.close();
+    await other.close();
+    const reopened = await guest.openPage();
+    await reopened
+      .getByText("Playing as Newer reviewed name", { exact: true })
+      .waitFor();
+  } finally {
+    release();
+    await guest.close();
+  }
+}, 15000);
+
+it("ignores a delayed save from a previous server generation", async () => {
+  const guest = await client(1440, "Before restart");
+  let release = () => {};
+  try {
+    await guest.page
+      .getByText("Playing as Before restart", { exact: true })
+      .waitFor();
+    const delay = await delayProfileResponse(guest.page, "PATCH");
+    release = delay.release;
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Lost with old server");
+    await guest.page.getByRole("button", { name: "Save", exact: true }).click();
+    await delay.intercepted;
+    await server.restart();
+    const other = await guest.openPage();
+    await other
+      .getByText("Playing as Before restart", { exact: true })
+      .waitFor();
+    await other.getByRole("button", { name: "Edit nickname" }).click();
+    await other
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Confirmed on new server");
+    await other.getByRole("button", { name: "Save", exact: true }).click();
+    await other
+      .getByText("Playing as Confirmed on new server", { exact: true })
+      .waitFor();
+    release();
+    await guest.page.getByRole("button", { name: "Edit nickname" }).waitFor();
+    await guest.page
+      .getByText("Playing as Confirmed on new server", { exact: true })
+      .waitFor();
+    await guest.page.close();
+    await other.close();
+    const reopened = await guest.openPage();
+    await reopened
+      .getByText("Playing as Confirmed on new server", { exact: true })
+      .waitFor();
+  } finally {
+    release();
+    await guest.close();
+  }
+}, 15000);
+
+it("restores an invite nickname when initialization delivery spans a server restart", async () => {
+  const guest = await client(1440, "Restore before invite");
+  let release = () => {};
+  try {
+    await guest.page
+      .getByText("Playing as Restore before invite", { exact: true })
+      .waitFor();
+    await guest.page.close();
+    const delay = await delayProfileResponse(guest.page.context(), "POST");
+    release = delay.release;
+    const opening = guest.openPage("/room/restart-invite");
+    await delay.intercepted;
+    await server.restart();
+    release();
+    const invite = await opening;
+    await invite
+      .getByText("Restore before invite (you)", { exact: true })
+      .waitFor();
+    expect(
+      await (
+        await invite.request.get(`${server.url}/profile`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).json(),
+    ).toMatchObject({ displayName: "Restore before invite" });
+  } finally {
+    release();
+    await guest.close();
+  }
+}, 15000);
+
+it("restores the confirmed nickname when Lobby Shuffle runs after a server restart", async () => {
+  const guest = await client(1440, "Remember through Shuffle");
+  let release = () => {};
+  try {
+    await guest.page
+      .getByText("Playing as Remember through Shuffle", { exact: true })
+      .waitFor();
+    await guest.page.getByRole("button", { name: /Create a Game/ }).click();
+    await guest.page
+      .getByText("Remember through Shuffle (you)", { exact: true })
+      .waitFor();
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    let started = () => {};
+    const renewing = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await guest.page.route(
+      `${server.url}/rooms/*/socket-token`,
+      async (route) => {
+        started();
+        await delivery;
+        await route.abort("failed").catch(() => {});
+      },
+    );
+    await server.restart();
+    await renewing;
+    await guest.page
+      .getByRole("button", { name: "Shuffle", exact: true })
+      .click();
+    await guest.page
+      .getByRole("button", { name: "Shuffle", exact: true })
+      .waitFor();
+    const home = await guest.openPage();
+    await home
+      .getByText("Playing as Remember through Shuffle", { exact: true })
+      .waitFor();
+    expect(
+      await (
+        await home.request.get(`${server.url}/profile`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).json(),
+    ).toMatchObject({ displayName: "Remember through Shuffle" });
+  } finally {
+    release();
+    await guest.close();
+  }
+}, 15000);
 
 it.each([1440, 390])(
   "chooses and remembers a confirmed nickname at %ipx",
@@ -551,60 +1075,65 @@ it("handles exhausted generated names across joined Lobbies and explains a confl
   }
 }, 20_000);
 
-it("ignores a late Lobby save after departure and retains a newer confirmed browser preference", async () => {
-  const guest = await client(1440, "Moki");
-  const page = guest.page;
-  let release!: () => void;
-  const delivery = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  try {
-    await page.getByRole("button", { name: /Create a Game/ }).click();
-    await page.waitForURL("**/room/**");
-    await page.getByRole("button", { name: "Edit nickname" }).click();
-    let firstSave = true;
-    await page.route(`${server.url}/profile`, async (route) => {
-      if (route.request().method() !== "PATCH" || !firstSave)
-        return route.continue();
-      firstSave = false;
-      const response = await route.fetch();
-      await delivery;
-      await route.fulfill({ response });
+it.each([false, true])(
+  "ignores a late Lobby save after departure with failed storage writes=%s",
+  async (failStorageWrites) => {
+    const guest = await client(1440, "Moki");
+    const page = guest.page;
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    await page
-      .getByRole("textbox", { name: "Nickname", exact: true })
-      .fill("Zibble");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
-    await page.getByText("Zibble (you)", { exact: true }).waitFor();
-    await page.getByTitle("Exit room").click();
-    await page.getByText("Playing as Zibble", { exact: true }).waitFor();
-    await page.getByRole("button", { name: "Edit nickname" }).click();
-    await page
-      .getByRole("textbox", { name: "Nickname", exact: true })
-      .fill("Fizzi");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
-    await page.getByText("Playing as Fizzi", { exact: true }).waitFor();
-    release();
-    await page.waitForTimeout(100);
-    expect(
-      await page.getByText("Playing as Fizzi", { exact: true }).isVisible(),
-    ).toBe(true);
-    expect(
+    try {
+      await page.getByRole("button", { name: /Create a Game/ }).click();
+      await page.waitForURL("**/room/**");
+      await page.getByRole("button", { name: "Edit nickname" }).click();
+      let firstSave = true;
+      await page.route(`${server.url}/profile`, async (route) => {
+        if (route.request().method() !== "PATCH" || !firstSave)
+          return route.continue();
+        firstSave = false;
+        const response = await route.fetch();
+        await delivery;
+        await route.fulfill({ response });
+      });
       await page
         .getByRole("textbox", { name: "Nickname", exact: true })
-        .count(),
-    ).toBe(0);
-    expect(
-      await page.evaluate(
-        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
-        guest.id,
-      ),
-    ).toBe("Fizzi");
-  } finally {
-    release();
-    await guest.close();
-  }
-}, 20_000);
+        .fill("Zibble");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByText("Zibble (you)", { exact: true }).waitFor();
+      await page.getByTitle("Exit room").click();
+      await page.getByText("Playing as Zibble", { exact: true }).waitFor();
+      if (failStorageWrites) await page.evaluate(blockNicknameStorageWrites);
+      await page.getByRole("button", { name: "Edit nickname" }).click();
+      await page
+        .getByRole("textbox", { name: "Nickname", exact: true })
+        .fill("Fizzi");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByText("Playing as Fizzi", { exact: true }).waitFor();
+      release();
+      await page.waitForTimeout(100);
+      expect(
+        await page.getByText("Playing as Fizzi", { exact: true }).isVisible(),
+      ).toBe(true);
+      expect(
+        await page
+          .getByRole("textbox", { name: "Nickname", exact: true })
+          .count(),
+      ).toBe(0);
+      expect(
+        await page.evaluate(
+          (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+          guest.id,
+        ),
+      ).toBe(failStorageWrites ? "Zibble" : "Fizzi");
+    } finally {
+      release();
+      await guest.close();
+    }
+  },
+  20_000,
+);
 
 it.each(["before", "after"] as const)(
   "discards a delayed Lobby save accepted %s match start",
@@ -673,12 +1202,14 @@ it.each(["before", "after"] as const)(
           .getByRole("textbox", { name: "Nickname", exact: true })
           .count(),
       ).toBe(0);
-      expect(
-        await guest.page.evaluate(
-          (id) => localStorage.getItem(`montoncito:nickname:${id}`),
-          guest.id,
-        ),
-      ).toBe("Moki");
+      await vi.waitFor(async () =>
+        expect(
+          await guest.page.evaluate(
+            (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+            guest.id,
+          ),
+        ).toBe("Zibble"),
+      );
       const home = await guest.page.context().newPage();
       await home.goto("http://localhost:4173/");
       await home.addStyleTag({ content: css });
@@ -1149,7 +1680,7 @@ it("checks unresolved admission before retrying Save after the match starts", as
       },
     );
     await guest.page.route(`${server.url}/profile`, async (route) => {
-      if (route.request().method() === "GET")
+      if (["GET", "POST"].includes(route.request().method()))
         await route.fulfill({
           status: 503,
           contentType: "application/json",

@@ -52,24 +52,53 @@ import WaitingRoomPage from "./page";
 import { ApiHttpError } from "@/lib/api";
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "navigator",
+    Object.assign(Object.create(navigator), {
+      locks: {
+        request: async (_name: string, callback: () => Promise<unknown>) =>
+          callback(),
+      },
+    }),
+  );
+  localStorage.clear();
   Element.prototype.scrollIntoView = vi.fn();
   harness.handler = undefined;
-  harness.apiFetch.mockReset().mockImplementation(async (url: string) => ({
-    id: "room-1",
-    slug: "sample-room",
-    ownerId: "player-1",
-    status: "open",
-    visibility: "public",
-    maxPlayers: 4,
-    players: [
-      { id: "player-1", displayName: "Alice", isOwner: true, isReady: false },
-    ],
-    gameConfig: { discardPiles: 3 },
-    createdAt: "2024-01-01",
-    ...(url.endsWith("/join") ? { wsJoinToken: "token" } : {}),
-  }));
+  harness.apiFetch.mockReset().mockImplementation(async (url: string) =>
+    url === "/profile"
+      ? {
+          clientId: "player-1",
+          displayName: "Alice",
+          generation: "bd791ffd-3a8c-4bca-8a97-fd20e10925dc",
+          revision: 0,
+          suggestions: [],
+          updatedAt: "2024-01-01",
+        }
+      : {
+          id: "room-1",
+          slug: "sample-room",
+          ownerId: "player-1",
+          status: "open",
+          visibility: "public",
+          maxPlayers: 4,
+          players: [
+            {
+              id: "player-1",
+              displayName: "Alice",
+              isOwner: true,
+              isReady: false,
+            },
+          ],
+          gameConfig: { discardPiles: 3 },
+          createdAt: "2024-01-01",
+          ...(url.endsWith("/join") ? { wsJoinToken: "token" } : {}),
+        },
+  );
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 it("shows recovered Lobby chat with sender names and current-player highlighting", async () => {
   render(<WaitingRoomPage />);

@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { randomInt } from 'crypto';
+import { ConflictException, Injectable } from '@nestjs/common';
+import { randomInt, randomUUID } from 'crypto';
 
 export const NICKNAMES = [
   'Boppo',
@@ -59,11 +59,40 @@ export type Profile = {
   displayName: string;
   createdAt: string;
   updatedAt: string;
+  generation: string;
+  revision: number;
 };
 
 @Injectable()
 export class ProfilesService {
   private readonly profiles = new Map<string, Profile>();
+  private readonly generation = randomUUID();
+
+  public assertGeneration(clientId: string, generation: string) {
+    const current = this.get(clientId);
+    if (!current || current.generation !== generation)
+      throw new ConflictException({
+        code: 'STALE_PROFILE_GENERATION',
+        message: 'Initialize your nickname again before entering a Lobby.',
+      });
+  }
+
+  public assertCurrent(
+    clientId: string,
+    base?: Pick<Profile, 'generation' | 'revision'>,
+  ) {
+    if (!base) return;
+    const current = this.get(clientId);
+    if (
+      !current ||
+      base.generation !== current.generation ||
+      base.revision !== current.revision
+    )
+      throw new ConflictException({
+        code: 'STALE_PROFILE',
+        message: 'Your nickname changed. Review the confirmed name and retry.',
+      });
+  }
 
   public get(clientId: string): Profile | undefined {
     return this.profiles.get(clientId);
@@ -80,6 +109,8 @@ export class ProfilesService {
       displayName: temporaryName,
       createdAt: now,
       updatedAt: now,
+      generation: this.generation,
+      revision: 0,
     };
     this.profiles.set(clientId, prof);
     return prof;
@@ -89,16 +120,22 @@ export class ProfilesService {
     const now = new Date().toISOString();
     const current = this.profiles.get(clientId);
     if (current) {
-      current.displayName = displayName;
-      current.updatedAt = now;
-      this.profiles.set(clientId, current);
-      return current;
+      const updated = {
+        ...current,
+        displayName,
+        updatedAt: now,
+        revision: current.revision + 1,
+      };
+      this.profiles.set(clientId, updated);
+      return updated;
     }
     const prof: Profile = {
       clientId,
       displayName,
       createdAt: now,
       updatedAt: now,
+      generation: this.generation,
+      revision: 0,
     };
     this.profiles.set(clientId, prof);
     return prof;

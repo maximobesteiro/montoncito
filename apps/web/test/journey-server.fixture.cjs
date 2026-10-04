@@ -9,7 +9,7 @@ const { IoAdapter } = serverRequire("@nestjs/platform-socket.io");
 const { AppModule } = serverRequire("./dist/app.module.js");
 const { GameService } = serverRequire("./dist/game/game.service.js");
 
-exports.start = async () => {
+exports.start = async (port = 0) => {
   const app = await NestFactory.create(AppModule, { logger: false });
   app.useWebSocketAdapter(new IoAdapter(app));
   app.enableCors({ origin: true });
@@ -50,8 +50,8 @@ exports.start = async () => {
     }
     return game;
   };
-  await app.listen(0, "127.0.0.1");
-  return {
+  await app.listen(port, "127.0.0.1");
+  const fixture = {
     url: await app.getUrl(),
     scenario: (next) => {
       if (!["seeded", "controlled", "fallback"].includes(next)) {
@@ -60,5 +60,13 @@ exports.start = async () => {
       scenario = next;
     },
     close: () => app.close(),
+    restart: async () => {
+      const currentPort = new URL(fixture.url).port;
+      await fixture.close();
+      const replacement = await exports.start(Number(currentPort));
+      fixture.scenario = replacement.scenario;
+      fixture.close = replacement.close;
+    },
   };
+  return fixture;
 };

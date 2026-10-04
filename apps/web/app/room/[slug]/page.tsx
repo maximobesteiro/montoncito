@@ -13,6 +13,8 @@ import {
   initializeGuestProfile,
   saveGuestNickname,
   rememberGuestProfile,
+  subscribeGuestProfile,
+  withGuestProfileRecovery,
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
@@ -65,6 +67,7 @@ export default function WaitingRoomPage() {
     null,
   );
   const [admissionDraft, setAdmissionDraft] = useState("");
+  useEffect(() => subscribeGuestProfile(setAdmissionProfile), []);
   const [needsNickname, setNeedsNickname] = useState(false);
   const [admitted, setAdmitted] = useState(false);
   const [admissionAttempt, setAdmissionAttempt] = useState(0);
@@ -110,16 +113,17 @@ export default function WaitingRoomPage() {
     }
   }, [router, sanitizedSlug, slug]);
 
+  const roomId = room?.id;
   const refetchRoom = useCallback(async () => {
-    if (!clientId) return;
+    if (!clientId || !roomId) return;
     const revision = liveRoomRevision.current;
-    const view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
+    const view = await apiFetch<RoomView>(`/rooms/${roomId}`, {
       method: "GET",
       clientId,
     });
     if (revision === liveRoomRevision.current) setRoom(view);
     return view;
-  }, [clientId, sanitizedSlug]);
+  }, [clientId, roomId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,15 +137,20 @@ export default function WaitingRoomPage() {
       setRoom(null);
 
       try {
-        const profile = await initializeGuestProfile(clientId);
+        let profile = await initializeGuestProfile(clientId);
         if (cancelled) return;
         setSuggestions(profile.suggestions);
         setAdmissionProfile(profile);
         // 1) Resolve room by slug (for deep-link support)
-        let view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
-          method: "GET",
-          clientId,
-        });
+        const resolved = await withGuestProfileRecovery(profile, (current) =>
+          apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
+            method: "GET",
+            clientId,
+            headers: { "x-profile-generation": current.generation },
+          }),
+        );
+        profile = resolved.profile;
+        let view = resolved.value;
 
         if (cancelled) return;
         setRoom(view);
@@ -178,7 +187,14 @@ export default function WaitingRoomPage() {
             profile: confirmedProfile,
             ...joinedRoom
           } = joinRes;
-          if (confirmedProfile) rememberGuestProfile(confirmedProfile);
+          if (confirmedProfile) {
+            setAdmissionProfile(confirmedProfile);
+            joinedRoom.players = joinedRoom.players.map((player) =>
+              player.id === clientId
+                ? { ...player, displayName: confirmedProfile.displayName }
+                : player,
+            );
+          }
           setNeedsNickname(false);
           setAdmitted(true);
           setError(null);
@@ -228,10 +244,10 @@ export default function WaitingRoomPage() {
                 clientId,
               });
               const revision = liveRoomRevision.current;
-              const current = await apiFetch<RoomView>(
-                `/rooms/by-slug/${sanitizedSlug}`,
-                { method: "GET", clientId },
-              );
+              const current = await apiFetch<RoomView>(`/rooms/${view.id}`, {
+                method: "GET",
+                clientId,
+              });
               if (!cancelled && revision === liveRoomRevision.current)
                 setRoom(current);
               return renewed;
@@ -249,12 +265,10 @@ export default function WaitingRoomPage() {
         };
         const reconcileAdmission = async () => {
           try {
-            const confirmed = await apiFetch<GuestProfile>("/profile", {
-              clientId,
-            });
+            const confirmed = await initializeGuestProfile(clientId);
             if (cancelled) return null;
             setAdmissionProfile(confirmed);
-            rememberGuestProfile(confirmed);
+            profile = confirmed;
             const current = await apiFetch<RoomView>(`/rooms/${view.id}`, {
               clientId,
             });
@@ -294,15 +308,46 @@ export default function WaitingRoomPage() {
             const joined = await apiFetch<Admission>(`/rooms/${view.id}/join`, {
               method: "POST",
               clientId,
+              headers: { "x-profile-generation": profile.generation },
               body: JSON.stringify(
-                draft === undefined ? {} : { displayName: draft },
+                draft === undefined
+                  ? {}
+                  : {
+                      displayName: draft,
+                      base: {
+                        generation: profile.generation,
+                        revision: profile.revision,
+                      },
+                    },
               ),
             });
+            if (joined.profile)
+              joined.profile = await rememberGuestProfile(joined.profile);
             if (cancelled) return;
             unresolvedAdmission.current = null;
             connectMembership(joined);
           } catch (failure) {
             if (cancelled) return;
+            if (
+              failure instanceof ApiHttpError &&
+              failure.code === "STALE_PROFILE_GENERATION"
+            ) {
+              profile = await initializeGuestProfile(clientId);
+              setAdmissionProfile(profile);
+              throw new Error(
+                "The server restarted. Your nickname was restored. Retry entry to choose a current Lobby.",
+              );
+            }
+            if (
+              failure instanceof ApiHttpError &&
+              failure.code === "STALE_PROFILE"
+            ) {
+              profile = await initializeGuestProfile(clientId);
+              setAdmissionProfile(profile);
+              throw new Error(
+                "Your nickname changed. Review the confirmed name and retry your draft.",
+              );
+            }
             if (
               failure instanceof ApiHttpError &&
               failure.code === "NICKNAME_CONFLICT"
@@ -389,7 +434,6 @@ export default function WaitingRoomPage() {
     };
   }, [
     clientId,
-    refetchRoom,
     router,
     sanitizedSlug,
     showToast,
@@ -711,21 +755,20 @@ export default function WaitingRoomPage() {
                           <div className="w-full min-w-0">
                             <NicknameEditor
                               nickname={p.displayName}
+                              baseProfile={admissionProfile ?? undefined}
                               suggestions={suggestions}
                               loadSuggestions={async () => {
-                                const profile = await apiFetch<GuestProfile>(
-                                  "/profile",
-                                  { clientId },
-                                );
+                                const profile =
+                                  await initializeGuestProfile(clientId);
                                 return profile.suggestions;
                               }}
                               onCancel={invalidateNicknameEditor}
-                              onSave={async (draft) => {
+                              onSave={async (draft, base) => {
                                 const session = nicknameSession.current;
                                 const isCurrent = () =>
                                   nicknameSession.current === session;
                                 try {
-                                  await saveGuestNickname(draft, isCurrent);
+                                  await saveGuestNickname(draft, base);
                                   if (isCurrent()) invalidateNicknameEditor();
                                 } catch (error) {
                                   if (isCurrent()) throw error;
