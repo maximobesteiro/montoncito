@@ -70,6 +70,7 @@ export class ProfilesController {
     const parsed = UpsertProfileSchema.safeParse(body ?? {});
     if (!parsed.success)
       throw new BadRequestException(parsed.error.issues[0].message);
+    this.profiles.assertCurrent(clientId, parsed.data.base);
     const { profile: prof, lobbies } = this.rooms.renameGuest(
       clientId,
       parsed.data.displayName,
@@ -80,6 +81,8 @@ export class ProfilesController {
       clientId: prof.clientId,
       displayName: prof.displayName,
       updatedAt: prof.updatedAt,
+      generation: prof.generation,
+      revision: prof.revision,
       suggestions: this.rooms.nicknameSuggestions(clientId),
     };
   }

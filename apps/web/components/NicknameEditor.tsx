@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { nicknameValidationError } from "@/lib/guest-profile";
+import {
+  nicknameValidationError,
+  StaleGuestProfileError,
+  type GuestProfile,
+} from "@/lib/guest-profile";
 
 type NicknameEditorProps = {
   nickname: string;
   suggestions: readonly string[];
-  onSave: (draft: string) => Promise<void>;
+  onSave: (draft: string, base?: GuestProfile) => Promise<void>;
+  baseProfile?: GuestProfile;
   onCancel: () => void;
   loadSuggestions?: () => Promise<readonly string[]>;
 };
@@ -17,9 +22,11 @@ export function NicknameEditor({
   onSave,
   onCancel,
   loadSuggestions,
+  baseProfile,
 }: NicknameEditorProps) {
   const id = useId();
   const [draft, setDraft] = useState(nickname);
+  const base = useRef(baseProfile);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
@@ -44,9 +51,11 @@ export function NicknameEditor({
     setSaving(true);
     setError(null);
     try {
-      await onSave(draft);
+      await onSave(draft, base.current);
     } catch (failure) {
       if (!mounted.current) return;
+      if (failure instanceof StaleGuestProfileError && failure.confirmedProfile)
+        base.current = failure.confirmedProfile;
       setError(
         failure instanceof Error
           ? failure.message

@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
 export const UpsertProfileSchema = z.object({
+  base: z
+    .object({
+      generation: z.string().uuid(),
+      revision: z.number().int().nonnegative(),
+    })
+    .optional(),
   displayName: z
     .string()
     .trim()

@@ -2,6 +2,8 @@
 
 Coverage for [#65](https://github.com/maximobesteiro/montoncito/issues/65), the homepage nickname slice [#88](https://github.com/maximobesteiro/montoncito/issues/88), live Lobby nicknames [#89](https://github.com/maximobesteiro/montoncito/issues/89), and fixed match identities [#91](https://github.com/maximobesteiro/montoncito/issues/91).
 
+Same-browser nickname consistency and restart recovery cover [#92](https://github.com/maximobesteiro/montoncito/issues/92).
+
 ## Run
 
 ```sh
@@ -31,6 +33,12 @@ The nickname journeys exercise the actual homepage/editor and real profile API a
 Live Lobby journeys verify own-row-only editing for the host and a ready guest, removal of visible guest IDs, two-client rename delivery, capitalization conflicts, retained rejected drafts and confirmed names, and readiness preservation. Generated suggestions are exhausted through real REST memberships to verify custom-name recovery and conflict feedback for another joined Lobby. Controlled response delays verify departure and match-start navigation discard pending editor results and preserve newer browser preferences and match snapshots.
 
 Additional delayed readiness and settings responses verify that older REST rosters cannot overwrite names already delivered through WebSocket updates. Suggestion coverage distinguishes an exhausted pool from a pool whose only available name is already the draft.
+
+Shared-context pages verify confirmed-name synchronization without changing another tab's draft, stale-save feedback and explicit retry, close/reopen persistence, delayed initialization and out-of-order save responses. Restart coverage closes and recreates the real Nest application on the same port with retained browser data, initializes simultaneous tabs, rejects an old-generation save, and creates a new Lobby under the recovered nickname. Public API checks verify simultaneous restoration, competing saves with the same revision, stale admission rejection without membership changes, and initialization that preserves the winning name. The fixture adds no recovery endpoint and does not restore rooms or games.
+
+Additional journeys verify failed restoration can retry without losing the remembered name, a delayed initialization spanning restart restores the name before direct-invite admission, and a failed storage write cannot let an older delayed save replace the newest in-memory confirmation.
+
+Lobby Shuffle also uses shared initialization. A journey holds socket renewal pending across a server restart, shuffles an open editor, and verifies a fresh homepage and the public profile API retain the confirmed nickname.
 
 Match identity journeys at both widths start a match, open another Lobby in shared-storage browser tabs, rename there, and verify the original board and newly sent chat keep the captured name and Sequence number. Carried Lobby chat keeps its stored sender name. A subsequent Lobby and match use the new name. Delayed saves accepted before and after start verify navigation removes the editor, late responses cannot reopen it, and a fresh homepage recovers the accepted profile for future use.
 

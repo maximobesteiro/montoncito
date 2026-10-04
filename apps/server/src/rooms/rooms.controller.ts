@@ -33,8 +33,12 @@ export class RoomsController {
   ) {}
 
   @Post()
-  public create(@Headers('x-client-id') clientId: string | undefined) {
+  public create(
+    @Headers('x-client-id') clientId: string | undefined,
+    @Headers('x-profile-generation') generation?: string,
+  ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
+    if (generation) this.profiles.assertGeneration(clientId, generation);
     const room = this.rooms.create({ clientId });
 
     const wsJoinToken = this.createWsJoinToken(room.id, clientId);
@@ -52,9 +56,11 @@ export class RoomsController {
   public getBySlug(
     @Param('slug') slug: string,
     @Headers('x-client-id') clientId: string | undefined,
+    @Headers('x-profile-generation') generation?: string,
   ) {
     const cid = clientId;
     if (!cid) throw new Error('Missing X-Client-Id header');
+    if (generation) this.profiles.assertGeneration(cid, generation);
     const room = this.rooms.getOrCreateBySlug({ slug, clientId: cid });
     return this.rooms.toView(room);
   }
@@ -94,8 +100,10 @@ export class RoomsController {
     @Param('id') roomId: string,
     @Headers('x-client-id') clientId: string | undefined,
     @Body() body?: unknown,
+    @Headers('x-profile-generation') generation?: string,
   ) {
     if (!clientId) throw new Error('Missing X-Client-Id header');
+    if (generation) this.profiles.assertGeneration(clientId, generation);
     // Avoid broadcasting if this is an idempotent re-join.
     const alreadyMember = this.rooms
       .getById(roomId)
@@ -105,6 +113,8 @@ export class RoomsController {
     if (!parsed.success)
       throw new BadRequestException(parsed.error.issues[0].message);
     const wsJoinToken = this.createWsJoinToken(roomId, clientId);
+    if (!alreadyMember && parsed.data.displayName !== undefined)
+      this.profiles.assertCurrent(clientId, parsed.data.base);
     const room = this.rooms.join({ roomId, clientId, ...parsed.data });
 
     const roomView = this.rooms.toView(room);

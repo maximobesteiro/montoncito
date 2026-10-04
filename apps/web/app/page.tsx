@@ -9,6 +9,8 @@ import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import {
   initializeGuestProfile,
   saveGuestNickname,
+  subscribeGuestProfile,
+  withGuestProfileRecovery,
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
@@ -26,6 +28,7 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
+    const unsubscribe = subscribeGuestProfile(setProfile);
     void initializeGuestProfile()
       .then((value) => {
         if (!cancelled) setProfile(value);
@@ -36,6 +39,7 @@ export default function Home() {
       });
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
@@ -62,12 +66,17 @@ export default function Home() {
     setError(null);
     try {
       const clientId = getOrCreateClientId();
-      await initializeGuestProfile(clientId);
-      const created = await apiFetch<{ slug: string }>(`/rooms`, {
-        method: "POST",
-        clientId,
-        body: JSON.stringify({}),
-      });
+      const profile = await initializeGuestProfile(clientId);
+      const { value: created } = await withGuestProfileRecovery(
+        profile,
+        (current) =>
+          apiFetch<{ slug: string }>(`/rooms`, {
+            method: "POST",
+            clientId,
+            headers: { "x-profile-generation": current.generation },
+            body: JSON.stringify({}),
+          }),
+      );
       router.push(`/room/${created.slug}`);
     } catch {
       setError("Couldn't create a game. Please try again.");
@@ -104,10 +113,11 @@ export default function Home() {
               {editing && (
                 <NicknameEditor
                   nickname={profile.displayName}
+                  baseProfile={profile}
                   suggestions={profile.suggestions}
                   onCancel={() => setEditing(false)}
-                  onSave={async (draft) => {
-                    const saved = await saveGuestNickname(draft);
+                  onSave={async (draft, base) => {
+                    const saved = await saveGuestNickname(draft, base);
                     setProfile(saved);
                     setEditing(false);
                   }}
