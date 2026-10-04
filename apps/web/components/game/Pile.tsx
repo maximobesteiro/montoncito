@@ -1,21 +1,22 @@
 "use client";
 
 import type { Card as GameCard } from "@mont/core-game";
-import { peekTopCard } from "@mont/core-game";
-import { useId, useState, type ReactNode } from "react";
-import { Card, type CardSize } from "./Card";
+import { peekTopCard, removeTopCard } from "@mont/core-game";
+import { useId, useState, type CSSProperties, type ReactNode } from "react";
+import { Card, cardDimensions, type CardSize } from "./Card";
 
 const pileSizeConfig: Record<
   CardSize,
-  { width: number; height: number; offsetY: number }
+  { overlapOffset: number; stackOffset: number }
 > = {
-  xs: { width: 48, height: 64, offsetY: 18 },
-  sm: { width: 56, height: 80, offsetY: 18 },
-  md: { width: 72, height: 104, offsetY: 20 },
+  xs: { overlapOffset: 18, stackOffset: 3 },
+  sm: { overlapOffset: 18, stackOffset: 3 },
+  md: { overlapOffset: 20, stackOffset: 4 },
 };
 
 type PilePresentation =
   | { kind: "top" }
+  | { kind: "stacked"; coveredFaceUp: boolean }
   | {
       kind: "overlapping";
       collapsedVisibleCount: number;
@@ -57,7 +58,7 @@ export function Pile({
   emptyAriaLabel,
   onEmptyClick,
 }: PileProps) {
-  const config = pileSizeConfig[size];
+  const config = cardDimensions[size];
   const topCard = peekTopCard(cards);
 
   const EmptyElement = onEmptyClick ? "button" : "div";
@@ -101,9 +102,90 @@ export function Pile({
           faceUp={faceUp}
           top={top}
         />
+      ) : presentation.kind === "stacked" ? (
+        <StackedLayout
+          cards={cards}
+          size={size}
+          coveredFaceUp={presentation.coveredFaceUp}
+          coveredCardAriaLabel={coveredCardAriaLabel}
+          top={top}
+        />
       ) : (
         top
       )}
+    </div>
+  );
+}
+
+interface StackedLayoutProps {
+  cards: readonly GameCard[];
+  size: CardSize;
+  coveredFaceUp: boolean;
+  coveredCardAriaLabel?: (card: GameCard) => string;
+  top: ReactNode;
+}
+
+function StackedLayout({
+  cards,
+  size,
+  coveredFaceUp,
+  coveredCardAriaLabel,
+  top,
+}: StackedLayoutProps) {
+  const covered = removeTopCard(cards).pile.slice(-2);
+  const config = cardDimensions[size];
+  const offset = pileSizeConfig[size].stackOffset;
+  const topOffset = covered.length * offset;
+
+  return (
+    <div
+      className="relative"
+      style={{
+        width: config.width + topOffset,
+        height: config.height + topOffset,
+      }}
+    >
+      {covered.map((card, index) => (
+        <CoveredCard
+          key={card.id}
+          card={card}
+          size={size}
+          faceUp={coveredFaceUp}
+          ariaLabel={coveredCardAriaLabel?.(card)}
+          style={{
+            position: "absolute",
+            left: index * offset,
+            top: index * offset,
+          }}
+        />
+      ))}
+      <div style={{ position: "absolute", left: topOffset, top: topOffset }}>
+        {top}
+      </div>
+    </div>
+  );
+}
+
+function CoveredCard({
+  card,
+  size,
+  faceUp,
+  ariaLabel,
+  style,
+}: {
+  card: GameCard;
+  size: CardSize;
+  faceUp: boolean;
+  ariaLabel?: string;
+  style: CSSProperties;
+}) {
+  return (
+    <div
+      data-covered-card
+      style={style}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <Card card={card} size={size} faceUp={faceUp} ariaLabel={ariaLabel} />
     </div>
   );
 }
@@ -134,8 +216,10 @@ function OverlappingLayout({
   const visibleCards = showHistory
     ? cards
     : cards.slice(-Math.max(1, presentation.collapsedVisibleCount));
-  const config = pileSizeConfig[size];
-  const offset = showHistory ? config.height + 8 : config.offsetY;
+  const config = cardDimensions[size];
+  const offset = showHistory
+    ? config.height + 8
+    : pileSizeConfig[size].overlapOffset;
 
   return (
     <>
@@ -147,19 +231,15 @@ function OverlappingLayout({
           height: config.height + Math.max(0, visibleCards.length - 1) * offset,
         }}
       >
-        {visibleCards.slice(0, -1).map((card, index) => (
-          <div
+        {removeTopCard(visibleCards).pile.map((card, index) => (
+          <CoveredCard
             key={card.id}
+            card={card}
+            size={size}
+            faceUp={faceUp}
+            ariaLabel={coveredCardAriaLabel?.(card)}
             style={{ position: "absolute", top: index * offset }}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Card
-              card={card}
-              size={size}
-              faceUp={faceUp}
-              ariaLabel={coveredCardAriaLabel?.(card)}
-            />
-          </div>
+          />
         ))}
         <div
           style={{

@@ -7,6 +7,7 @@ import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 import { build } from "vite";
 import { denseBoardState } from "./dense-board.fixture";
+import type { Rank } from "@mont/core-game";
 
 const gameRoom = vi.hoisted(() => ({ view: {} as Record<string, unknown> }));
 vi.mock("next/navigation", () => ({
@@ -371,6 +372,153 @@ it.each([320, 390, 768, 1024, 1440])(
       expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
         { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 1 },
       ]);
+    } finally {
+      await page.close();
+    }
+  },
+  15_000,
+);
+
+it.each([320, 390, 768, 1024, 1440])(
+  "reserves capped Stock and Build stack offsets without clipping at %ipx",
+  async (width) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    page.setDefaultTimeout(3000);
+    try {
+      await mountChatPage(page);
+      let singleStockHeight = 0;
+      let singleBuildHeight = 0;
+      for (const { count, depth, offset } of [
+        { count: 0, depth: 0, offset: 0 },
+        { count: 1, depth: 0, offset: 0 },
+        { count: 2, depth: 1, offset: 4 },
+        { count: 3, depth: 2, offset: 8 },
+        { count: 8, depth: 2, offset: 8 },
+      ]) {
+        const state = denseBoardState(2);
+        const cards = Array.from({ length: count }, (_, index) => ({
+          kind: "standard" as const,
+          id: `stack-${index}`,
+          rank: (index + 1) as Rank,
+          suit: "Spades" as const,
+        }));
+        state.byId["player-1"]!.stock.faceDown = cards;
+        state.byId["player-1"]!.hand.cards = [{ kind: "joker", id: "wild" }];
+        state.center.buildPiles = [
+          { id: "stack", cards, nextRank: (count + 1) as Rank },
+        ];
+        await page.evaluate(
+          ({ state, seq }) => window.chatTest.update({ state, seq }),
+          { state, seq: count + 1 },
+        );
+        const stock = page.getByRole("group", {
+          name: "Your Stock",
+          exact: true,
+        });
+        await stock.getByText(`Stock (${count})`, { exact: true }).waitFor();
+        await page
+          .getByRole("button", { name: "Hand Joker", exact: true })
+          .click();
+        const build = page.getByRole("button", {
+          name: `Build pile stack, next ${count + 1}`,
+          exact: true,
+        });
+        const stockBounds = await box(stock);
+        const buildBounds = await box(build);
+        if (count === 1) {
+          singleStockHeight = stockBounds.height;
+          singleBuildHeight = buildBounds.height;
+        }
+        if (count > 1) {
+          expect(stockBounds.height - singleStockHeight).toBe(offset);
+          expect(buildBounds.height - singleBuildHeight).toBe(offset);
+        }
+        expect(
+          await stock.getByLabel("Covered Stock card", { exact: true }).count(),
+        ).toBe(depth);
+        expect(await build.getByLabel(/^Covered Build/).count()).toBe(depth);
+        for (const [pile, covered, top] of [
+          [
+            stock,
+            stock.getByLabel("Covered Stock card", { exact: true }),
+            stock.getByLabel(/^Stock top/),
+          ],
+          [
+            build,
+            build.getByLabel(/^Covered Build/),
+            build.getByLabel(/^Build top/),
+          ],
+        ] as const) {
+          const bounds = await box(pile);
+          if (!count) {
+            const empty = await box(pile.getByText("—", { exact: true }));
+            expect(empty.width).toBe(72);
+            expect(empty.height).toBe(104);
+            continue;
+          }
+          const topBounds = await box(top);
+          expect(topBounds.width).toBe(72);
+          expect(topBounds.height).toBe(104);
+          for (const card of [...(await covered.all()), top]) {
+            const cardBounds = await box(card);
+            expect(cardBounds.x).toBeGreaterThanOrEqual(bounds.x);
+            expect(cardBounds.x + cardBounds.width).toBeLessThanOrEqual(
+              bounds.x + bounds.width,
+            );
+            expect(cardBounds.y + cardBounds.height).toBeLessThanOrEqual(
+              bounds.y + bounds.height,
+            );
+            expect(cardBounds.x).toBeGreaterThanOrEqual(0);
+            expect(cardBounds.x + cardBounds.width).toBeLessThanOrEqual(width);
+          }
+          if (depth) {
+            const bottom = covered.first();
+            const bottomBounds = await box(bottom);
+            expect(topBounds.x - bottomBounds.x).toBe(offset);
+            expect(topBounds.y - bottomBounds.y).toBe(offset);
+            await bottom.evaluate((element) =>
+              element.scrollIntoView({ block: "center" }),
+            );
+            // Click the exposed corner, rather than the covered card's hidden center.
+            const corner = await box(bottom);
+            expect(
+              await bottom.evaluate((element) => {
+                const rect = element.getBoundingClientRect();
+                const hit = document.elementFromPoint(rect.x + 1, rect.y + 1);
+                return {
+                  exposed: element.contains(hit),
+                  card: element.getAttribute("aria-label"),
+                  hit: hit?.outerHTML.slice(0, 300),
+                };
+              }),
+            ).toMatchObject({ exposed: true });
+            await page.mouse.click(corner.x + 1, corner.y + 1);
+            expect(
+              await page.evaluate(() => window.chatTest.actions.length),
+            ).toBe(0);
+            expect(
+              await page
+                .getByRole("button", { name: "Hand Joker" })
+                .getAttribute("aria-pressed"),
+            ).toBe("true");
+          }
+          await top.scrollIntoViewIfNeeded();
+          expect(
+            await top.evaluate((element) => {
+              const rect = element.getBoundingClientRect();
+              return element.contains(
+                document.elementFromPoint(
+                  rect.x + rect.width / 2,
+                  rect.y + rect.height / 2,
+                ),
+              );
+            }),
+          ).toBe(true);
+        }
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBe(width);
+      }
     } finally {
       await page.close();
     }
