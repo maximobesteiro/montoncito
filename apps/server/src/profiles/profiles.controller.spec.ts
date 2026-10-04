@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProfilesController } from './profiles.controller';
 import { ProfilesService } from './profiles.service';
+import { RoomsService } from '../rooms/rooms.service';
+import { RoomsGateway } from '../ws/rooms.gateway';
 
 describe('ProfilesController', () => {
   let controller: ProfilesController;
@@ -24,6 +26,17 @@ describe('ProfilesController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ProfilesController],
       providers: [
+        {
+          provide: RoomsService,
+          useValue: {
+            renameGuest: (id: string, name: string) => ({
+              profile: mockProfilesService.setDisplayName!(id, name),
+              lobbies: [],
+            }),
+            nicknameSuggestions: () => [],
+          },
+        },
+        { provide: RoomsGateway, useValue: { emitRoomUpdated: jest.fn() } },
         {
           provide: ProfilesService,
           useValue: mockProfilesService,
@@ -52,6 +65,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'New Player',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -75,6 +89,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'Updated Player',
         updatedAt: '2024-01-01T01:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -111,6 +126,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'A',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -131,6 +147,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: longDisplayName,
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -150,6 +167,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: 'Player-123_Test!',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
 
@@ -169,6 +187,7 @@ describe('ProfilesController', () => {
         clientId: 'client-123',
         displayName: '玩家123',
         updatedAt: '2024-01-01T00:00:00.000Z',
+        suggestions: [],
       });
     });
   });

@@ -308,6 +308,366 @@ it("retains the draft and confirmed nickname on failure and prevents duplicate s
   }
 }, 20_000);
 
+it("edits only your Lobby row, delivers live renames, preserves readiness and rejects capitalization conflicts", async () => {
+  const host = await client(1440, "Boppo");
+  const guest = await client(390, "Moki");
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    await guest.page.getByRole("button", { name: /Join a Game/ }).click();
+    await guest.page.getByPlaceholder("Enter game ID").fill(slug);
+    await guest.page.getByRole("button", { name: "Confirm" }).click();
+    await guest.page.getByText("Moki (you)", { exact: true }).waitFor();
+    await host.page.getByText("Moki", { exact: true }).waitFor();
+    for (const player of [host, guest]) {
+      expect(
+        await player.page
+          .getByRole("button", { name: "Edit nickname" })
+          .count(),
+      ).toBe(1);
+      expect(
+        await player.page.getByText(player.id, { exact: true }).count(),
+      ).toBe(0);
+    }
+    const ready = guest.page.getByRole("checkbox", { name: "I'm Ready" });
+    await ready.click();
+    await host.page.locator('[title="Ready"]').waitFor();
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    const input = guest.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await input.fill(" boppo ");
+    await input.press("Enter");
+    await guest.page
+      .getByRole("alert")
+      .getByText(/already used in a Lobby/)
+      .waitFor();
+    expect(await input.inputValue()).toBe(" boppo ");
+    expect(await ready.isChecked()).toBe(true);
+    expect(await host.page.getByText("Moki", { exact: true }).isVisible()).toBe(
+      true,
+    );
+    expect(
+      await guest.page.getByText("Moki (you)", { exact: true }).isVisible(),
+    ).toBe(true);
+    await guest.page.getByRole("button", { name: "Shuffle" }).click();
+    await guest.page
+      .getByRole("button", { name: "Shuffle", exact: true })
+      .waitFor();
+    const suggestion = await input.inputValue();
+    expect(suggestion.toLowerCase()).not.toBe("boppo");
+    await input.fill(" 小 Zibble! ");
+    await input.press("Enter");
+    await host.page.getByText("小 Zibble!", { exact: true }).waitFor();
+    await guest.page.getByText("小 Zibble! (you)", { exact: true }).waitFor();
+    expect(await ready.isChecked()).toBe(true);
+    await host.page.getByRole("button", { name: "Edit nickname" }).click();
+    const hostInput = host.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await hostInput.fill("Host draft");
+    await hostInput.press("Escape");
+    await host.page.getByRole("button", { name: "Edit nickname" }).click();
+    expect(await hostInput.inputValue()).toBe("Boppo");
+    await hostInput.fill("Fizzi");
+    await hostInput.press("Enter");
+    await guest.page.getByText("Fizzi", { exact: true }).waitFor();
+    expect(host.errors).toEqual([]);
+    expect(guest.errors.filter((error) => !error.includes("409"))).toEqual([]);
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
+it.each(["ready", "settings"])(
+  "retains a live nickname after a delayed %s response",
+  async (operation) => {
+    const host = await client(1440, "Boppo");
+    const guest = await client(390, "Moki");
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      await host.page.getByRole("button", { name: /Create a Game/ }).click();
+      await host.page.waitForURL("**/room/**");
+      const slug = host.page.url().split("/").pop()!;
+      await guest.page.getByRole("button", { name: /Join a Game/ }).click();
+      await guest.page.getByPlaceholder("Enter game ID").fill(slug);
+      await guest.page.getByRole("button", { name: "Confirm" }).click();
+      await guest.page.getByText("Moki (you)", { exact: true }).waitFor();
+      const target = operation === "ready" ? guest : host;
+      const path =
+        operation === "ready"
+          ? `${server.url}/rooms/*/ready`
+          : `${server.url}/rooms/*`;
+      await target.page.route(path, async (route) => {
+        if (
+          route.request().method() !==
+          (operation === "ready" ? "POST" : "PATCH")
+        )
+          return route.continue();
+        const response = await route.fetch();
+        await delivery;
+        await route.fulfill({ response });
+      });
+      if (operation === "ready") {
+        await guest.page.getByRole("checkbox", { name: "I'm Ready" }).click();
+        await host.page.locator('[title="Ready"]').waitFor();
+      } else {
+        await host.page.getByRole("combobox").selectOption("private");
+        await vi.waitFor(async () =>
+          expect(await guest.page.getByRole("combobox").inputValue()).toBe(
+            "private",
+          ),
+        );
+      }
+      await target.page.getByRole("button", { name: "Edit nickname" }).click();
+      await target.page
+        .getByRole("textbox", { name: "Nickname", exact: true })
+        .fill("Zibble");
+      await target.page
+        .getByRole("button", { name: "Save", exact: true })
+        .click();
+      await target.page.getByText("Zibble (you)", { exact: true }).waitFor();
+      const completed = target.page.waitForResponse(
+        (response) =>
+          response.url().includes("/rooms/") &&
+          response.request().method() ===
+            (operation === "ready" ? "POST" : "PATCH"),
+      );
+      release();
+      await completed;
+      await target.page.waitForTimeout(50);
+      expect(
+        await target.page
+          .getByText("Zibble (you)", { exact: true })
+          .isVisible(),
+      ).toBe(true);
+      expect(
+        await target.page
+          .getByText(operation === "ready" ? "Moki (you)" : "Boppo (you)", {
+            exact: true,
+          })
+          .count(),
+      ).toBe(0);
+    } finally {
+      release();
+      await host.close();
+      await guest.close();
+    }
+  },
+  20_000,
+);
+
+it("handles exhausted generated names across joined Lobbies and explains a conflict in another Lobby", async () => {
+  const guest = await client(390, "Custom nickname");
+  const page = guest.page;
+  try {
+    await page.getByRole("button", { name: /Create a Game/ }).click();
+    await page.waitForURL("**/room/**");
+    await page.getByText("Custom nickname (you)", { exact: true }).waitFor();
+    const profile = await (
+      await page.request.get(`${server.url}/profile`, {
+        headers: { "x-client-id": guest.id },
+      })
+    ).json();
+    for (const name of profile.suggestions as string[]) {
+      if (name === "Moki") continue;
+      const id = crypto.randomUUID();
+      const headers = { "x-client-id": id };
+      await page.request.patch(`${server.url}/profile`, {
+        headers,
+        data: { displayName: name },
+      });
+      const room = await (
+        await page.request.post(`${server.url}/rooms`, { headers })
+      ).json();
+      const joined = await page.request.post(
+        `${server.url}/rooms/${room.id}/join`,
+        { headers: { "x-client-id": guest.id } },
+      );
+      expect(joined.status()).toBe(201);
+    }
+    await page.getByRole("button", { name: "Edit nickname" }).click();
+    const input = page.getByRole("textbox", { name: "Nickname", exact: true });
+    await input.fill("Moki");
+    await page.getByRole("button", { name: "Shuffle" }).click();
+    await page
+      .getByRole("alert")
+      .getByText(
+        "Your draft is the only available generated nickname. You can save it or enter your own.",
+      )
+      .waitFor();
+    expect(await input.inputValue()).toBe("Moki");
+    const otherId = crypto.randomUUID();
+    const otherHeaders = { "x-client-id": otherId };
+    await page.request.patch(`${server.url}/profile`, {
+      headers: otherHeaders,
+      data: { displayName: "Moki" },
+    });
+    const lastRoom = await (
+      await page.request.post(`${server.url}/rooms`, { headers: otherHeaders })
+    ).json();
+    expect(
+      (
+        await page.request.post(`${server.url}/rooms/${lastRoom.id}/join`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).status(),
+    ).toBe(201);
+    await input.fill("Custom nickname");
+    await page.getByRole("button", { name: "Shuffle" }).click();
+    await page
+      .getByRole("alert")
+      .getByText(
+        "No generated nicknames are available. Enter your own nickname.",
+      )
+      .waitFor();
+    expect(await input.inputValue()).toBe("Custom nickname");
+    await input.fill("moki");
+    await input.press("Enter");
+    await page
+      .getByRole("alert")
+      .getByText(/It may be another Lobby/)
+      .waitFor();
+    expect(await input.inputValue()).toBe("moki");
+    expect(
+      await page
+        .getByText("Custom nickname (you)", { exact: true })
+        .isVisible(),
+    ).toBe(true);
+    await input.fill("A custom replacement!");
+    await input.press("Enter");
+    await page
+      .getByText("A custom replacement! (you)", { exact: true })
+      .waitFor();
+  } finally {
+    await guest.close();
+  }
+}, 20_000);
+
+it("ignores a late Lobby save after departure and retains a newer confirmed browser preference", async () => {
+  const guest = await client(1440, "Moki");
+  const page = guest.page;
+  let release!: () => void;
+  const delivery = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    await page.getByRole("button", { name: /Create a Game/ }).click();
+    await page.waitForURL("**/room/**");
+    await page.getByRole("button", { name: "Edit nickname" }).click();
+    let firstSave = true;
+    await page.route(`${server.url}/profile`, async (route) => {
+      if (route.request().method() !== "PATCH" || !firstSave)
+        return route.continue();
+      firstSave = false;
+      const response = await route.fetch();
+      await delivery;
+      await route.fulfill({ response });
+    });
+    await page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Zibble");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Zibble (you)", { exact: true }).waitFor();
+    await page.getByTitle("Exit room").click();
+    await page.getByText("Playing as Zibble", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Edit nickname" }).click();
+    await page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Fizzi");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Playing as Fizzi", { exact: true }).waitFor();
+    release();
+    await page.waitForTimeout(100);
+    expect(
+      await page.getByText("Playing as Fizzi", { exact: true }).isVisible(),
+    ).toBe(true);
+    expect(
+      await page
+        .getByRole("textbox", { name: "Nickname", exact: true })
+        .count(),
+    ).toBe(0);
+    expect(
+      await page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("Fizzi");
+  } finally {
+    release();
+    await guest.close();
+  }
+}, 20_000);
+
+it("discards an in-flight Lobby editor when the host starts the match", async () => {
+  const host = await client(1440, "Boppo");
+  const guest = await client(390, "Moki");
+  let release!: () => void;
+  const delivery = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    await guest.page.getByRole("button", { name: /Join a Game/ }).click();
+    await guest.page.getByPlaceholder("Enter game ID").fill(slug);
+    await guest.page.getByRole("button", { name: "Confirm" }).click();
+    await guest.page.getByText("Moki (you)", { exact: true }).waitFor();
+    await guest.page.getByRole("checkbox", { name: "I'm Ready" }).click();
+    await host.page.locator('[title="Ready"]').waitFor();
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page.route(`${server.url}/profile`, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      await delivery;
+      await route.continue();
+    });
+    await guest.page
+      .getByRole("textbox", { name: "Nickname", exact: true })
+      .fill("Zibble");
+    await guest.page.getByRole("button", { name: "Save", exact: true }).click();
+    await guest.page.getByRole("button", { name: "Saving..." }).waitFor();
+    await host.page
+      .getByRole("button", { name: "Start game", exact: true })
+      .click();
+    await guest.page.waitForURL("**/game/**");
+    await vi.waitFor(() =>
+      expect(guest.snapshot()?.state.byId[guest.id]?.name).toBe("Moki"),
+    );
+    const snapshot = guest.snapshot();
+    release();
+    await vi.waitFor(async () => {
+      const response = await guest.page.request.get(`${server.url}/profile`, {
+        headers: { "x-client-id": guest.id },
+      });
+      expect(await response.json()).toMatchObject({ displayName: "Zibble" });
+    });
+    expect(guest.snapshot()).toEqual(snapshot);
+    expect(
+      await guest.page
+        .getByRole("textbox", { name: "Nickname", exact: true })
+        .count(),
+    ).toBe(0);
+    expect(
+      await guest.page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("Moki");
+  } finally {
+    release();
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
 it("restores a browser nickname before joining a direct invite", async () => {
   const host = await client(1440, "Boppo");
   const guest = await client(390);

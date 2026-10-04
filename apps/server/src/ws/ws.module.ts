@@ -5,7 +5,11 @@ import { ProfilesModule } from '../profiles/profiles.module';
 import { GameModule } from '../game/game.module';
 
 @Module({
-  imports: [forwardRef(() => RoomsModule), ProfilesModule, GameModule],
+  imports: [
+    forwardRef(() => RoomsModule),
+    forwardRef(() => ProfilesModule),
+    GameModule,
+  ],
   providers: [RoomsGateway],
   exports: [RoomsGateway], // so controllers/services can inject it
 })

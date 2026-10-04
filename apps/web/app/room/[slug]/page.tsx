@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { apiFetch, ApiHttpError, getOrCreateClientId } from "@/lib/api";
 import { getSocketClient, type ChatMessage } from "@/lib/socket-client";
@@ -9,7 +9,12 @@ import { RoomChat } from "@/components/RoomChat";
 import { useToast } from "@/components/ToastProvider";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { appendChatMessage } from "@/lib/room-chat";
-import { initializeGuestProfile } from "@/lib/guest-profile";
+import {
+  initializeGuestProfile,
+  saveGuestNickname,
+  type GuestProfile,
+} from "@/lib/guest-profile";
+import { NicknameEditor } from "@/components/NicknameEditor";
 
 type RoomView = {
   id: string;
@@ -51,6 +56,14 @@ export default function WaitingRoomPage() {
   const [kickingPlayerId, setKickingPlayerId] = useState<string | null>(null);
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [editingNickname, setEditingNickname] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const nicknameSession = useRef(0);
+  const liveRoomRevision = useRef(0);
+  const invalidateNicknameEditor = useCallback(() => {
+    nicknameSession.current++;
+    setEditingNickname(false);
+  }, []);
 
   const { showToast } = useToast();
   const isHost = Boolean(room && clientId && room.ownerId === clientId);
@@ -85,11 +98,12 @@ export default function WaitingRoomPage() {
 
   const refetchRoom = useCallback(async () => {
     if (!clientId) return;
+    const revision = liveRoomRevision.current;
     const view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
       method: "GET",
       clientId,
     });
-    setRoom(view);
+    if (revision === liveRoomRevision.current) setRoom(view);
     return view;
   }, [clientId, sanitizedSlug]);
 
@@ -102,8 +116,9 @@ export default function WaitingRoomPage() {
       setError(null);
 
       try {
-        await initializeGuestProfile(clientId);
+        const profile = await initializeGuestProfile(clientId);
         if (cancelled) return;
+        setSuggestions(profile.suggestions);
         // 1) Resolve room by slug (for deep-link support)
         let view = await apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
           method: "GET",
@@ -150,13 +165,24 @@ export default function WaitingRoomPage() {
         const sock = getSocketClient();
         unsub = sock.on((ev) => {
           if (ev.type === "ROOM_UPDATED") {
+            liveRoomRevision.current++;
+            const updated = ev.room as RoomView;
+            if (
+              updated.status !== "open" ||
+              !updated.players.some((player) => player.id === clientId)
+            )
+              invalidateNicknameEditor();
             // Update room state (including player list) in real-time
             setRoom(ev.room as RoomView);
           }
           if (ev.type === "GAME_STARTED") {
+            liveRoomRevision.current++;
+            invalidateNicknameEditor();
             router.push(`/game/${ev.roomId}`);
           }
           if (ev.type === "KICKED") {
+            liveRoomRevision.current++;
+            invalidateNicknameEditor();
             sock.disconnect();
             showToast("You have been kicked from the room", "warning");
             router.push("/");
@@ -175,11 +201,13 @@ export default function WaitingRoomPage() {
             const { wsJoinToken: renewed } = await apiFetch<{
               wsJoinToken: string;
             }>(`/rooms/${view.id}/socket-token`, { method: "POST", clientId });
+            const revision = liveRoomRevision.current;
             const current = await apiFetch<RoomView>(
               `/rooms/by-slug/${sanitizedSlug}`,
               { method: "GET", clientId },
             );
-            if (!cancelled) setRoom(current);
+            if (!cancelled && revision === liveRoomRevision.current)
+              setRoom(current);
             return renewed;
           } catch (error) {
             if (
@@ -203,18 +231,28 @@ export default function WaitingRoomPage() {
     void boot();
     return () => {
       cancelled = true;
+      liveRoomRevision.current++;
+      nicknameSession.current++;
       unsub?.();
       // Disconnect so server can treat this as leaving (refresh/navigation/tab close).
       getSocketClient().disconnect();
     };
-  }, [clientId, refetchRoom, router, sanitizedSlug, showToast]);
+  }, [
+    clientId,
+    refetchRoom,
+    router,
+    sanitizedSlug,
+    showToast,
+    invalidateNicknameEditor,
+  ]);
 
   useEffect(() => {
     if (!room) return;
     if (room.status !== "open" && room.gameId) {
+      invalidateNicknameEditor();
       router.push(`/game/${room.id}`);
     }
-  }, [room, router]);
+  }, [room, router, invalidateNicknameEditor]);
 
   const patchRoom = async (
     patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
@@ -225,12 +263,13 @@ export default function WaitingRoomPage() {
     setSaving(true);
     setError(null);
     try {
+      const revision = liveRoomRevision.current;
       const updated = await apiFetch<RoomView>(`/rooms/${room.id}`, {
         method: "PATCH",
         clientId,
         body: JSON.stringify(patch),
       });
-      setRoom(updated);
+      if (revision === liveRoomRevision.current) setRoom(updated);
 
       const canPersist =
         updated.status === "open" && updated.ownerId === clientId;
@@ -251,12 +290,13 @@ export default function WaitingRoomPage() {
   const toggleReady = async (ready: boolean) => {
     if (!clientId || !room) return;
     try {
+      const revision = liveRoomRevision.current;
       const updated = await apiFetch<RoomView>(`/rooms/${room.id}/ready`, {
         method: "POST",
         clientId,
         body: JSON.stringify({ ready }),
       });
-      setRoom(updated);
+      if (revision === liveRoomRevision.current) setRoom(updated);
     } catch (e) {
       showToast(
         e instanceof Error ? e.message : "Failed to update ready state",
@@ -325,6 +365,7 @@ export default function WaitingRoomPage() {
 
   const leaveRoom = async () => {
     if (!clientId || !room) return;
+    invalidateNicknameEditor();
     try {
       await apiFetch(`/rooms/${room.id}/leave`, {
         method: "POST",
@@ -408,7 +449,7 @@ export default function WaitingRoomPage() {
                   {room.players.map((p) => (
                     <div
                       key={p.id}
-                      className="brutal-border p-3 bg-muted flex items-center justify-between"
+                      className="brutal-border p-3 bg-muted flex flex-wrap items-center justify-between gap-3"
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         {/* Ready checkmark for non-owners */}
@@ -429,12 +470,23 @@ export default function WaitingRoomPage() {
                             {p.displayName}
                             {p.id === clientId ? " (you)" : ""}
                           </p>
-                          <p className="text-xs text-text-muted font-mono truncate">
-                            {p.id}
-                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        {p.id === clientId &&
+                          room.status === "open" &&
+                          !editingNickname && (
+                            <button
+                              aria-label="Edit nickname"
+                              className="brutal-button px-3 py-2 bg-card"
+                              onClick={() => {
+                                nicknameSession.current++;
+                                setEditingNickname(true);
+                              }}
+                            >
+                              Edit
+                            </button>
+                          )}
                         {p.isOwner && (
                           <span className="brutal-border px-2 py-1 bg-warning-bg font-bold text-sm">
                             Host
@@ -450,6 +502,35 @@ export default function WaitingRoomPage() {
                           </button>
                         )}
                       </div>
+                      {p.id === clientId &&
+                        room.status === "open" &&
+                        editingNickname && (
+                          <div className="w-full min-w-0">
+                            <NicknameEditor
+                              nickname={p.displayName}
+                              suggestions={suggestions}
+                              loadSuggestions={async () => {
+                                const profile = await apiFetch<GuestProfile>(
+                                  "/profile",
+                                  { clientId },
+                                );
+                                return profile.suggestions;
+                              }}
+                              onCancel={invalidateNicknameEditor}
+                              onSave={async (draft) => {
+                                const session = nicknameSession.current;
+                                const isCurrent = () =>
+                                  nicknameSession.current === session;
+                                try {
+                                  await saveGuestNickname(draft, isCurrent);
+                                  if (isCurrent()) invalidateNicknameEditor();
+                                } catch (error) {
+                                  if (isCurrent()) throw error;
+                                }
+                              }}
+                            />
+                          </div>
+                        )}
                     </div>
                   ))}
                 </div>
