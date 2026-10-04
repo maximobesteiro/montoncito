@@ -262,6 +262,122 @@ async function box(locator: Locator) {
   return bounds!;
 }
 
+it.each([320, 390, 768, 1024, 1440])(
+  "fully exposes large own and opponent histories inline without overflow at %ipx",
+  async (width) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    page.setDefaultTimeout(3000);
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(2);
+      const history = Array.from({ length: 30 }, (_, index) => ({
+        kind: "standard" as const,
+        id: `history-${index}`,
+        rank: 7 as const,
+        suit: "Hearts" as const,
+      }));
+      state.byId["player-1"]!.discards = [history, []];
+      state.byId["player-2"]!.discards[0] = history.map((card) => ({
+        ...card,
+        id: `opponent-${card.id}`,
+      }));
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 1 }),
+        state,
+      );
+      await page
+        .getByRole("group", { name: "Alice Discard pile 2", exact: true })
+        .waitFor();
+
+      for (const name of ["Alice", "Bob"]) {
+        const pile = page.getByRole("group", {
+          name: `${name} Discard pile 1`,
+          exact: true,
+        });
+        const compact = pile.getByLabel(/^(Covered )?Discard pile 1,/);
+        expect(await compact.count()).toBe(name === "Alice" ? 3 : 1);
+        if (name === "Alice") {
+          const first = await box(compact.first());
+          const last = await box(compact.last());
+          expect(last.y - first.y).toBe(40);
+        }
+        const open = pile.getByRole("button", { name: "View all" });
+        const historyId = await open.getAttribute("aria-controls");
+        await open.focus();
+        await page.keyboard.press("Enter");
+        const close = pile.getByRole("button", { name: "Close", exact: true });
+        expect(await close.getAttribute("aria-expanded")).toBe("true");
+        expect(await close.getAttribute("aria-controls")).toBe(historyId);
+        expect(await pile.getByText("Top", { exact: true }).count()).toBe(1);
+        const cards = pile.getByLabel(/^(Covered )?Discard pile 1,/);
+        expect(await cards.count()).toBe(30);
+        let previousBottom = 0;
+        for (const card of await cards.all()) {
+          await card.scrollIntoViewIfNeeded();
+          const dimensions = await card.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            const pileTop = element
+              .closest('[role="group"]')!
+              .getBoundingClientRect().top;
+            return {
+              width: rect.width,
+              height: rect.height,
+              left: rect.left,
+              right: rect.right,
+              top: rect.top - pileTop,
+              bottom: rect.bottom - pileTop,
+              exposed: [
+                [4, 4],
+                [rect.width / 2, rect.height / 2],
+                [rect.width - 4, rect.height - 4],
+              ].every(([x, y]) =>
+                element.contains(
+                  document.elementFromPoint(rect.x + x!, rect.y + y!),
+                ),
+              ),
+            };
+          });
+          expect(dimensions.width).toBe(72);
+          expect(dimensions.height).toBe(104);
+          expect(dimensions.left).toBeGreaterThanOrEqual(0);
+          expect(dimensions.right).toBeLessThanOrEqual(width);
+          expect(dimensions.top).toBeGreaterThanOrEqual(previousBottom);
+          expect(dimensions.exposed).toBe(true);
+          previousBottom = dimensions.bottom;
+        }
+        const bounds = await box(pile);
+        expect(bounds.height).toBeGreaterThan(3300);
+        const controlBounds = await box(close);
+        expect(controlBounds.y).toBeGreaterThanOrEqual(
+          (await box(cards.last())).y + 104,
+        );
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+      const empty = page.getByRole("group", {
+        name: "Alice Discard pile 2",
+        exact: true,
+      });
+      expect(await empty.getByRole("button").count()).toBe(0);
+      await page.getByRole("button", { name: "Hand 5 of Clubs" }).click();
+      const destination = empty.getByRole("button", {
+        name: "Discard pile 2, empty",
+      });
+      const emptyBounds = await box(destination);
+      expect(emptyBounds.width).toBe(72);
+      expect(emptyBounds.height).toBe(104);
+      await destination.click();
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+        { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 1 },
+      ]);
+    } finally {
+      await page.close();
+    }
+  },
+  15_000,
+);
+
 it("keeps the mobile composer and Close reachable in a short landscape viewport", async () => {
   const page = await browser.newPage({ viewport: { width: 768, height: 320 } });
   try {

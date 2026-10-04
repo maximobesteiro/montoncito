@@ -37,6 +37,7 @@ export function BuildPiles({
           const content = (
             <Pile
               cards={pile.cards}
+              presentation={{ kind: "top" }}
               cardAriaLabel={
                 topCard ? `Build top ${formatCardName(topCard)}` : undefined
               }

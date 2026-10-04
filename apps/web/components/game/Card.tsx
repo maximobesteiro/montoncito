@@ -4,16 +4,6 @@ import type { Card as GameCard } from "@mont/core-game";
 
 export type CardSize = "xs" | "sm" | "md";
 
-// Pile dimension configuration for each card size
-export const pileSizeConfig: Record<
-  CardSize,
-  { width: number; height: number; offsetY: number; offsetX: number }
-> = {
-  xs: { width: 48, height: 64, offsetY: 18, offsetX: 0 },
-  sm: { width: 56, height: 80, offsetY: 18, offsetX: 0 },
-  md: { width: 72, height: 104, offsetY: 20, offsetX: 0 },
-};
-
 interface CardProps {
   card: GameCard;
   faceUp?: boolean;

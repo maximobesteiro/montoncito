@@ -25,6 +25,7 @@ export function StockPile({
   return (
     <Pile
       cards={stock.faceDown}
+      presentation={{ kind: "top" }}
       size={size}
       label={`Stock (${remainingCount})`}
       onClick={onTopCardClick}
