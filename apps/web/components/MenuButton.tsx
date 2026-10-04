@@ -7,6 +7,7 @@ interface MenuButtonProps {
   subtitle: string;
   onClick?: () => void;
   variant?: "primary" | "secondary";
+  disabled?: boolean;
 }
 
 export const MenuButton = ({
@@ -14,6 +15,7 @@ export const MenuButton = ({
   subtitle,
   onClick,
   variant = "primary",
+  disabled = false,
 }: MenuButtonProps) => {
   // Base classes including the neo-brutalist utility
   const baseClasses =
@@ -26,7 +28,11 @@ export const MenuButton = ({
       : "bg-brutal-accent text-brutal-black hover:brightness-110";
 
   return (
-    <button className={`${baseClasses} ${colorClasses}`} onClick={onClick}>
+    <button
+      className={`${baseClasses} ${colorClasses} disabled:opacity-50`}
+      onClick={onClick}
+      disabled={disabled}
+    >
       <span className="text-xl font-bold uppercase tracking-wide">{title}</span>
       <span className="text-sm font-medium text-text-muted mt-1">
         {subtitle}

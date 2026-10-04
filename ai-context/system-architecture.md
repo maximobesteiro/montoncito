@@ -38,6 +38,10 @@
 - `POST /auth/login` – exchange credentials/OAuth for JWT (short-lived) + refresh.
 - `POST /auth/refresh`
 - `GET /me` – profile, preferences.
+- `GET /profile` reads or generates the caller's guest profile using the existing `X-Client-Id` convention. `POST /profile` initializes a missing profile from an optional browser nickname preference, returning an existing profile unchanged. Both return the canonical `clientId`, `displayName`, timestamps, and curated nickname suggestions.
+- `PATCH /profile` trims and saves a nickname, returning the canonical `clientId`, `displayName`, and `updatedAt`. Blank or over-32-character values return HTTP 400 without changing the profile. Internal spaces, punctuation, and international characters are allowed. Nicknames never authenticate a guest or change their identity.
+
+The homepage initializes the profile before showing its optional nickname editor. Create/join and direct-invite entry await the same initialization flow before admitting a guest. Concurrent initialization in one tab shares an in-flight request. Initialization supplies the cached nickname only for a missing profile, so mounting a page cannot overwrite an existing server-confirmed name. The browser stores only confirmed generated/custom names in local storage under `montoncito:nickname:<clientId>`; drafts are local to the editor. Clearing browser storage resets the browser's guest identity and preference. Profile storage remains in-memory on the server, outside `core-game`.
 
 **Lobby & Matchmaking**
 

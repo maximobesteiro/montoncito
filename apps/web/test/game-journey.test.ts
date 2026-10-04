@@ -81,7 +81,7 @@ afterAll(async () => {
   vi.unstubAllEnvs();
 });
 
-async function client(width: number, name: string) {
+async function client(width: number, name?: string) {
   const context = await browser.newContext({
     viewport: { width, height: 900 },
     hasTouch: width < 1024,
@@ -103,7 +103,7 @@ async function client(width: number, name: string) {
       if (frame?.state) snapshot = frame;
     }),
   );
-  await page.route("http://localhost:4173/**", (route) =>
+  await context.route("http://localhost:4173/**", (route) =>
     route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.goto("http://localhost:4173/");
@@ -112,11 +112,13 @@ async function client(width: number, name: string) {
     localStorage.setItem("montoncito:clientId", id);
     return id;
   });
-  const response = await page.request.patch(`${server.url}/profile`, {
-    headers: { "x-client-id": id },
-    data: { displayName: name },
-  });
-  expect(response.ok()).toBe(true);
+  if (name) {
+    const response = await page.request.patch(`${server.url}/profile`, {
+      headers: { "x-client-id": id },
+      data: { displayName: name },
+    });
+    expect(response.ok()).toBe(true);
+  }
   await page.addStyleTag({ content: css });
   await page.addScriptTag({ content: script });
   return {
@@ -133,6 +135,254 @@ async function tap(page: Page, target: Locator) {
     await target.tap();
   else await target.click();
 }
+
+it("initializes a playful profile and validates canonical nickname saves through REST", async () => {
+  const headers = { "x-client-id": crypto.randomUUID() };
+  const initial = await fetch(`${server.url}/profile`, { headers });
+  expect(initial.status).toBe(200);
+  const profile = await initial.json();
+  expect(profile.displayName).toMatch(/^[A-Za-z]{3,8}$/);
+  const save = (displayName: string) =>
+    fetch(`${server.url}/profile`, {
+      method: "PATCH",
+      headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ displayName }),
+    });
+  const saved = await save("  小 Moki!  ");
+  expect(saved.status).toBe(200);
+  expect(await saved.json()).toMatchObject({
+    clientId: headers["x-client-id"],
+    displayName: "小 Moki!",
+  });
+  expect((await save("   ")).status).toBe(400);
+  expect((await save("x".repeat(33))).status).toBe(400);
+  expect(
+    await (await fetch(`${server.url}/profile`, { headers })).json(),
+  ).toMatchObject({ displayName: "小 Moki!" });
+  const initialized = await fetch(`${server.url}/profile`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ displayName: "Older cached name" }),
+  });
+  expect(await initialized.json()).toMatchObject({ displayName: "小 Moki!" });
+  expect((await save("x".repeat(32))).status).toBe(200);
+});
+
+it.each([1440, 390])(
+  "chooses and remembers a confirmed nickname at %ipx",
+  async (width) => {
+    const guest = await client(width);
+    const page = guest.page;
+    try {
+      const playing = page.getByText(/^Playing as /);
+      await playing.waitFor();
+      const original = await playing.textContent();
+      expect(original).toMatch(/^Playing as [A-Za-z]{3,8}$/);
+      const storedNickname = () =>
+        page.evaluate(
+          (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+          guest.id,
+        );
+      expect(await storedNickname()).toBe(original!.replace("Playing as ", ""));
+      await page.getByRole("button", { name: "Edit nickname" }).click();
+      const input = page.getByRole("textbox", {
+        name: "Nickname",
+        exact: true,
+      });
+      expect(await input.inputValue()).toBe(
+        original!.replace("Playing as ", ""),
+      );
+      await page.getByRole("button", { name: "Shuffle" }).click();
+      expect(await input.inputValue()).not.toBe(
+        original!.replace("Playing as ", ""),
+      );
+      expect(await playing.textContent()).toBe(original);
+      await input.press("Escape");
+      expect(await playing.textContent()).toBe(original);
+      expect(await storedNickname()).toBe(original!.replace("Playing as ", ""));
+      await page.getByRole("button", { name: "Edit nickname" }).click();
+      await input.fill("   ");
+      await input.press("Enter");
+      await page.getByRole("alert").getByText("Enter a nickname.").waitFor();
+      await input.fill("x".repeat(33));
+      await input.press("Enter");
+      await page
+        .getByRole("alert")
+        .getByText("Use 32 characters or fewer.")
+        .waitFor();
+      await input.fill("  小 Moki!  ");
+      await input.press("Enter");
+      await page.getByText("Playing as 小 Moki!", { exact: true }).waitFor();
+      expect(await storedNickname()).toBe("小 Moki!");
+      expect(
+        await (
+          await page.request.get(`${server.url}/profile`, {
+            headers: { "x-client-id": guest.id },
+          })
+        ).json(),
+      ).toMatchObject({ clientId: guest.id, displayName: "小 Moki!" });
+      // Reopen with retained browser storage, as a normal returning guest.
+      const next = await page.context().newPage();
+      next.setDefaultTimeout(5000);
+      next.on("pageerror", (error) => guest.errors.push(error.message));
+      await page.close();
+      await next.goto("http://localhost:4173/");
+      await next.addStyleTag({ content: css });
+      await next.addScriptTag({ content: script });
+      await next
+        .getByText("Playing as 小 Moki!", { exact: true })
+        .waitFor()
+        .catch(async (error) => {
+          throw new Error(
+            `${error}\n${guest.errors.join("\n")}\n${await next.locator("body").innerText()}`,
+          );
+        });
+      await next.getByRole("button", { name: /Create a Game/ }).click();
+      await next.waitForURL("**/room/**");
+      await next.getByText("小 Moki! (you)", { exact: true }).waitFor();
+    } finally {
+      await guest.close();
+    }
+  },
+  20_000,
+);
+
+it("retains the draft and confirmed nickname on failure and prevents duplicate saves", async () => {
+  const guest = await client(390, "Moki");
+  const page = guest.page;
+  try {
+    await page.getByText("Playing as Moki", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Edit nickname" }).click();
+    const input = page.getByRole("textbox", { name: "Nickname", exact: true });
+    await input.fill("Zibble");
+    let submissions = 0;
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(`${server.url}/profile`, async (route) => {
+      if (route.request().method() !== "PATCH") return route.continue();
+      submissions++;
+      await delivery;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: "{}",
+      });
+    });
+    await input.press("Enter");
+    await page.getByRole("button", { name: "Saving..." }).waitFor();
+    expect(await input.isDisabled()).toBe(true);
+    expect(
+      await page
+        .getByRole("button", { name: "Cancel", exact: true })
+        .isDisabled(),
+    ).toBe(true);
+    await input.press("Enter");
+    release();
+    await page
+      .getByRole("alert")
+      .getByText("Couldn't save your nickname. Please try again.")
+      .waitFor();
+    expect(submissions).toBe(1);
+    expect(await input.inputValue()).toBe("Zibble");
+    expect(
+      await page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("Moki");
+    expect(
+      await page.getByText("Playing as Moki", { exact: true }).isVisible(),
+    ).toBe(true);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.unroute(`${server.url}/profile`);
+    await page.getByRole("button", { name: "Edit nickname" }).click();
+    expect(await input.inputValue()).toBe("Moki");
+    await page.getByRole("button", { name: "Shuffle" }).click();
+    const suggestion = await input.inputValue();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText(`Playing as ${suggestion}`, { exact: true }).waitFor();
+  } finally {
+    await guest.close();
+  }
+}, 20_000);
+
+it("restores a browser nickname before joining a direct invite", async () => {
+  const host = await client(1440, "Boppo");
+  const guest = await client(390);
+  try {
+    await host.page.getByRole("button", { name: /Create a Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const slug = host.page.url().split("/").pop()!;
+    const id = await guest.page.evaluate(() => {
+      const id = crypto.randomUUID();
+      localStorage.setItem("montoncito:clientId", id);
+      localStorage.setItem(`montoncito:nickname:${id}`, "Invite Moki!");
+      return id;
+    });
+    await guest.page.goto(`http://localhost:4173/room/${slug}`);
+    await guest.page.addStyleTag({ content: css });
+    await guest.page.addScriptTag({ content: script });
+    await guest.page.getByText("Invite Moki! (you)", { exact: true }).waitFor();
+    await host.page.getByText("Invite Moki!", { exact: true }).waitFor();
+    expect(
+      await (
+        await guest.page.request.get(`${server.url}/profile`, {
+          headers: { "x-client-id": id },
+        })
+      ).json(),
+    ).toMatchObject({ clientId: id, displayName: "Invite Moki!" });
+  } finally {
+    await host.close();
+    await guest.close();
+  }
+}, 20_000);
+
+it("shows pending join initialization and a recoverable error inside the join dialog", async () => {
+  const guest = await client(390, "Moki");
+  const page = guest.page;
+  try {
+    await page.getByText("Playing as Moki", { exact: true }).waitFor();
+    let release!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(`${server.url}/profile`, async (route) => {
+      await delivery;
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: "{}",
+      });
+    });
+    await page.getByRole("button", { name: /Join a Game/ }).click();
+    await page.getByPlaceholder("Enter game ID").fill("test-1234");
+    await page.getByRole("button", { name: "Confirm" }).click();
+    const joining = page.getByRole("button", { name: "Joining..." });
+    await joining.waitFor();
+    expect(await joining.isDisabled()).toBe(true);
+    expect(
+      await page
+        .getByRole("button", { name: "Cancel", exact: true })
+        .isDisabled(),
+    ).toBe(true);
+    await page.keyboard.press("Escape");
+    expect(await joining.isVisible()).toBe(true);
+    release();
+    await page
+      .getByRole("alert")
+      .getByText("Couldn't load your nickname. Please try again.")
+      .waitFor();
+    expect(
+      await page.getByRole("button", { name: "Confirm" }).isEnabled(),
+    ).toBe(true);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    expect(new URL(page.url()).pathname).toBe("/");
+  } finally {
+    await guest.close();
+  }
+}, 20_000);
 async function chat(page: Page, text?: string) {
   const open = page.getByRole("button", { name: /Open chat/ });
   if (await open.isVisible()) await open.click();

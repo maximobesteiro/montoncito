@@ -44,6 +44,14 @@ _Avoid_: Draw pile, Stock pile
 
 ## Match flow
 
+**Guest identity**:
+The identity of a player who participates without an account. It determines the player's membership independently of their Nickname.
+_Avoid_: Nickname, account
+
+**Nickname**:
+The player-facing name a guest can choose or receive automatically. Changing a Nickname does not change Guest identity.
+_Avoid_: username, real name, guest ID
+
 **Lobby**:
 A pre-game space where players discover, create, or join a match before the game room begins.
 _Avoid_: room, waiting room

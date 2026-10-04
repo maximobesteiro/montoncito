@@ -22,6 +22,9 @@
 - Shows list of **public lobbies**, current games, and “create new game” action.
 - Minimal authentication barrier: players can start as guest or named account.
 - REST-driven data (no live updates required beyond refresh interval).
+- The homepage shows `Playing as <nickname>` above the game menu with an inline Edit button. New guests receive a short invented nickname and can enter without completing a naming form.
+- The reusable nickname editor prefills the confirmed name and offers Shuffle, Save, and Cancel. Shuffle changes only the draft. Enter saves and Escape cancels. A failed save keeps the draft and confirmed name, with an adjacent error; controls show Saving and prevent duplicate submissions. The labeled input explains the 32-character limit and supports desktop, touch, and keyboard use.
+- Generated and custom confirmed nicknames persist in this browser for the same Guest identity. Entry through an invite initializes the same profile before joining. Successful saves display the server's trimmed canonical nickname.
 
 ### 2. **Game Room / Board**
 - The heart of the UI — renders the current match state via **WebSocket** events.

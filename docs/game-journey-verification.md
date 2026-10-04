@@ -1,6 +1,6 @@
 # Lobby-to-winner verification
 
-Coverage for [#65](https://github.com/maximobesteiro/montoncito/issues/65).
+Coverage for [#65](https://github.com/maximobesteiro/montoncito/issues/65) and the homepage nickname slice [#88](https://github.com/maximobesteiro/montoncito/issues/88).
 
 ## Run
 
@@ -23,6 +23,8 @@ all use the application code. The browser clients receive actual server frames;
 the test compares their Authoritative states after each accepted Action.
 
 ## Scenarios
+
+The nickname journeys exercise the actual homepage/editor and real profile API at 1440px and touch-enabled 390px. They verify automatic invented names, draft-only Shuffle, keyboard Save/Cancel, blank and length validation, canonical international names, browser-tab closure/reopening with retained storage, and creation under the confirmed name. A controlled failed HTTP response verifies the saving state, duplicate-submit prevention, retained draft/confirmed name, Cancel, and a successful retry. Direct-invite coverage restores a stored nickname before joining and checks the host's visible roster. Public REST checks verify canonical values, identity preservation, rejected saves, the 32-character boundary, and initialization that cannot overwrite an existing profile with an older cached name.
 
 | Requirement                                                                    | Coverage                                                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
