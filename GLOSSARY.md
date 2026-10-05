@@ -1,6 +1,6 @@
-# Montoncito domain context
+# Montoncito glossary
 
-Canonical vocabulary for the card game and its player-facing concepts. Use these terms in code, APIs, UI copy, and documentation.
+Canonical vocabulary for Montoncito's card game and player-facing concepts. Use these terms in code, APIs, UI copy, and documentation.
 
 ## Game areas
 

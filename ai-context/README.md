@@ -11,6 +11,6 @@ These documents are the detailed reference material for agents working on Monton
 - Gameplay or reducer changes: read `game-rules.md` and `system-architecture.md`.
 - Server, API, WebSocket, persistence, or deployment changes: read `system-architecture.md`; consult `game-rules.md` when state transitions are involved.
 - UI, frontend, interaction, or visual changes: read `ui-vision.md` and `game-rules.md`.
-- Terminology or naming changes: read the root `CONTEXT.md` first.
+- Terminology or naming changes: read the root `GLOSSARY.md` first.
 
 Architectural decisions that are hard to reverse are recorded in [docs/adr](../docs/adr/).
