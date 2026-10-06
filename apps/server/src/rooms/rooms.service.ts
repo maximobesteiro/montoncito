@@ -50,6 +50,12 @@ export type Room = {
 export class RoomsService {
   private readonly roomsById = new Map<string, Room>();
   private readonly roomIdBySlug = new Map<string, string>();
+  // Accepted operations survive room deletion for this process lifetime. Keeping
+  // a missing destination prevents a retry from silently running matchmaking.
+  private readonly casualOperations = new Map<
+    string,
+    Map<string, string | null>
+  >();
 
   public constructor(
     @Inject('ROOM_DEFAULTS') private readonly defaults: RoomDefaults,
@@ -129,19 +135,38 @@ export class RoomsService {
     return room;
   }
 
-  public enterCasual(clientId: string): {
+  public enterCasual(
+    clientId: string,
+    operationId?: string,
+  ): {
     room: Room;
     admitted: boolean;
     renamed: boolean;
   } {
+    const previous = operationId
+      ? this.casualOperations.get(clientId)?.get(operationId)
+      : undefined;
+    if (previous !== undefined) {
+      const room = previous === null ? undefined : this.roomsById.get(previous);
+      if (!room || !this.hasPlayer(room, clientId)) {
+        throw new ConflictException({
+          code: 'CASUAL_DESTINATION_UNAVAILABLE',
+          message:
+            'Your original game or membership is no longer available. Start a fresh Casual Game attempt.',
+        });
+      }
+      return { room, admitted: false, renamed: false };
+    }
     // Selection and join remain synchronous so capacity cannot change between
     // checking eligibility and committing admission in this server process.
     const lobbies = [...this.roomsById.values()]
       .filter((room) => room.visibility === 'public' && room.status === 'open')
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const membership = lobbies.find((room) => this.hasPlayer(room, clientId));
-    if (membership)
+    if (membership) {
+      this.rememberCasualOperation(clientId, operationId, membership.id);
       return { room: membership, admitted: false, renamed: false };
+    }
     const available = lobbies.find(
       (room) => room.players.length < room.maxPlayers,
     );
@@ -165,7 +190,28 @@ export class RoomsService {
     const room = available
       ? this.join({ roomId: available.id, clientId, displayName })
       : this.create({ clientId, visibility: 'public' });
+    this.rememberCasualOperation(clientId, operationId, room.id);
     return { room, admitted: true, renamed: displayName !== undefined };
+  }
+
+  private rememberCasualOperation(
+    clientId: string,
+    operationId: string | undefined,
+    roomId: string,
+  ) {
+    if (!operationId) return; // Legacy callers retain the fresh-selection contract.
+    const operations =
+      this.casualOperations.get(clientId) ?? new Map<string, string | null>();
+    operations.set(operationId, roomId);
+    this.casualOperations.set(clientId, operations);
+  }
+
+  private invalidateCasualMembership(clientId: string, roomId: string) {
+    const operations = this.casualOperations.get(clientId);
+    if (!operations) return;
+    for (const [operationId, destination] of operations) {
+      if (destination === roomId) operations.set(operationId, null);
+    }
   }
 
   public getById(id: string): Room {
@@ -406,6 +452,7 @@ export class RoomsService {
 
     // Remove the player
     const [removed] = room.players.splice(idx, 1);
+    this.invalidateCasualMembership(params.clientId, room.id);
 
     if (room.players.length === 0) {
       // Delete room entirely
@@ -454,6 +501,7 @@ export class RoomsService {
 
     // Remove the player
     room.players.splice(idx, 1);
+    this.invalidateCasualMembership(params.targetId, room.id);
 
     // Reset all remaining players' ready state when roster changes
     this.resetReady(room);

@@ -15,6 +15,14 @@ import tailwind from "@tailwindcss/postcss";
 import { build } from "vite";
 import type { GameState } from "@mont/core-game";
 import { getValidMoves } from "@/lib/game-actions";
+import type { GuestProfile } from "@/lib/guest-profile";
+
+type CasualDestination = {
+  id: string;
+  slug: string;
+  ownerId: string;
+  profile: GuestProfile;
+};
 
 let browser: Browser;
 let server: {
@@ -397,6 +405,184 @@ it.each(["revision", "generation"] as const)(
       ).toBe(true);
     } finally {
       release();
+      await guest.close();
+      await host.close();
+    }
+  },
+  20_000,
+);
+
+it.each(["ordinary", "fallback", "conflicting"])(
+  "Casual Game replays lost %s entry after reload without another seat, Lobby or rename",
+  async (kind) => {
+    await server.restart();
+    const host = await client(1440, kind === "conflicting" ? "Alex" : "Host");
+    const guest = await client(390, kind === "conflicting" ? "alex" : "Guest");
+    const attempts: { operationId: string }[] = [];
+    let destination!: CasualDestination;
+    try {
+      if (kind !== "fallback") {
+        await host.page.getByRole("button", { name: /Casual Game/ }).click();
+        await host.page.waitForURL("**/room/**");
+      }
+      await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+        attempts.push(route.request().postDataJSON());
+        const response = await route.fetch();
+        expect(response.ok()).toBe(true);
+        destination = await response.json();
+        await route.abort("failed");
+      });
+      await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+      await guest.page
+        .getByRole("alert")
+        .getByText(/Couldn't find a game/)
+        .waitFor();
+      const changed = await guest.page.request.patch(
+        `${server.url}/rooms/${destination.id}`,
+        {
+          headers: { "x-client-id": destination.ownerId },
+          data: { visibility: "private" },
+        },
+      );
+      expect(changed.ok()).toBe(true);
+      await guest.page.unroute(`${server.url}/rooms/casual`);
+      await guest.page.reload();
+      await guest.page.addStyleTag({ content: css });
+      await guest.page.addScriptTag({ content: script });
+      await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+        attempts.push(route.request().postDataJSON());
+        await route.continue();
+      });
+      await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+      await guest.page.waitForURL(`**/room/${destination.slug}`);
+      await guest.page
+        .getByText(`${destination.profile.displayName} (you)`, { exact: true })
+        .waitFor();
+      expect(attempts[0]!.operationId).toMatch(/^[a-f0-9-]{36}$/);
+      expect(attempts[1]!.operationId).toBe(attempts[0]!.operationId);
+      const room = await (
+        await fetch(`${server.url}/rooms/${destination.id}`)
+      ).json();
+      expect(
+        room.players.filter((player: { id: string }) => player.id === guest.id),
+      ).toHaveLength(1);
+      expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(0);
+      const profile = await (
+        await fetch(`${server.url}/profile`, {
+          headers: { "x-client-id": guest.id },
+        })
+      ).json();
+      expect(profile.revision).toBe(destination.profile.revision);
+      expect(
+        await guest.page.evaluate(
+          (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+          guest.id,
+        ),
+      ).toBe(destination.profile.displayName);
+    } finally {
+      await guest.close();
+      await host.close();
+    }
+  },
+  20_000,
+);
+
+it("Casual Game reaches the original Game room if the host starts before lost-response recovery", async () => {
+  await server.restart();
+  const host = await client(1440, "Host");
+  const guest = await client(390, "Guest");
+  let destination!: CasualDestination;
+  try {
+    await host.page.getByRole("button", { name: /Casual Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+      destination = await (await route.fetch()).json();
+      await route.abort("failed");
+    });
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await guest.page.getByRole("alert").waitFor();
+    expect(
+      (
+        await guest.page.request.post(
+          `${server.url}/rooms/${destination.id}/ready`,
+          { headers: { "x-client-id": guest.id }, data: { ready: true } },
+        )
+      ).ok(),
+    ).toBe(true);
+    await host.page.getByRole("button", { name: "Start Game" }).click();
+    await host.page.waitForURL(`**/game/${destination.id}`);
+    await guest.page.unroute(`${server.url}/rooms/casual`);
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await guest.page.waitForURL(`**/game/${destination.id}`);
+    await vi.waitFor(() =>
+      expect(guest.snapshot()?.state.byId[guest.id]?.name).toBe("Guest"),
+    );
+    expect(Object.keys(guest.snapshot()!.state.byId)).toHaveLength(2);
+    expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(0);
+  } finally {
+    await guest.close();
+    await host.close();
+  }
+}, 20_000);
+
+it.each(["deleted", "departed", "restarted"])(
+  "Casual Game explains an uncertain %s destination and requires explicit fresh entry",
+  async (failure) => {
+    await server.restart();
+    const host = await client(1440, "Host");
+    const guest = await client(390, "Remembered guest");
+    let destination!: CasualDestination;
+    let operationId!: string;
+    try {
+      if (failure === "departed") {
+        await host.page.getByRole("button", { name: /Casual Game/ }).click();
+        await host.page.waitForURL("**/room/**");
+      }
+      await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+        operationId = route.request().postDataJSON().operationId;
+        destination = await (await route.fetch()).json();
+        await route.abort("failed");
+      });
+      await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+      await guest.page.getByRole("alert").waitFor();
+      await guest.page.unroute(`${server.url}/rooms/casual`);
+      if (failure === "restarted") await server.restart();
+      else
+        expect(
+          (
+            await guest.page.request.post(
+              `${server.url}/rooms/${destination.id}/leave`,
+              { headers: { "x-client-id": guest.id } },
+            )
+          ).ok(),
+        ).toBe(true);
+      await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+      await guest.page
+        .getByRole("alert")
+        .getByText(/original game or membership is no longer available/)
+        .waitFor();
+      expect(new URL(guest.page.url()).pathname).toBe("/");
+      expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(
+        failure === "departed" ? 1 : 0,
+      );
+      await guest.page
+        .getByText("Playing as Remembered guest", { exact: true })
+        .waitFor();
+      let freshId!: string;
+      await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+        freshId = route.request().postDataJSON().operationId;
+        await route.continue();
+      });
+      await guest.page
+        .getByRole("button", { name: "Find another game" })
+        .click();
+      await guest.page.waitForURL("**/room/**");
+      await guest.page
+        .getByText("Remembered guest (you)", { exact: true })
+        .waitFor();
+      expect(freshId).not.toBe(operationId);
+      expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(1);
+    } finally {
       await guest.close();
       await host.close();
     }

@@ -8,14 +8,17 @@ import { HowToPlayModal } from "../components/HowToPlayModal";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import {
   initializeGuestProfile,
-  rememberGuestProfile,
   saveGuestNickname,
   subscribeGuestProfile,
   withGuestProfileRecovery,
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
-import { rememberCasualEntry } from "@/lib/casual-entry";
+import {
+  enterCasualGame,
+  startFreshCasualEntry,
+  CasualDestinationUnavailableError,
+} from "@/lib/casual-entry";
 
 export default function Home() {
   const router = useRouter();
@@ -29,6 +32,7 @@ export default function Home() {
   const [joinError, setJoinError] = useState<string | null>(null);
   const [finding, setFinding] = useState(false);
   const casualPending = useRef(false);
+  const [casualUnavailable, setCasualUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,27 +100,18 @@ export default function Home() {
     setFinding(true);
     setError(null);
     try {
-      const clientId = getOrCreateClientId();
-      const profile = await initializeGuestProfile(clientId);
-      const { value: room } = await withGuestProfileRecovery(
-        profile,
-        (current) =>
-          apiFetch<{
-            id: string;
-            slug: string;
-            wsJoinToken: string;
-            profile: GuestProfile;
-          }>("/rooms/casual", {
-            method: "POST",
-            clientId,
-            headers: { "x-profile-generation": current.generation },
-          }),
+      const room = await enterCasualGame();
+      router.push(
+        room.status === "open" ? `/room/${room.slug}` : `/game/${room.id}`,
       );
-      await rememberGuestProfile(room.profile);
-      rememberCasualEntry(room);
-      router.push(`/room/${room.slug}`);
-    } catch {
-      setError("Couldn't find a game. Please try again.");
+    } catch (error) {
+      const unavailable = error instanceof CasualDestinationUnavailableError;
+      setCasualUnavailable(unavailable);
+      setError(
+        unavailable
+          ? error.message
+          : "Couldn't find a game. Retry Casual Game to check the same attempt.",
+      );
     } finally {
       casualPending.current = false;
       setEntering(false);
@@ -170,10 +165,28 @@ export default function Home() {
         </section>
         <MenuButton
           title={finding ? "Finding a game..." : "Casual Game"}
-          disabled={entering}
+          disabled={entering || casualUnavailable}
           subtitle="Join any game awaiting players"
           onClick={() => void handleCasualGame()}
         />
+        {casualUnavailable && (
+          <button
+            type="button"
+            className="brutal-button px-3 py-2"
+            disabled={entering}
+            onClick={() => {
+              try {
+                startFreshCasualEntry();
+                setCasualUnavailable(false);
+                void handleCasualGame();
+              } catch {
+                setError("Couldn't start a fresh attempt. Please try again.");
+              }
+            }}
+          >
+            Find another game
+          </button>
+        )}
 
         <MenuButton
           title="Join a Game"

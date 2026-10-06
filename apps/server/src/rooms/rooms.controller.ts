@@ -16,6 +16,7 @@ import {
   UpdateRoomSchema,
   ListRoomsQuerySchema,
   SetReadySchema,
+  CasualEntrySchema,
 } from './rooms.dto';
 import { RoomsGateway } from '../ws/rooms.gateway';
 import { WsJoinClaims } from '../ws/auth';
@@ -56,13 +57,20 @@ export class RoomsController {
   public casual(
     @Headers('x-client-id') clientId: string | undefined,
     @Headers('x-profile-generation') generation?: string,
+    @Body() body?: unknown,
   ) {
     if (!clientId) throw new BadRequestException('Missing X-Client-Id header');
+    const parsed = CasualEntrySchema.safeParse(body ?? {});
+    if (!parsed.success)
+      throw new BadRequestException('Invalid Casual Game operation ID');
     if (generation) this.profiles.assertGeneration(clientId, generation);
     // Reject configuration failures before changing membership.
     if (!this.configService.get<string>('WS_SECRET'))
       throw new Error('WS_SECRET not configured');
-    const { room, admitted, renamed } = this.rooms.enterCasual(clientId);
+    const { room, admitted, renamed } = this.rooms.enterCasual(
+      clientId,
+      parsed.data.operationId,
+    );
     const roomView = this.rooms.toView(room);
     const wsJoinToken = this.createWsJoinToken(room.id, clientId);
     if (admitted) this.ws.emitRoomUpdated(room.id, roomView);

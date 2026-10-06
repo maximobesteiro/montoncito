@@ -83,6 +83,39 @@ describe('Casual Game through REST and WebSocket', () => {
     return socket;
   }
 
+  it('replays the guest-scoped destination after it becomes full, private and started, using the current profile', async () => {
+    const target = (await casual('host')).body as Membership;
+    const operationId = randomUUID();
+    const entered = (await casual('guest').send({ operationId }).expect(201))
+      .body as Membership;
+    await patch(target, { visibility: 'private' });
+    const privateRecovery = (
+      await casual('guest').send({ operationId }).expect(201)
+    ).body as Membership;
+    expect(privateRecovery.id).toBe(target.id);
+    expect(privateRecovery.visibility).toBe('private');
+    expect(privateRecovery.players).toHaveLength(2);
+    await rename('guest', 'Current name').expect(200);
+    await ready(target, 'guest').expect(201);
+    await api()
+      .post(`/rooms/${target.id}/start`)
+      .set('x-client-id', 'host')
+      .expect(201);
+    const recovered = (await casual('guest').send({ operationId }).expect(201))
+      .body as Membership;
+    expect(recovered.id).toBe(entered.id);
+    expect(recovered.status).toBe('in_progress');
+    expect(recovered.profile.displayName).toBe('Current name');
+    await connect(recovered.wsJoinToken);
+    const fresh = (
+      await casual('guest').send({ operationId: randomUUID() }).expect(201)
+    ).body as Membership;
+    expect(fresh.id).not.toBe(target.id);
+    const other = (await casual('other').send({ operationId }).expect(201))
+      .body as Membership;
+    expect(other.id).toBe(fresh.id);
+  });
+
   it('suffixes case-insensitive conflicts using the first available name and returns the confirmed profile', async () => {
     await api()
       .patch('/profile')
@@ -114,6 +147,132 @@ describe('Casual Game through REST and WebSocket', () => {
     expect(
       (await api().get('/profile').set('x-client-id', 'guest')).body,
     ).toMatchObject(entered.profile);
+  });
+
+  it('requires a fresh operation after departure even if the guest later rejoins the same Lobby', async () => {
+    const target = (await casual('host')).body as Membership;
+    const operationId = randomUUID();
+    await casual('guest').send({ operationId }).expect(201);
+    await api()
+      .post(`/rooms/${target.id}/leave`)
+      .set('x-client-id', 'guest')
+      .expect(201);
+    await join(target, 'guest').expect(201);
+    await casual('guest')
+      .send({ operationId })
+      .expect(409)
+      .expect(({ body }) => {
+        expect((body as { code: string }).code).toBe(
+          'CASUAL_DESTINATION_UNAVAILABLE',
+        );
+      });
+    expect(
+      (await casual('guest').send({ operationId: randomUUID() }).expect(201))
+        .body as Membership,
+    ).toMatchObject({ id: target.id });
+  });
+
+  it('concurrent duplicate entry suffixes once, broadcasts once per affected Lobby, and preserves readiness on replay', async () => {
+    await rename('host', 'Alex');
+    await rename('guest', 'Alex');
+    const privateLobby = (await create('guest')).body as Membership;
+    const privateSocket = await connect(privateLobby.wsJoinToken);
+    const target = (await casual('host')).body as Membership;
+    const hostSocket = await connect(target.wsJoinToken);
+    const updates: ServerEvent[] = [];
+    const privateUpdates: ServerEvent[] = [];
+    hostSocket.on('event', (event: ServerEvent) => updates.push(event));
+    privateSocket.on('event', (event: ServerEvent) =>
+      privateUpdates.push(event),
+    );
+    const before = await profile('guest');
+    const operationId = randomUUID();
+    const responses = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        casual('guest').send({ operationId }).expect(201),
+      ),
+    );
+    expect(
+      new Set(responses.map((response) => (response.body as Membership).id)),
+    ).toEqual(new Set([target.id]));
+    expect(await profile('guest')).toMatchObject({
+      displayName: 'Alex_2',
+      revision: before.revision + 1,
+    });
+    await ready(target, 'guest');
+    const recovered = (await casual('guest').send({ operationId }).expect(201))
+      .body as Membership;
+    expect(
+      recovered.players.filter((player) => player.id === 'guest'),
+    ).toHaveLength(1);
+    expect(
+      recovered.players.find((player) => player.id === 'guest')?.isReady,
+    ).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Ready itself emits one update. Entry must emit exactly one more.
+    expect(
+      updates.filter((event) => event.type === 'ROOM_UPDATED'),
+    ).toHaveLength(2);
+    expect(
+      privateUpdates.filter((event) => event.type === 'ROOM_UPDATED'),
+    ).toHaveLength(1);
+  });
+
+  it('retains deleted fallback destinations and requires explicit fresh entry without creating a replacement on replay', async () => {
+    const operationId = randomUUID();
+    const responses = await Promise.all([
+      casual('guest').send({ operationId }),
+      casual('guest').send({ operationId }),
+    ]);
+    const target = responses[0].body as Membership;
+    expect((responses[1].body as Membership).id).toBe(target.id);
+    expect(
+      (await api().get('/rooms')).body as { items: RoomView[] },
+    ).toMatchObject({ items: [expect.objectContaining({ id: target.id })] });
+    await api()
+      .post(`/rooms/${target.id}/leave`)
+      .set('x-client-id', 'guest')
+      .expect(201);
+    await casual('guest')
+      .send({ operationId })
+      .expect(409)
+      .expect(({ body }) =>
+        expect((body as { code: string }).code).toBe(
+          'CASUAL_DESTINATION_UNAVAILABLE',
+        ),
+      );
+    expect(
+      (await api().get('/rooms')).body as { items: RoomView[] },
+    ).toMatchObject({ items: [] });
+    const fresh = (
+      await casual('guest').send({ operationId: randomUUID() }).expect(201)
+    ).body as Membership;
+    expect(fresh.id).not.toBe(target.id);
+  });
+
+  it('checks profile generation before replay and rejects invalid operation identities without admission', async () => {
+    const operationId = randomUUID();
+    const target = (await casual('guest').send({ operationId }))
+      .body as Membership;
+    await casual('guest')
+      .set('x-profile-generation', 'retired-generation')
+      .send({ operationId })
+      .expect(409)
+      .expect(({ body }) =>
+        expect((body as { code: string }).code).toBe(
+          'STALE_PROFILE_GENERATION',
+        ),
+      );
+    await casual('other').send({ operationId: 'invalid' }).expect(400);
+    expect((await read(target)).players).toHaveLength(1);
+    expect(
+      (
+        await casual('guest')
+          .set('x-profile-generation', target.profile.generation)
+          .send({ operationId })
+          .expect(201)
+      ).body as Membership,
+    ).toMatchObject({ id: target.id });
   });
 
   it('creates a public default Lobby with host membership and a working socket token despite private creation defaults', async () => {
