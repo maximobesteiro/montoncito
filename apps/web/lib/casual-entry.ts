@@ -19,11 +19,37 @@ export function rememberCasualEntry(room: { id: string; slug: string }) {
 
 export function getCasualEntry(slug: string) {
   if (typeof window === "undefined") return undefined;
-  const saved = sessionStorage.getItem(destinationKey(getOrCreateClientId()));
-  const destination: { id: string; slug: string } | undefined = saved
-    ? JSON.parse(saved)
-    : undefined;
-  return destination?.slug === slug ? destination : undefined;
+  try {
+    const saved = sessionStorage.getItem(destinationKey(getOrCreateClientId()));
+    if (saved === null) return undefined;
+    const destination: unknown = JSON.parse(saved);
+    if (
+      !destination ||
+      typeof destination !== "object" ||
+      !("id" in destination) ||
+      typeof destination.id !== "string" ||
+      !destination.id ||
+      !("slug" in destination) ||
+      typeof destination.slug !== "string" ||
+      !destination.slug
+    )
+      throw new Error("Invalid Casual destination");
+    return destination.slug === slug
+      ? { id: destination.id, slug: destination.slug }
+      : undefined;
+  } catch {
+    // Unreadable provenance is not evidence of an ordinary invite. Callers
+    // must show a recoverable error rather than resolve a creating slug URL.
+    throw new CasualEntryLookupError();
+  }
+}
+
+export class CasualEntryLookupError extends Error {
+  constructor() {
+    super(
+      "Couldn't read your stored game entry. Restore browser storage access and retry entry. No Lobby was created or joined.",
+    );
+  }
 }
 
 export function forgetCasualEntry(id: string) {

@@ -455,6 +455,222 @@ it("Casual handoff reload preserves server settings through boot and later Lobby
   }
 }, 20_000);
 
+it.each(["session read", "identity read", "malformed destination"])(
+  "Lobby entry fails closed and recovers after a %s failure",
+  async (failure) => {
+    await server.restart();
+    const guest = await client(390, "Guest");
+    const slug = "storage-failure";
+    const admissions: string[] = [];
+    try {
+      await guest.page.goto(`http://localhost:4173/room/${slug}`);
+      await guest.page.evaluate(
+        ({ failure, id }) => {
+          if (failure === "malformed destination") {
+            sessionStorage.setItem(`montoncito:casual-destination:${id}`, "{");
+            return;
+          }
+          const original = Storage.prototype.getItem;
+          Storage.prototype.getItem = function (key) {
+            if (
+              (failure === "session read" && this === sessionStorage) ||
+              (failure === "identity read" && key === "montoncito:clientId")
+            )
+              throw new DOMException("Blocked", "SecurityError");
+            return original.call(this, key);
+          };
+          Object.assign(window, {
+            restoreStorageReads: () => {
+              Storage.prototype.getItem = original;
+            },
+          });
+        },
+        { failure, id: guest.id },
+      );
+      guest.page.on("request", (request) => {
+        if (
+          request.url().includes("/by-slug/") ||
+          request.url().endsWith("/join")
+        )
+          admissions.push(request.url());
+      });
+      await guest.page.addStyleTag({ content: css });
+      await guest.page.addScriptTag({ content: script });
+      await guest.page
+        .getByText(/Couldn't read your stored game entry/)
+        .waitFor();
+      expect(admissions).toEqual([]);
+      expect(guest.errors).toEqual([]);
+      expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(0);
+      await guest.page.evaluate((id) => {
+        (
+          window as Window & { restoreStorageReads?: () => void }
+        ).restoreStorageReads?.();
+        sessionStorage.removeItem(`montoncito:casual-destination:${id}`);
+      }, guest.id);
+      await guest.page.getByRole("button", { name: "Retry entry" }).click();
+      await guest.page.getByText("Guest (you)", { exact: true }).waitFor();
+      expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(1);
+    } finally {
+      await guest.close();
+    }
+  },
+  20_000,
+);
+
+it.each(["host", "guest"])(
+  "A non-Casual %s reopens a started match through its Lobby URL without admission",
+  async (member) => {
+    await server.restart();
+    const host = await client(1440, "Host");
+    const guest = await client(390, "Guest");
+    const outsider = await client(390, "Outsider");
+    try {
+      const created = await host.page.request.post(`${server.url}/rooms`, {
+        headers: { "x-client-id": host.id },
+      });
+      const room = await created.json();
+      expect(created.ok()).toBe(true);
+      expect(
+        (
+          await guest.page.request.post(`${server.url}/rooms/${room.id}/join`, {
+            headers: { "x-client-id": guest.id },
+          })
+        ).ok(),
+      ).toBe(true);
+      expect(
+        (
+          await guest.page.request.post(
+            `${server.url}/rooms/${room.id}/ready`,
+            {
+              headers: { "x-client-id": guest.id },
+              data: { ready: true },
+            },
+          )
+        ).ok(),
+      ).toBe(true);
+      expect(
+        (
+          await host.page.request.post(`${server.url}/rooms/${room.id}/start`, {
+            headers: { "x-client-id": host.id },
+          })
+        ).ok(),
+      ).toBe(true);
+      const returning = member === "host" ? host : guest;
+      const admissions: string[] = [];
+      returning.page.on("request", (request) => {
+        if (request.url().endsWith("/join")) admissions.push(request.url());
+      });
+      await returning.page.goto(`http://localhost:4173/room/${room.slug}`);
+      await returning.page.addStyleTag({ content: css });
+      await returning.page.addScriptTag({ content: script });
+      await returning.page.waitForURL(`**/game/${room.id}`);
+      await returning.page
+        .getByRole("region", { name: "Game board" })
+        .waitFor();
+      expect(admissions).toEqual([]);
+      const denied = await outsider.openPage(`/room/${room.slug}`);
+      await denied.getByText(/Room is not open for joining/).waitFor();
+      expect(denied.url()).toContain(`/room/${room.slug}`);
+      const current = await (
+        await fetch(`${server.url}/rooms/${room.id}`)
+      ).json();
+      expect(
+        current.players.map((player: { id: string }) => player.id),
+      ).toEqual([host.id, guest.id]);
+    } finally {
+      await outsider.close();
+      await guest.close();
+      await host.close();
+    }
+  },
+  20_000,
+);
+
+it("Casual handoff synchronizes after connecting when the host starts during delivery of the boot read", async () => {
+  await server.restart();
+  const host = await client(1440, "Host");
+  const guest = await client(390, "Guest");
+  let destination!: CasualDestination;
+  let connected = false;
+  const readsAfterConnection: boolean[] = [];
+  const admissions: string[] = [];
+  try {
+    await host.page.getByRole("button", { name: /Casual Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    guest.page.on("websocket", (socket) =>
+      socket.on("framereceived", ({ payload }) => {
+        if (String(payload).startsWith("40/ws,")) connected = true;
+      }),
+    );
+    guest.page.on("request", (request) => {
+      if (
+        request.url() === `${server.url}/rooms/${destination?.id}` &&
+        request.method() === "GET"
+      )
+        readsAfterConnection.push(connected);
+      if (request.url().endsWith("/join")) admissions.push(request.url());
+    });
+    await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+      const response = await route.fetch();
+      destination = await response.json();
+      let firstRead = true;
+      await guest.page.route(
+        `${server.url}/rooms/${destination.id}`,
+        async (read) => {
+          if (!firstRead) return read.continue();
+          firstRead = false;
+          const snapshot = await read.fetch();
+          expect((await snapshot.json()).status).toBe("open");
+          expect(
+            (
+              await guest.page.request.post(
+                `${server.url}/rooms/${destination.id}/ready`,
+                {
+                  headers: { "x-client-id": guest.id },
+                  data: { ready: true },
+                },
+              )
+            ).ok(),
+          ).toBe(true);
+          expect(
+            (
+              await host.page.request.post(
+                `${server.url}/rooms/${destination.id}/start`,
+                {
+                  headers: { "x-client-id": host.id },
+                },
+              )
+            ).ok(),
+          ).toBe(true);
+          await read.fulfill({ response: snapshot });
+        },
+      );
+      await route.fulfill({ response });
+    });
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await vi.waitFor(() => expect(destination).toBeDefined());
+    await guest.page.waitForURL(`**/game/${destination.id}`);
+    await guest.page.getByRole("region", { name: "Game board" }).waitFor();
+    expect(admissions).toEqual([]);
+    expect(readsAfterConnection).toEqual([false, true]);
+    const current = await (
+      await fetch(`${server.url}/rooms/${destination.id}`)
+    ).json();
+    expect(current).toMatchObject({
+      id: destination.id,
+      status: "in_progress",
+    });
+    expect(current.players.map((player: { id: string }) => player.id)).toEqual([
+      host.id,
+      guest.id,
+    ]);
+  } finally {
+    await guest.close();
+    await host.close();
+  }
+}, 20_000);
+
 it("Casual Game admits a conflicting nickname immediately, persists its canonical profile across tabs, and allows Lobby editing", async () => {
   await server.restart();
   const host = await client(1440, "alex");

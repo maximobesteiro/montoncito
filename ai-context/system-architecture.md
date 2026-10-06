@@ -140,7 +140,9 @@ Match start copies each seated player's server-confirmed profile nickname into `
 7. The server checks membership, deduplication, staleness, and `core-game` validation, then atomically commits state, Sequence number, and outcome before delivery.
 8. A finished Game room remains connected and read-only for gameplay Actions; seated players can continue chatting.
 
-A Lobby retains disconnected members while another member remains online. When no one is connected, it removes the Lobby after a five-second grace period so a page refresh can recover room chat. A reconnect cancels the pending departure. The Lobby page renews a member's WebSocket token through the room token flow; removed players cannot renew membership automatically.
+A Lobby retains disconnected members while another member remains online. When no one is connected, it removes the Lobby after a five-second grace period so a page refresh can recover room chat. A reconnect cancels the pending departure. The Lobby page renews a member's WebSocket token through the room token flow; removed players cannot renew membership automatically. Existing members reopening a started match through its Lobby URL verify membership with a member-only token before navigating to the Game room. After each Lobby socket connection, the page reads authoritative room metadata to recover starts missed between its boot snapshot and subscription. Newer live updates take precedence over delayed reads.
+
+Lobby boot reads stored Casual provenance inside its recoverable entry flow. Failed identity or session-storage reads, invalid JSON, and invalid destination records block creating slug resolution and admission. The page explains the storage failure and offers an explicit retry after storage access is restored; unreadable provenance never counts as a missing Casual destination.
 
 ## 7) State, Persistence & Scaling
 

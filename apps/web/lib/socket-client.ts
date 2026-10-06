@@ -28,7 +28,11 @@ class SocketClient {
   private handlers = new Set<ServerEventHandler>();
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-  connect(token: string, renewToken?: () => Promise<string>) {
+  connect(
+    token: string,
+    renewToken?: () => Promise<string>,
+    onConnected?: () => void,
+  ) {
     // Namespace is /ws (see server WebSocketGateway config)
     this.socket = io(`${getServerUrl()}/ws`, {
       transports: ["websocket"],
@@ -66,9 +70,11 @@ class SocketClient {
     });
 
     this.socket.on("connect", () => {
-      this.socket?.emit("chat.history.request", {
+      if (this.socket !== socket) return;
+      socket.emit("chat.history.request", {
         version: GAME_ROOM_PROTOCOL_VERSION,
       });
+      onConnected?.();
     });
 
     this.socket.on("chat.history", (payload: unknown) => {
