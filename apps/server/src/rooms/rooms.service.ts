@@ -68,7 +68,7 @@ export class RoomsService {
       .slice(0, 15);
   }
 
-  public create(params: { clientId: string }): Room {
+  public create(params: { clientId: string; visibility?: Visibility }): Room {
     const id = randomUUID();
     const slug = this.generateUniqueSlug(this.defaults.slugLength);
     const now = new Date().toISOString();
@@ -79,7 +79,7 @@ export class RoomsService {
     const room: Room = {
       id,
       slug,
-      visibility: this.defaults.defaultVisibility,
+      visibility: params.visibility ?? this.defaults.defaultVisibility,
       status: 'open',
       maxPlayers: this.defaults.defaultMaxPlayers,
       ownerId: params.clientId,
@@ -127,6 +127,23 @@ export class RoomsService {
     this.roomsById.set(id, room);
     this.roomIdBySlug.set(sanitized, id);
     return room;
+  }
+
+  public enterCasual(clientId: string): { room: Room; admitted: boolean } {
+    // Selection and join remain synchronous so capacity cannot change between
+    // checking eligibility and committing admission in this server process.
+    const lobbies = [...this.roomsById.values()]
+      .filter((room) => room.visibility === 'public' && room.status === 'open')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const membership = lobbies.find((room) => this.hasPlayer(room, clientId));
+    if (membership) return { room: membership, admitted: false };
+    const available = lobbies.find(
+      (room) => room.players.length < room.maxPlayers,
+    );
+    const room = available
+      ? this.join({ roomId: available.id, clientId })
+      : this.create({ clientId, visibility: 'public' });
+    return { room, admitted: true };
   }
 
   public getById(id: string): Room {

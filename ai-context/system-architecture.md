@@ -61,7 +61,11 @@ Browser admission replacements also submit the initialization profile's `base`. 
 
 **Lobby & Matchmaking**
 
-### Casual Game design, agreed and pending implementation
+### Casual Game implementation and remaining design
+
+[Ticket #99](https://github.com/maximobesteiro/montoncito/issues/99) implements the non-conflicting entry path through `POST /rooms/casual`. The homepage initializes the shared guest profile and sends its generation, then opens the confirmed Lobby. Casual entry preserves server settings rather than reapplying remembered host settings. Selection and admission commit synchronously and new membership broadcasts `ROOM_UPDATED`; existing membership returns a socket token without a roster update or readiness reset.
+
+Automatic nickname suffixing and ambiguous-response recovery below remain pending in [#100](https://github.com/maximobesteiro/montoncito/issues/100) and [#101](https://github.com/maximobesteiro/montoncito/issues/101). The full design is [spec #98](https://github.com/maximobesteiro/montoncito/issues/98).
 
 Casual Game is a server-owned REST entry operation. It first returns the guest to their oldest open public Lobby where they still have membership, even if that Lobby is full. Explicit departure removes membership; a later Casual Game request then performs a fresh search. Private Lobby membership does not affect selection.
 

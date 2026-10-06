@@ -190,6 +190,161 @@ function blockNicknameStorageWrites() {
   };
 }
 
+it("Casual Game creates a public default Lobby, joins it live, recovers a ready member and retains host start", async () => {
+  await server.restart();
+  const host = await client(1440, "Casual host");
+  const guest = await client(390, "Casual guest");
+  try {
+    await host.page.route(`${server.url}/rooms/casual`, async (route) => {
+      const response = await route.fetch();
+      const room = await response.json();
+      await host.page.evaluate(
+        (slug) =>
+          localStorage.setItem(
+            `montoncito:room:${slug}`,
+            JSON.stringify({
+              visibility: "private",
+              maxPlayers: 4,
+              discardPiles: 1,
+            }),
+          ),
+        room.slug,
+      );
+      await route.fulfill({ response });
+    });
+    await host.page.getByRole("button", { name: /Casual Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    await host.page.getByText("Casual host (you)", { exact: true }).waitFor();
+    const rooms = await (await fetch(`${server.url}/rooms`)).json();
+    expect(rooms.items).toHaveLength(1);
+    expect(rooms.items[0]).toMatchObject({
+      visibility: "public",
+      maxPlayers: 2,
+      gameConfig: { discardPiles: 3 },
+      status: "open",
+    });
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await guest.page.waitForURL(host.page.url());
+    await host.page.getByText("Casual guest", { exact: true }).waitFor();
+    await guest.page.getByRole("checkbox", { name: "I'm Ready" }).click();
+    await host.page.locator('[title="Ready"]').waitFor();
+    const hostHome = await host.openPage();
+    await hostHome.getByRole("button", { name: /Casual Game/ }).click();
+    await hostHome.waitForURL(host.page.url());
+    await hostHome.getByText("Casual guest", { exact: true }).waitFor();
+    expect(
+      (
+        await (await fetch(`${server.url}/rooms/${rooms.items[0].id}`)).json()
+      ).players.find((player: { id: string }) => player.id === guest.id)
+        .isReady,
+    ).toBe(true);
+    const home = await guest.openPage();
+    await home.getByRole("button", { name: /Casual Game/ }).click();
+    await home.waitForURL(host.page.url());
+    await home.getByRole("checkbox", { name: "I'm Ready" }).waitFor();
+    expect(
+      await home.getByRole("checkbox", { name: "I'm Ready" }).isChecked(),
+    ).toBe(true);
+    await home.getByRole("button", { name: "Edit nickname" }).click();
+    const input = home.getByRole("textbox", { name: "Nickname", exact: true });
+    await input.fill("Casual renamed");
+    await input.press("Enter");
+    await host.page.getByText("Casual renamed", { exact: true }).waitFor();
+    await host.page.getByRole("button", { name: /Start game/i }).click();
+    await host.page.waitForURL("**/game/**");
+    await home.waitForURL(host.page.url());
+    expect(host.errors).toEqual([]);
+    expect(guest.errors).toEqual([]);
+  } finally {
+    await guest.close();
+    await host.close();
+  }
+}, 30_000);
+
+it("Casual Game prevents duplicate requests while pending and allows retry after a visible failure", async () => {
+  await server.restart();
+  const guest = await client(1440, "Pending guest");
+  let release!: () => void;
+  const delivery = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let requests = 0;
+  await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+    requests++;
+    await delivery;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ message: "Unavailable" }),
+    });
+  });
+  try {
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    const pending = guest.page.getByRole("button", { name: /Finding a game/ });
+    await pending.waitFor();
+    expect(await pending.isDisabled()).toBe(true);
+    expect(
+      await guest.page
+        .getByRole("button", { name: /Create a Game/ })
+        .isDisabled(),
+    ).toBe(true);
+    release();
+    await guest.page
+      .getByRole("alert")
+      .getByText(/Couldn't find a game/)
+      .waitFor();
+    expect(requests).toBe(1);
+    expect(new URL(guest.page.url()).pathname).toBe("/");
+    await guest.page.unroute(`${server.url}/rooms/casual`);
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await guest.page.waitForURL("**/room/**");
+    await guest.page
+      .getByText("Pending guest (you)", { exact: true })
+      .waitFor();
+  } finally {
+    release();
+    await guest.close();
+  }
+}, 20_000);
+
+it("Casual Game restores the confirmed nickname when the server restarts between initialization and entry", async () => {
+  await server.restart();
+  const guest = await client(390, "Remembered casual");
+  let restart = true;
+  await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+    if (restart) {
+      restart = false;
+      await server.restart();
+    }
+    await route.continue();
+  });
+  try {
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await guest.page.waitForURL("**/room/**");
+    await guest.page
+      .getByText("Remembered casual (you)", { exact: true })
+      .waitFor();
+    const profile = await (
+      await fetch(`${server.url}/profile`, {
+        headers: { "x-client-id": guest.id },
+      })
+    ).json();
+    expect(profile.displayName).toBe("Remembered casual");
+    expect(
+      await guest.page.evaluate(
+        (id) => JSON.parse(localStorage.getItem(`montoncito:profile:${id}`)!),
+        guest.id,
+      ),
+    ).toMatchObject({
+      generation: profile.generation,
+      displayName: "Remembered casual",
+    });
+    expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(1);
+  } finally {
+    await guest.close();
+  }
+}, 20_000);
+
 it("initializes a playful profile and validates canonical nickname saves through REST", async () => {
   const headers = { "x-client-id": crypto.randomUUID() };
   const initial = await fetch(`${server.url}/profile`, { headers });

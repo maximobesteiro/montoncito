@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MenuButton } from "../components/MenuButton";
 import { Modal } from "../components/Modal";
@@ -14,6 +14,7 @@ import {
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
+import { rememberCasualEntry } from "@/lib/casual-entry";
 
 export default function Home() {
   const router = useRouter();
@@ -25,6 +26,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [entering, setEntering] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false);
+  const casualPending = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +88,38 @@ export default function Home() {
     }
   };
 
+  const handleCasualGame = async () => {
+    if (entering || casualPending.current) return;
+    casualPending.current = true;
+    setEntering(true);
+    setFinding(true);
+    setError(null);
+    try {
+      const clientId = getOrCreateClientId();
+      const profile = await initializeGuestProfile(clientId);
+      const { value: room } = await withGuestProfileRecovery(
+        profile,
+        (current) =>
+          apiFetch<{ id: string; slug: string; wsJoinToken: string }>(
+            "/rooms/casual",
+            {
+              method: "POST",
+              clientId,
+              headers: { "x-profile-generation": current.generation },
+            },
+          ),
+      );
+      rememberCasualEntry(room);
+      router.push(`/room/${room.slug}`);
+    } catch {
+      setError("Couldn't find a game. Please try again.");
+    } finally {
+      casualPending.current = false;
+      setEntering(false);
+      setFinding(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-background p-4 sm:p-8 font-sans">
       <main className="w-full max-w-md flex flex-col gap-4">
@@ -130,9 +165,10 @@ export default function Home() {
           {error && <p role="alert">{error}</p>}
         </section>
         <MenuButton
-          title="Casual Game"
+          title={finding ? "Finding a game..." : "Casual Game"}
+          disabled={entering}
           subtitle="Join any game awaiting players"
-          onClick={() => {}}
+          onClick={() => void handleCasualGame()}
         />
 
         <MenuButton

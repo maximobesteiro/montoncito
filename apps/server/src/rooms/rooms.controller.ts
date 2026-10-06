@@ -52,6 +52,23 @@ export class RoomsController {
     return this.rooms.listPublicOpen({ page: q.page, limit: q.limit });
   }
 
+  @Post('casual')
+  public casual(
+    @Headers('x-client-id') clientId: string | undefined,
+    @Headers('x-profile-generation') generation?: string,
+  ) {
+    if (!clientId) throw new BadRequestException('Missing X-Client-Id header');
+    if (generation) this.profiles.assertGeneration(clientId, generation);
+    // Reject configuration failures before changing membership.
+    if (!this.configService.get<string>('WS_SECRET'))
+      throw new Error('WS_SECRET not configured');
+    const { room, admitted } = this.rooms.enterCasual(clientId);
+    const roomView = this.rooms.toView(room);
+    const wsJoinToken = this.createWsJoinToken(room.id, clientId);
+    if (admitted) this.ws.emitRoomUpdated(room.id, roomView);
+    return { ...roomView, wsJoinToken };
+  }
+
   @Get('by-slug/:slug')
   public getBySlug(
     @Param('slug') slug: string,

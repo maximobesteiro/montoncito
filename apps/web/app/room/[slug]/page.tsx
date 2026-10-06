@@ -18,6 +18,7 @@ import {
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
+import { getCasualEntry, forgetCasualEntry } from "@/lib/casual-entry";
 
 type RoomView = {
   id: string;
@@ -44,6 +45,10 @@ export default function WaitingRoomPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const sanitizedSlug = useMemo(() => slug.slice(0, 15).toLowerCase(), [slug]);
+  const casualEntry = useMemo(
+    () => getCasualEntry(sanitizedSlug),
+    [sanitizedSlug],
+  );
 
   const clientId = useMemo(() => {
     try {
@@ -143,11 +148,16 @@ export default function WaitingRoomPage() {
         setAdmissionProfile(profile);
         // 1) Resolve room by slug (for deep-link support)
         const resolved = await withGuestProfileRecovery(profile, (current) =>
-          apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
-            method: "GET",
-            clientId,
-            headers: { "x-profile-generation": current.generation },
-          }),
+          apiFetch<RoomView>(
+            casualEntry
+              ? `/rooms/${casualEntry.id}`
+              : `/rooms/by-slug/${sanitizedSlug}`,
+            {
+              method: "GET",
+              clientId,
+              headers: { "x-profile-generation": current.generation },
+            },
+          ),
         );
         profile = resolved.profile;
         let view = resolved.value;
@@ -158,7 +168,12 @@ export default function WaitingRoomPage() {
         // 1b) If we're the host, re-apply locally saved settings (best-effort).
         // This mitigates room recreation/reset after everyone leaves.
         const saved = getRoomSettings(sanitizedSlug);
-        if (saved && view.ownerId === clientId && view.status === "open") {
+        if (
+          !casualEntry &&
+          saved &&
+          view.ownerId === clientId &&
+          view.status === "open"
+        ) {
           try {
             view = await apiFetch<RoomView>(`/rooms/${view.id}`, {
               method: "PATCH",
@@ -180,6 +195,7 @@ export default function WaitingRoomPage() {
         // Note: response includes updated room view (including *you* in players list).
         const connectMembership = (joinRes: Admission) => {
           if (cancelled) return;
+          if (casualEntry) forgetCasualEntry(casualEntry.id);
 
           // Update local room immediately so the joining player sees themselves
           const {
@@ -433,6 +449,7 @@ export default function WaitingRoomPage() {
       getSocketClient().disconnect();
     };
   }, [
+    casualEntry,
     clientId,
     router,
     sanitizedSlug,
