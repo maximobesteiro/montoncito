@@ -60,6 +60,10 @@ _Avoid_: current profile, editor draft
 A pre-game space where players discover, create, or join a match before the game room begins.
 _Avoid_: room, waiting room
 
+**Casual Game**:
+The entry option that returns a guest to an existing public Lobby or joins the oldest available public Lobby, creating one when none is available. It uses the normal Lobby readiness and host-start flow.
+_Avoid_: automatic match start, ranked match
+
 **Game room**:
 The live match context where seated players receive authoritative state and submit actions.
 _Avoid_: lobby, session

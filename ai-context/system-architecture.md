@@ -61,6 +61,18 @@ Browser admission replacements also submit the initialization profile's `base`. 
 
 **Lobby & Matchmaking**
 
+### Casual Game design, agreed and pending implementation
+
+Casual Game is a server-owned REST entry operation. It first returns the guest to their oldest open public Lobby where they still have membership, even if that Lobby is full. Explicit departure removes membership; a later Casual Game request then performs a fresh search. Private Lobby membership does not affect selection.
+
+Without an existing public Lobby membership, select the oldest public, open Lobby with a free seat by creation time. Any supported player limit and Discard pile count is eligible. A Lobby remains eligible during the existing five-second disconnection grace period; selection does not require connected players. If no eligible Lobby exists, create a public Lobby with default settings and seat the guest as host.
+
+Initialize the guest profile before entry and preserve the existing profile-generation recovery rules. Selection, capacity checks, any nickname adjustment, and admission form one authoritative operation. A failed operation must not partially rename or admit the guest. Successful membership changes use the existing `ROOM_UPDATED` broadcast. Duplicate requests and retries after a lost response recover the same selection rather than admitting the guest to another Lobby.
+
+For a new admission with a nickname conflict, automatically choose the first available suffix `_2`, `_3`, and so on. Treat the whole current confirmed nickname as the literal base, so `Alex_2` can become `Alex_2_2`. Trim the end of the base only as needed to keep the resulting nickname within the existing 32-character limit. Use the existing case-insensitive comparison, and require availability in the target Lobby and every other open Lobby containing the guest.
+
+The suffixed nickname becomes the shared confirmed profile preference. Persist it in the browser and broadcast its change to affected open Lobbies. Started matches retain their captured names. Returning an existing member does not rename them or reset readiness. Automatic suffixing applies only to Casual Game; invitations and Join a Game retain their explicit nickname replacement flow.
+
 - `GET /lobbies` – list public lobbies.
 - `POST /lobbies` – create lobby (ruleset, visibility, max players).
 - `POST /lobbies/{id}/join` – reserve a seat (pre-room).

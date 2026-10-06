@@ -30,6 +30,13 @@
 - Lobby Shuffle fetches suggestions available across all current Lobby memberships. If none remain, the editor invites the guest to enter a custom name. Save checks availability again on the server. Departure, kick and match-start navigation close the editor and discard late responses; a late save cannot replace newer client state or change names in an existing match.
 - Direct invites and Join a Game enter immediately with an available confirmed nickname. A conflicting name opens the same editor before admission and explains that the guest has not joined. The initial suggestion and Shuffle change only the draft. Save confirms the shared name and admission together; Cancel returns home without either. A rejected replacement keeps the useful draft and previous confirmed name. Full or started Lobbies retain their admission errors. If an admission response is lost, the page checks the confirmed profile and membership before reporting the result; an unavailable check explains the uncertain outcome and offers retry.
 
+#### Casual Game design, agreed and pending implementation
+
+- Casual Game returns the guest to their oldest open public Lobby membership. Otherwise it joins the oldest public, open Lobby with space, or creates a public Lobby with default settings if none exists. Custom settings are eligible, and disconnected Lobbies remain eligible during their deletion grace period.
+- Entry shows a pending state such as `Finding a game...` and prevents duplicate submissions. Success opens the existing Lobby screen, where players review settings, edit their nickname, mark ready, and wait for the host to start. Casual Game does not start the match automatically.
+- Nickname conflicts do not open a pre-admission editor. The server appends the first available `_2`, `_3`, and so on to the current confirmed name, trimming the base when needed to fit 32 characters. This becomes the shared confirmed nickname shown on the homepage and in joined open Lobbies. Players can edit it after entry. Invitations and Join a Game keep their existing confirmation flow.
+- A failed entry shows a recoverable error. A lost response must recover the original selection rather than claim another seat.
+
 ### 2. **Game Room / Board**
 - The heart of the UI — renders the current match state via **WebSocket** events.
 - Key zones:
