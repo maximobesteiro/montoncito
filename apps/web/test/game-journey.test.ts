@@ -269,6 +269,192 @@ it("Casual Game creates a public default Lobby, joins it live, recovers a ready 
   }
 }, 30_000);
 
+it("Casual handoff does not re-admit a guest kicked after the destination read", async () => {
+  await server.restart();
+  const host = await client(1440, "Host");
+  const guest = await client(390, "Guest");
+  let destination!: CasualDestination;
+  const admissions: string[] = [];
+  try {
+    await host.page.getByRole("button", { name: /Casual Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+      const response = await route.fetch();
+      destination = await response.json();
+      await guest.page.route(
+        `${server.url}/rooms/${destination.id}`,
+        async (read) => {
+          const snapshot = await read.fetch();
+          const kicked = await host.page.request.post(
+            `${server.url}/rooms/${destination.id}/kick/${guest.id}`,
+            { headers: { "x-client-id": host.id } },
+          );
+          expect(kicked.ok()).toBe(true);
+          await read.fulfill({ response: snapshot });
+        },
+      );
+      await route.fulfill({ response });
+    });
+    guest.page.on("request", (request) => {
+      if (request.url().endsWith("/join")) admissions.push(request.url());
+    });
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await guest.page.getByText(/membership is no longer available/).waitFor();
+    expect(admissions).toEqual([]);
+    const room = await (
+      await fetch(`${server.url}/rooms/${destination.id}`)
+    ).json();
+    expect(room.players.map((player: { id: string }) => player.id)).toEqual([
+      host.id,
+    ]);
+    await guest.page.unroute(`${server.url}/rooms/${destination.id}`);
+    await guest.page.unroute(`${server.url}/rooms/casual`);
+    await guest.page.getByRole("button", { name: "Find another game" }).click();
+    await guest.page.waitForURL("http://localhost:4173/");
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await guest.page.getByText("Guest (you)", { exact: true }).waitFor();
+  } finally {
+    await guest.close();
+    await host.close();
+  }
+}, 20_000);
+
+it("Casual handoff reload reports a deleted destination without creating a replacement", async () => {
+  await server.restart();
+  const guest = await client(390, "Guest");
+  let destination!: CasualDestination;
+  let intercepted!: () => void;
+  const bootRead = new Promise<void>((resolve) => {
+    intercepted = resolve;
+  });
+  const creatingReads: string[] = [];
+  try {
+    await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+      const response = await route.fetch();
+      destination = await response.json();
+      await guest.page.route(
+        `${server.url}/rooms/${destination.id}`,
+        async (read) => {
+          intercepted();
+          await read.abort("failed");
+        },
+      );
+      await route.fulfill({ response });
+    });
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    await bootRead;
+    const deleted = await guest.page.request.post(
+      `${server.url}/rooms/${destination.id}/leave`,
+      {
+        headers: { "x-client-id": guest.id },
+      },
+    );
+    expect(deleted.ok()).toBe(true);
+    await guest.page.unroute(`${server.url}/rooms/${destination.id}`);
+    guest.page.on("request", (request) => {
+      if (request.url().includes("/by-slug/"))
+        creatingReads.push(request.url());
+    });
+    await guest.page.reload();
+    await guest.page.addStyleTag({ content: css });
+    await guest.page.addScriptTag({ content: script });
+    await guest.page
+      .getByText(/original game or membership is no longer available/)
+      .waitFor();
+    expect(creatingReads).toEqual([]);
+    expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(0);
+  } finally {
+    await guest.close();
+  }
+}, 20_000);
+
+it("Casual handoff reload preserves server settings through boot and later Lobby reloads", async () => {
+  await server.restart();
+  const host = await client(1440, "Host");
+  let destination!: CasualDestination;
+  let intercepted!: () => void;
+  const bootRead = new Promise<void>((resolve) => {
+    intercepted = resolve;
+  });
+  const mutations: string[] = [];
+  try {
+    await host.page.route(`${server.url}/rooms/casual`, async (route) => {
+      const response = await route.fetch();
+      destination = await response.json();
+      const changed = await host.page.request.patch(
+        `${server.url}/rooms/${destination.id}`,
+        {
+          headers: { "x-client-id": host.id },
+          data: {
+            visibility: "private",
+            maxPlayers: 3,
+            gameConfig: { discardPiles: 4 },
+          },
+        },
+      );
+      expect(changed.ok()).toBe(true);
+      await host.page.evaluate(
+        (slug) =>
+          localStorage.setItem(
+            `montoncito:room:${slug}`,
+            JSON.stringify({
+              visibility: "public",
+              maxPlayers: 4,
+              discardPiles: 1,
+            }),
+          ),
+        destination.slug,
+      );
+      await host.page.route(
+        `${server.url}/rooms/${destination.id}`,
+        async (read) => {
+          intercepted();
+          await read.abort("failed");
+        },
+      );
+      await route.fulfill({ response });
+    });
+    await host.page.getByRole("button", { name: /Casual Game/ }).click();
+    await bootRead;
+    await host.page.unroute(`${server.url}/rooms/${destination.id}`);
+    host.page.on("request", (request) => {
+      if (
+        request.url().includes("/by-slug/") ||
+        request.url().endsWith("/join") ||
+        request.method() === "PATCH"
+      )
+        mutations.push(request.url());
+    });
+    for (let reload = 0; reload < 2; reload++) {
+      await host.page.reload();
+      await host.page.addStyleTag({ content: css });
+      await host.page.addScriptTag({ content: script });
+      await host.page.getByText("Host (you)", { exact: true }).waitFor();
+      const current = await (
+        await fetch(`${server.url}/rooms/${destination.id}`)
+      ).json();
+      expect(current).toMatchObject({
+        id: destination.id,
+        visibility: "private",
+        maxPlayers: 3,
+        gameConfig: { discardPiles: 4 },
+      });
+    }
+    expect(mutations).toEqual([]);
+    // A completed handoff permits a fresh operation on subsequent menu entry.
+    await host.page.unroute(`${server.url}/rooms/casual`);
+    await host.page.locator('[title="Exit room"]').click();
+    await host.page.waitForURL("http://localhost:4173/");
+    await host.page.getByRole("button", { name: /Casual Game/ }).click();
+    await host.page.getByText("Host (you)", { exact: true }).waitFor();
+    const rooms = await (await fetch(`${server.url}/rooms`)).json();
+    expect(rooms.items).toHaveLength(1);
+    expect(rooms.items[0].id).not.toBe(destination.id);
+  } finally {
+    await host.close();
+  }
+}, 20_000);
+
 it("Casual Game admits a conflicting nickname immediately, persists its canonical profile across tabs, and allows Lobby editing", async () => {
   await server.restart();
   const host = await client(1440, "alex");
@@ -389,7 +575,7 @@ it.each(["revision", "generation"] as const)(
           .waitFor();
       } else {
         await guest.page
-          .getByRole("button", { name: "Retry admission" })
+          .getByRole("button", { name: "Find another game" })
           .waitFor();
       }
       expect(

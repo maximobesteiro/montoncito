@@ -18,7 +18,13 @@ import {
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
-import { getCasualEntry, forgetCasualEntry } from "@/lib/casual-entry";
+import {
+  getCasualEntry,
+  forgetCasualEntry,
+  completeCasualEntry,
+  startFreshCasualEntry,
+  CasualDestinationUnavailableError,
+} from "@/lib/casual-entry";
 
 type RoomView = {
   id: string;
@@ -61,6 +67,7 @@ export default function WaitingRoomPage() {
   const [room, setRoom] = useState<RoomView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [casualUnavailable, setCasualUnavailable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [kickingPlayerId, setKickingPlayerId] = useState<string | null>(null);
@@ -137,6 +144,7 @@ export default function WaitingRoomPage() {
       if (!clientId) return;
       setLoading(true);
       setError(null);
+      setCasualUnavailable(false);
       setAdmitted(false);
       setNeedsNickname(false);
       setRoom(null);
@@ -195,7 +203,7 @@ export default function WaitingRoomPage() {
         // Note: response includes updated room view (including *you* in players list).
         const connectMembership = (joinRes: Admission) => {
           if (cancelled) return;
-          if (casualEntry) forgetCasualEntry(casualEntry.id);
+          if (casualEntry) completeCasualEntry();
 
           // Update local room immediately so the joining player sees themselves
           const {
@@ -236,6 +244,7 @@ export default function WaitingRoomPage() {
               router.push(`/game/${ev.roomId}`);
             }
             if (ev.type === "KICKED") {
+              if (casualEntry) forgetCasualEntry(casualEntry.id);
               liveRoomRevision.current++;
               invalidateNicknameEditor();
               sock.disconnect();
@@ -315,6 +324,16 @@ export default function WaitingRoomPage() {
           }
         };
         const admit = async (draft?: string) => {
+          if (casualEntry) {
+            // Casual Game already committed admission. Boot may only recover
+            // that membership, including when a kick races the room read.
+            const token = await apiFetch<{ wsJoinToken: string }>(
+              `/rooms/${view.id}/socket-token`,
+              { method: "POST", clientId },
+            );
+            connectMembership({ ...view, ...token, profile });
+            return;
+          }
           if (
             unresolvedAdmission.current === view.id &&
             !(await reconcileAdmission())
@@ -432,7 +451,19 @@ export default function WaitingRoomPage() {
         }
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load room");
+        const unavailable = Boolean(
+          casualEntry &&
+            e instanceof ApiHttpError &&
+            (e.status === 403 || e.status === 404),
+        );
+        setCasualUnavailable(unavailable);
+        setError(
+          unavailable
+            ? new CasualDestinationUnavailableError().message
+            : e instanceof Error
+              ? e.message
+              : "Failed to load room",
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -459,7 +490,7 @@ export default function WaitingRoomPage() {
   ]);
 
   useEffect(() => {
-    if (!room) return;
+    if (!room || !admitted) return;
     if (
       room.status !== "open" &&
       room.gameId &&
@@ -468,7 +499,7 @@ export default function WaitingRoomPage() {
       invalidateNicknameEditor();
       router.push(`/game/${room.id}`);
     }
-  }, [room, router, invalidateNicknameEditor, clientId]);
+  }, [room, router, invalidateNicknameEditor, clientId, admitted]);
 
   const patchRoom = async (
     patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
@@ -587,6 +618,7 @@ export default function WaitingRoomPage() {
         method: "POST",
         clientId,
       });
+      if (casualEntry) forgetCasualEntry(casualEntry.id);
       router.push("/");
     } catch (e) {
       showToast(
@@ -652,9 +684,18 @@ export default function WaitingRoomPage() {
                 <button
                   className="brutal-button mt-2 bg-card"
                   disabled={loading}
-                  onClick={() => setAdmissionAttempt((attempt) => attempt + 1)}
+                  onClick={() => {
+                    if (casualUnavailable) {
+                      startFreshCasualEntry();
+                      router.push("/");
+                    } else setAdmissionAttempt((attempt) => attempt + 1);
+                  }}
                 >
-                  Retry admission
+                  {casualUnavailable
+                    ? "Find another game"
+                    : casualEntry
+                      ? "Retry entry"
+                      : "Retry admission"}
                 </button>
               )}
             </div>

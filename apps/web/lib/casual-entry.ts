@@ -6,20 +6,34 @@ import {
   type GuestProfile,
 } from "./guest-profile";
 
-// Pass the confirmed destination to the Lobby during same-tab navigation.
+// Keep Casual provenance for this tab's destination, including Lobby reloads.
 // Reading by ID avoids creating another Lobby if this destination disappears.
-let destination: { id: string; slug: string } | undefined;
+const destinationKey = (id: string) => `montoncito:casual-destination:${id}`;
 
 export function rememberCasualEntry(room: { id: string; slug: string }) {
-  destination = { id: room.id, slug: room.slug };
+  sessionStorage.setItem(
+    destinationKey(getOrCreateClientId()),
+    JSON.stringify({ id: room.id, slug: room.slug }),
+  );
 }
 
 export function getCasualEntry(slug: string) {
+  if (typeof window === "undefined") return undefined;
+  const saved = sessionStorage.getItem(destinationKey(getOrCreateClientId()));
+  const destination: { id: string; slug: string } | undefined = saved
+    ? JSON.parse(saved)
+    : undefined;
   return destination?.slug === slug ? destination : undefined;
 }
 
 export function forgetCasualEntry(id: string) {
-  if (destination?.id === id) destination = undefined;
+  const key = destinationKey(getOrCreateClientId());
+  const saved = sessionStorage.getItem(key);
+  if (saved && JSON.parse(saved).id === id) sessionStorage.removeItem(key);
+}
+
+export function completeCasualEntry() {
+  sessionStorage.removeItem(attemptKey(getOrCreateClientId()));
 }
 
 type CasualAttempt = {
@@ -45,7 +59,9 @@ export class CasualDestinationUnavailableError extends Error {
 }
 
 export function startFreshCasualEntry() {
-  sessionStorage.removeItem(attemptKey(getOrCreateClientId()));
+  const clientId = getOrCreateClientId();
+  sessionStorage.removeItem(attemptKey(clientId));
+  sessionStorage.removeItem(destinationKey(clientId));
 }
 
 export async function enterCasualGame(): Promise<CasualResult> {
@@ -95,9 +111,10 @@ export async function enterCasualGame(): Promise<CasualResult> {
             request(current.generation),
           )
         ).value;
-    await rememberGuestProfile(room.profile);
+    // Persist the confirmed destination before any further asynchronous work.
+    // The attempt remains recoverable until the destination finishes booting.
     rememberCasualEntry(room);
-    sessionStorage.removeItem(key);
+    await rememberGuestProfile(room.profile);
     return room;
   } catch (error) {
     if (

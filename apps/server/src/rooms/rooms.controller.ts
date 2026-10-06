@@ -11,7 +11,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { RoomsService } from './rooms.service';
+import { RoomsService, type Room } from './rooms.service';
 import {
   UpdateRoomSchema,
   ListRoomsQuerySchema,
@@ -71,20 +71,12 @@ export class RoomsController {
       clientId,
       parsed.data.operationId,
     );
-    const roomView = this.rooms.toView(room);
     const wsJoinToken = this.createWsJoinToken(room.id, clientId);
-    if (admitted) this.ws.emitRoomUpdated(room.id, roomView);
-    if (renamed) {
-      for (const lobby of this.rooms.lobbiesFor(clientId)) {
-        if (lobby.id !== room.id)
-          this.ws.emitRoomUpdated(lobby.id, this.rooms.toView(lobby));
-      }
-    }
-    const profile = {
-      ...this.profiles.getOrCreate(clientId),
-      suggestions: this.rooms.nicknameSuggestions(clientId),
-    };
-    return { ...roomView, wsJoinToken, profile };
+    return this.admissionResponse(room, clientId, wsJoinToken, {
+      admitted,
+      renamed,
+      includeProfile: true,
+    });
   }
 
   @Get('by-slug/:slug')
@@ -152,27 +144,11 @@ export class RoomsController {
       this.profiles.assertCurrent(clientId, parsed.data.base);
     const room = this.rooms.join({ roomId, clientId, ...parsed.data });
 
-    const roomView = this.rooms.toView(room);
-
-    // Broadcast updated room to all connected clients (for real-time player list updates)
-    // Note: The joining player won't receive this yet as they haven't connected to WS,
-    // but they already have the updated room from this REST response
-    if (!alreadyMember) this.ws.emitRoomUpdated(roomId, roomView);
-    if (!alreadyMember && parsed.data.displayName !== undefined) {
-      for (const lobby of this.rooms.lobbiesFor(clientId)) {
-        if (lobby.id !== roomId)
-          this.ws.emitRoomUpdated(lobby.id, this.rooms.toView(lobby));
-      }
-    }
-
-    const profile =
-      parsed.data.displayName === undefined
-        ? undefined
-        : {
-            ...this.profiles.getOrCreate(clientId),
-            suggestions: this.rooms.nicknameSuggestions(clientId),
-          };
-    return { ...roomView, wsJoinToken, ...(profile ? { profile } : {}) };
+    return this.admissionResponse(room, clientId, wsJoinToken, {
+      admitted: !alreadyMember,
+      renamed: !alreadyMember && parsed.data.displayName !== undefined,
+      includeProfile: parsed.data.displayName !== undefined,
+    });
   }
 
   @Get(':id/nickname-suggestions')
@@ -284,6 +260,30 @@ export class RoomsController {
     if (!alreadyStarted && room.gameId) this.ws.emitGameStarted(roomId);
 
     return this.rooms.toView(room);
+  }
+
+  private admissionResponse(
+    room: Room,
+    clientId: string,
+    wsJoinToken: string,
+    outcome: { admitted: boolean; renamed: boolean; includeProfile: boolean },
+  ) {
+    const roomView = this.rooms.toView(room);
+    // Existing members do not produce a new-admission roster update.
+    if (outcome.admitted) this.ws.emitRoomUpdated(room.id, roomView);
+    if (outcome.renamed) {
+      for (const lobby of this.rooms.lobbiesFor(clientId)) {
+        if (lobby.id !== room.id)
+          this.ws.emitRoomUpdated(lobby.id, this.rooms.toView(lobby));
+      }
+    }
+    const profile = outcome.includeProfile
+      ? {
+          ...this.profiles.getOrCreate(clientId),
+          suggestions: this.rooms.nicknameSuggestions(clientId),
+        }
+      : undefined;
+    return { ...roomView, wsJoinToken, ...(profile ? { profile } : {}) };
   }
 
   private createWsJoinToken(roomId: string, playerId: string): string {

@@ -16,6 +16,7 @@ import {
 import { NicknameEditor } from "@/components/NicknameEditor";
 import {
   enterCasualGame,
+  completeCasualEntry,
   startFreshCasualEntry,
   CasualDestinationUnavailableError,
 } from "@/lib/casual-entry";
@@ -101,6 +102,7 @@ export default function Home() {
     setError(null);
     try {
       const room = await enterCasualGame();
+      if (room.status !== "open") completeCasualEntry();
       router.push(
         room.status === "open" ? `/room/${room.slug}` : `/game/${room.id}`,
       );
