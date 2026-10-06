@@ -6,13 +6,13 @@ import request from 'supertest';
 import { io, type Socket } from 'socket.io-client';
 import { RoomsModule } from './rooms.module';
 import type { RoomView } from './rooms.dto';
-import type { ServerEvent } from '../ws/events';
+import type { ServerEvent, RoomChatMessage } from '../ws/events';
 import { applyMove } from '@mont/core-game';
 import type { SyncSnapshot, PlayerAction } from '@mont/game-room';
 import { randomUUID } from 'crypto';
 import type { Profile } from '../profiles/profiles.service';
 
-type Membership = RoomView & { wsJoinToken: string };
+type Membership = RoomView & { wsJoinToken: string; profile: Profile };
 
 describe('Casual Game through REST and WebSocket', () => {
   let app: INestApplication;
@@ -35,6 +35,11 @@ describe('Casual Game through REST and WebSocket', () => {
       .post(`/rooms/${room.id}/ready`)
       .set('x-client-id', id)
       .send({ ready: true });
+  const rename = (id: string, displayName: string) =>
+    api().patch('/profile').set('x-client-id', id).send({ displayName });
+  const profile = async (id: string): Promise<Profile> =>
+    (await api().get('/profile').set('x-client-id', id).expect(200))
+      .body as Profile;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -78,6 +83,39 @@ describe('Casual Game through REST and WebSocket', () => {
     return socket;
   }
 
+  it('suffixes case-insensitive conflicts using the first available name and returns the confirmed profile', async () => {
+    await api()
+      .patch('/profile')
+      .set('x-client-id', 'host')
+      .send({ displayName: 'alex' });
+    await api()
+      .patch('/profile')
+      .set('x-client-id', 'other')
+      .send({ displayName: 'ALEX_2' });
+    await api()
+      .patch('/profile')
+      .set('x-client-id', 'guest')
+      .send({ displayName: '  Alex  ' });
+    const room = (await casual('host')).body as Membership;
+    await patch(room, { maxPlayers: 4 });
+    await join(room, 'other');
+    const before = (await api().get('/profile').set('x-client-id', 'guest'))
+      .body as Profile;
+    const entered = (await casual('guest').expect(201)).body as Membership;
+    expect(entered.id).toBe(room.id);
+    expect(entered.profile).toMatchObject({
+      displayName: 'Alex_3',
+      generation: before.generation,
+      revision: before.revision + 1,
+    });
+    expect(entered.players.find((p) => p.id === 'guest')?.displayName).toBe(
+      'Alex_3',
+    );
+    expect(
+      (await api().get('/profile').set('x-client-id', 'guest')).body,
+    ).toMatchObject(entered.profile);
+  });
+
   it('creates a public default Lobby with host membership and a working socket token despite private creation defaults', async () => {
     const room = (await casual('guest').expect(201)).body as Membership;
     expect(room).toMatchObject({
@@ -95,6 +133,186 @@ describe('Casual Game through REST and WebSocket', () => {
       visibility: 'public',
     });
     await connect(room.wsJoinToken);
+  });
+
+  it.each([
+    ['Alex_2', 'Alex_2_2'],
+    ['ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef', 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcd_2'],
+  ])(
+    'treats %s as the literal base within the 32-character limit',
+    async (base, expected) => {
+      await rename('host', base.toLowerCase());
+      await rename('guest', base);
+      const target = (await casual('host')).body as Membership;
+      const entered = (await casual('guest').expect(201)).body as Membership;
+      expect(entered.id).toBe(target.id);
+      expect(entered.profile.displayName).toBe(expected);
+      expect(entered.profile.displayName.length).toBeLessThanOrEqual(32);
+    },
+  );
+
+  it('recomputes base truncation when suffixes grow to two digits', async () => {
+    const base = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef';
+    await rename('host', base.toLowerCase());
+    await rename('guest', base);
+    const target = (await casual('host')).body as Membership;
+    for (let number = 2; number <= 9; number++) {
+      const id = `collision-${number}`;
+      await rename(id, `ABCDEFGHIJKLMNOPQRSTUVWXYZabcd_${number}`);
+      const privateRoom = (await create(id)).body as Membership;
+      await join(privateRoom, 'guest').expect(201);
+    }
+    const entered = (await casual('guest').expect(201)).body as Membership;
+    expect(entered.id).toBe(target.id);
+    expect(entered.profile.displayName).toBe(
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabc_10',
+    );
+  });
+
+  it('checks all joined private Lobbies, broadcasts each changed roster once and preserves their readiness and membership', async () => {
+    await rename('host', 'alex');
+    await rename('guest', 'Alex');
+    await rename('other', 'ALEX_2');
+    await rename('next', 'alex_3');
+    const target = (await casual('host')).body as Membership;
+    const first = (await create('other')).body as Membership;
+    const second = (await create('next')).body as Membership;
+    await join(first, 'guest');
+    await join(second, 'guest');
+    await ready(first, 'guest');
+    await ready(second, 'guest');
+    await ready(target, 'host');
+    const updates: RoomView[] = [];
+    for (const room of [target, first, second]) {
+      const socket = await connect(room.wsJoinToken);
+      socket.on('event', (event: ServerEvent) => {
+        if (event.type === 'ROOM_UPDATED') updates.push(event.room);
+      });
+    }
+    const entered = (await casual('guest').expect(201)).body as Membership;
+    expect(entered.id).toBe(target.id);
+    expect(entered.profile.displayName).toBe('Alex_4');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(updates.map((room) => room.id).sort()).toEqual(
+      [target.id, first.id, second.id].sort(),
+    );
+    for (const room of [first, second]) {
+      const view = await read(room);
+      expect(view.ownerId).toBe(room.ownerId);
+      expect(view.players).toHaveLength(2);
+      expect(view.players.find((p) => p.id === 'guest')).toMatchObject({
+        displayName: 'Alex_4',
+        isReady: true,
+        isOwner: false,
+      });
+    }
+    expect(entered.players.every((p) => !p.isReady)).toBe(true);
+    const beforeRecovery = await profile('guest');
+    await ready(target, 'guest');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    updates.length = 0;
+    const recovered = (await casual('guest').expect(201)).body as Membership;
+    expect(recovered.profile).toMatchObject(beforeRecovery);
+    expect(recovered.players.find((p) => p.id === 'guest')?.isReady).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(updates).toHaveLength(0);
+  });
+
+  it('rejects a stale generation without partially suffixing, admitting or broadcasting', async () => {
+    await rename('host', 'alex');
+    await rename('guest', 'Alex');
+    const target = (await casual('host')).body as Membership;
+    const socket = await connect(target.wsJoinToken);
+    const updates: RoomView[] = [];
+    socket.on('event', (event: ServerEvent) => {
+      if (event.type === 'ROOM_UPDATED') updates.push(event.room);
+    });
+    const before = await profile('guest');
+    await casual('guest')
+      .set('x-profile-generation', 'old-generation')
+      .expect(409);
+    expect(await profile('guest')).toEqual(before);
+    expect((await read(target)).players).toEqual(target.players);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(updates).toHaveLength(0);
+  });
+
+  it('serializes conflicting admissions and last-seat selection without duplicate names or partial profile changes', async () => {
+    await rename('host', 'Alex');
+    const target = (await casual('host')).body as Membership;
+    await patch(target, { maxPlayers: 4 });
+    const ids = ['guest', 'other', 'next', 'last'];
+    for (const id of ids) await rename(id, 'Alex');
+    const before = await Promise.all(ids.map(profile));
+    const results = await Promise.all(ids.map((id) => casual(id).expect(201)));
+    const entered = results.map((r) => r.body as Membership);
+    const selected = entered.filter((r) => r.id === target.id);
+    expect(selected).toHaveLength(3);
+    expect(selected.map((r) => r.profile.displayName).sort()).toEqual([
+      'Alex_2',
+      'Alex_3',
+      'Alex_4',
+    ]);
+    const roster = (await read(target)).players;
+    expect(roster).toHaveLength(4);
+    expect(new Set(roster.map((p) => p.displayName.toLowerCase())).size).toBe(
+      4,
+    );
+    for (const [index, result] of entered.entries()) {
+      expect(await profile(ids[index])).toMatchObject(result.profile);
+      expect(result.profile.revision).toBe(
+        before[index].revision + (result.id === target.id ? 1 : 0),
+      );
+      if (result.id !== target.id) {
+        expect(result.profile.displayName).toBe('Alex');
+        expect((await read(result)).players).toHaveLength(1);
+      }
+    }
+  });
+
+  it('preserves captured match names, state and stored chat when Casual Game suffixes the shared preference', async () => {
+    await rename('guest', 'Alex');
+    await rename('other', 'alex');
+    const match = (await create('host')).body as Membership;
+    const joined = (await join(match, 'guest')).body as Membership;
+    const socket = await connect(joined.wsJoinToken);
+    const chat = (text: string) =>
+      new Promise<RoomChatMessage>((resolve) => {
+        const listener = (event: ServerEvent) => {
+          if (event.type !== 'CHAT_MESSAGE') return;
+          socket.off('event', listener);
+          resolve(event);
+        };
+        socket.on('event', listener);
+        socket.emit('chat', { text });
+      });
+    expect((await chat('before')).playerName).toBe('Alex');
+    await ready(match, 'guest');
+    await api()
+      .post(`/rooms/${match.id}/start`)
+      .set('x-client-id', 'host')
+      .expect(201);
+    const sync = () =>
+      new Promise<SyncSnapshot>((resolve) => {
+        socket.once('room.sync.snapshot', resolve);
+        socket.emit('room.sync.request', { version: 1 });
+      });
+    const before = await sync();
+    const target = (await casual('other')).body as Membership;
+    const entered = (await casual('guest').expect(201)).body as Membership;
+    expect(entered.id).toBe(target.id);
+    expect(entered.profile.displayName).toBe('Alex_2');
+    expect(await sync()).toEqual(before);
+    expect(before.state.byId.guest.name).toBe('Alex');
+    expect((await chat('after')).playerName).toBe('Alex');
+    const history = new Promise<{ messages: RoomChatMessage[] }>((resolve) =>
+      socket.once('chat.history', resolve),
+    );
+    socket.emit('chat.history.request', { version: 1 });
+    expect((await history).messages.map((m) => m.playerName)).toEqual([
+      'Alex',
+      'Alex',
+    ]);
   });
 
   it('joins the oldest eligible Lobby with custom settings, ignores private membership, and broadcasts a readiness-reset roster', async () => {

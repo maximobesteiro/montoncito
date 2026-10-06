@@ -32,7 +32,7 @@
 
 #### Casual Game implementation and remaining design
 
-The non-conflicting entry path, pending/error feedback, and existing Lobby controls are implemented in [#99](https://github.com/maximobesteiro/montoncito/issues/99). Automatic nickname replacements and lost-response recovery remain pending in [#100](https://github.com/maximobesteiro/montoncito/issues/100) and [#101](https://github.com/maximobesteiro/montoncito/issues/101). See [spec #98](https://github.com/maximobesteiro/montoncito/issues/98) for the complete agreed design.
+The entry path, pending/error feedback, and existing Lobby controls are implemented in [#99](https://github.com/maximobesteiro/montoncito/issues/99). Automatic nickname replacements and canonical cross-tab persistence are implemented in [#100](https://github.com/maximobesteiro/montoncito/issues/100). Lost-response recovery remains pending in [#101](https://github.com/maximobesteiro/montoncito/issues/101). See [spec #98](https://github.com/maximobesteiro/montoncito/issues/98) for the complete agreed design.
 
 - Casual Game returns the guest to their oldest open public Lobby membership. Otherwise it joins the oldest public, open Lobby with space, or creates a public Lobby with default settings if none exists. Custom settings are eligible, and disconnected Lobbies remain eligible during their deletion grace period.
 - Entry shows a pending state such as `Finding a game...` and prevents duplicate submissions. Success opens the existing Lobby screen, where players review settings, edit their nickname, mark ready, and wait for the host to start. Casual Game does not start the match automatically.

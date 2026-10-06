@@ -129,21 +129,43 @@ export class RoomsService {
     return room;
   }
 
-  public enterCasual(clientId: string): { room: Room; admitted: boolean } {
+  public enterCasual(clientId: string): {
+    room: Room;
+    admitted: boolean;
+    renamed: boolean;
+  } {
     // Selection and join remain synchronous so capacity cannot change between
     // checking eligibility and committing admission in this server process.
     const lobbies = [...this.roomsById.values()]
       .filter((room) => room.visibility === 'public' && room.status === 'open')
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const membership = lobbies.find((room) => this.hasPlayer(room, clientId));
-    if (membership) return { room: membership, admitted: false };
+    if (membership)
+      return { room: membership, admitted: false, renamed: false };
     const available = lobbies.find(
       (room) => room.players.length < room.maxPlayers,
     );
+    const base = this.profiles.getOrCreate(clientId).displayName;
+    let displayName: string | undefined;
+    if (available && this.nicknameTaken(available, clientId, base)) {
+      const affected = [available, ...this.lobbiesFor(clientId)];
+      for (let number = 2; ; number++) {
+        const suffix = `_${number}`;
+        const candidate = base.slice(0, 32 - suffix.length) + suffix;
+        if (
+          affected.every(
+            (room) => !this.nicknameTaken(room, clientId, candidate),
+          )
+        ) {
+          displayName = candidate;
+          break;
+        }
+      }
+    }
     const room = available
-      ? this.join({ roomId: available.id, clientId })
+      ? this.join({ roomId: available.id, clientId, displayName })
       : this.create({ clientId, visibility: 'public' });
-    return { room, admitted: true };
+    return { room, admitted: true, renamed: displayName !== undefined };
   }
 
   public getById(id: string): Room {

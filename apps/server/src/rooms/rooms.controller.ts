@@ -62,11 +62,21 @@ export class RoomsController {
     // Reject configuration failures before changing membership.
     if (!this.configService.get<string>('WS_SECRET'))
       throw new Error('WS_SECRET not configured');
-    const { room, admitted } = this.rooms.enterCasual(clientId);
+    const { room, admitted, renamed } = this.rooms.enterCasual(clientId);
     const roomView = this.rooms.toView(room);
     const wsJoinToken = this.createWsJoinToken(room.id, clientId);
     if (admitted) this.ws.emitRoomUpdated(room.id, roomView);
-    return { ...roomView, wsJoinToken };
+    if (renamed) {
+      for (const lobby of this.rooms.lobbiesFor(clientId)) {
+        if (lobby.id !== room.id)
+          this.ws.emitRoomUpdated(lobby.id, this.rooms.toView(lobby));
+      }
+    }
+    const profile = {
+      ...this.profiles.getOrCreate(clientId),
+      suggestions: this.rooms.nicknameSuggestions(clientId),
+    };
+    return { ...roomView, wsJoinToken, profile };
   }
 
   @Get('by-slug/:slug')

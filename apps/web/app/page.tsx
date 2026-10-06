@@ -8,6 +8,7 @@ import { HowToPlayModal } from "../components/HowToPlayModal";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import {
   initializeGuestProfile,
+  rememberGuestProfile,
   saveGuestNickname,
   subscribeGuestProfile,
   withGuestProfileRecovery,
@@ -100,15 +101,18 @@ export default function Home() {
       const { value: room } = await withGuestProfileRecovery(
         profile,
         (current) =>
-          apiFetch<{ id: string; slug: string; wsJoinToken: string }>(
-            "/rooms/casual",
-            {
-              method: "POST",
-              clientId,
-              headers: { "x-profile-generation": current.generation },
-            },
-          ),
+          apiFetch<{
+            id: string;
+            slug: string;
+            wsJoinToken: string;
+            profile: GuestProfile;
+          }>("/rooms/casual", {
+            method: "POST",
+            clientId,
+            headers: { "x-profile-generation": current.generation },
+          }),
       );
+      await rememberGuestProfile(room.profile);
       rememberCasualEntry(room);
       router.push(`/room/${room.slug}`);
     } catch {

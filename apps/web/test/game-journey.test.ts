@@ -261,6 +261,149 @@ it("Casual Game creates a public default Lobby, joins it live, recovers a ready 
   }
 }, 30_000);
 
+it("Casual Game admits a conflicting nickname immediately, persists its canonical profile across tabs, and allows Lobby editing", async () => {
+  await server.restart();
+  const host = await client(1440, "alex");
+  const guest = await client(390, "Alex");
+  let accepted = false;
+  let release!: () => void;
+  const delivery = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+    const response = await route.fetch();
+    accepted = true;
+    await route.fulfill({ response });
+  });
+  await guest.page.route(`${server.url}/profile`, async (route) => {
+    if (accepted && route.request().method() === "POST") await delivery;
+    await route.continue();
+  });
+  try {
+    await host.page.getByRole("button", { name: /Casual Game/ }).click();
+    await host.page.waitForURL("**/room/**");
+    const home = await guest.openPage();
+    await home.getByText("Playing as Alex", { exact: true }).waitFor();
+    const response = guest.page.waitForResponse(`${server.url}/rooms/casual`);
+    await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+    const canonical = (await (await response).json()).profile;
+    await guest.page.waitForURL(host.page.url());
+    await home.getByText("Playing as Alex_2", { exact: true }).waitFor();
+    release();
+    await guest.page.getByText("Alex_2 (you)", { exact: true }).waitFor();
+    expect(
+      await guest.page
+        .getByRole("textbox", { name: "Nickname", exact: true })
+        .count(),
+    ).toBe(0);
+    await host.page.getByText("Alex_2", { exact: true }).waitFor();
+    await home.getByText("Playing as Alex_2", { exact: true }).waitFor();
+    expect(
+      await guest.page.evaluate(
+        (id) => JSON.parse(localStorage.getItem(`montoncito:profile:${id}`)!),
+        guest.id,
+      ),
+    ).toEqual(canonical);
+    expect(
+      await guest.page.evaluate(
+        (id) => localStorage.getItem(`montoncito:nickname:${id}`),
+        guest.id,
+      ),
+    ).toBe("Alex_2");
+    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    const input = guest.page.getByRole("textbox", {
+      name: "Nickname",
+      exact: true,
+    });
+    await input.fill("  After entry  ");
+    await input.press("Enter");
+    await host.page.getByText("After entry", { exact: true }).waitFor();
+    await home.getByText("Playing as After entry", { exact: true }).waitFor();
+    await home.close();
+    const reopened = await guest.openPage();
+    await reopened
+      .getByText("Playing as After entry", { exact: true })
+      .waitFor();
+    expect(host.errors).toEqual([]);
+    expect(guest.errors).toEqual([]);
+  } finally {
+    release();
+    await guest.close();
+    await host.close();
+  }
+}, 20_000);
+
+it.each(["revision", "generation"] as const)(
+  "ignores a delayed Casual Game profile from an older %s",
+  async (ordering) => {
+    await server.restart();
+    const host = await client(1440, "Alex");
+    const guest = await client(390, "alex");
+    let captured!: () => void;
+    let release!: () => void;
+    const accepted = new Promise<void>((resolve) => {
+      captured = resolve;
+    });
+    const delivery = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
+      const response = await route.fetch();
+      expect((await response.json()).profile.displayName).toBe("alex_2");
+      captured();
+      await delivery;
+      await route.fulfill({ response });
+    });
+    try {
+      await host.page.getByRole("button", { name: /Casual Game/ }).click();
+      await host.page.waitForURL("**/room/**");
+      await guest.page.getByRole("button", { name: /Casual Game/ }).click();
+      await accepted;
+      if (ordering === "generation") await server.restart();
+      const save = await guest.page.request.patch(`${server.url}/profile`, {
+        headers: { "x-client-id": guest.id },
+        data: { displayName: "Newer confirmation" },
+      });
+      expect(save.ok()).toBe(true);
+      const home = await guest.openPage();
+      await home
+        .getByText("Playing as Newer confirmation", { exact: true })
+        .waitFor();
+      const latest = await guest.page.evaluate(
+        (id) => JSON.parse(localStorage.getItem(`montoncito:profile:${id}`)!),
+        guest.id,
+      );
+      release();
+      await guest.page.waitForURL("**/room/**");
+      if (ordering === "revision") {
+        await guest.page
+          .getByText("Newer confirmation (you)", { exact: true })
+          .waitFor();
+      } else {
+        await guest.page
+          .getByRole("button", { name: "Retry admission" })
+          .waitFor();
+      }
+      expect(
+        await guest.page.evaluate(
+          (id) => JSON.parse(localStorage.getItem(`montoncito:profile:${id}`)!),
+          guest.id,
+        ),
+      ).toEqual(latest);
+      expect(
+        await home
+          .getByText("Playing as Newer confirmation", { exact: true })
+          .isVisible(),
+      ).toBe(true);
+    } finally {
+      release();
+      await guest.close();
+      await host.close();
+    }
+  },
+  20_000,
+);
+
 it("Casual Game prevents duplicate requests while pending and allows retry after a visible failure", async () => {
   await server.restart();
   const guest = await client(1440, "Pending guest");
