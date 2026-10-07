@@ -27,6 +27,7 @@ interface GameBoardProps {
   handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
   pendingAction?: PlayerAction;
+  collapsedDiscardDestinations?: Set<number>;
 }
 
 export function GameBoard({
@@ -48,6 +49,7 @@ export function GameBoard({
   handDiscardOnlyTargets,
   onHandDiscardClick,
   pendingAction,
+  collapsedDiscardDestinations,
 }: GameBoardProps) {
   const currentPlayer = gameState.byId[currentPlayerId];
   const opponents = gameState.players
@@ -93,6 +95,7 @@ export function GameBoard({
               handDiscardOnlyTargets={handDiscardOnlyTargets}
               onHandDiscardClick={onHandDiscardClick}
               pendingAction={pendingAction}
+              collapsedDiscardDestinations={collapsedDiscardDestinations}
             />
           )}
         </div>

@@ -216,7 +216,8 @@ it.each([
       name: `Build pile stack, next ${count + 1}`,
     });
     const build = within(target);
-    expect(build.getByText(`stack → ${count + 1}`)).toBeTruthy();
+    expect(screen.getByText(`stack → ${count + 1}`)).toBeTruthy();
+    expect(build.queryByText(`stack → ${count + 1}`)).toBeNull();
     expect(target.getAttribute("data-drop-build")).toBe("stack");
     expect(target.getAttribute("data-legal-target")).toBe("true");
     expect(build.queryAllByRole("button")).toHaveLength(0);
@@ -230,7 +231,6 @@ it.each([
       const card = build.getByLabelText(`Covered Build ${name}`);
       expect(card.textContent).toContain("♠");
       expect(card.hasAttribute("data-drag-source")).toBe(false);
-      fireEvent.click(card);
     }
     expect(
       screen
@@ -251,7 +251,7 @@ it.each([
 );
 
 it.each(["mouse", "touch"])(
-  "ignores a %s drop on a covered Build layer and still accepts a drop on its top",
+  "accepts a %s drop on an exposed covered Build layer",
   (pointerType) => {
     showGameRoom();
     const state = boardState();
@@ -273,14 +273,7 @@ it.each(["mouse", "touch"])(
       () => screen.getByLabelText("Covered Build Ace of Spades"),
       pointerType,
     );
-    expect(submitAction).not.toHaveBeenCalled();
-    expect(source.getAttribute("aria-pressed")).toBe("true");
-    releaseOver(
-      source,
-      () => screen.getByLabelText("Build top 2 of Spades"),
-      pointerType,
-    );
-    expect(submitAction).toHaveBeenCalledWith({
+    expect(submitAction).toHaveBeenCalledExactlyOnceWith({
       kind: "PLAY_HAND_TO_BUILD",
       cardId: "king",
       target: "build-1",
@@ -862,6 +855,120 @@ function historyState(): GameState {
   return state;
 }
 
+it("prioritizes the whole Discard destination over its playable top and keeps labels and controls outside targeting", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: historyState(), submitAction };
+  render(<GameRoomPage />);
+  const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  const destination = within(own).getByRole("button", {
+    name: "Discard Hand to pile 1",
+  });
+  expect(
+    destination.contains(
+      within(own).getByLabelText("Covered Discard pile 1, Ace of Diamonds"),
+    ),
+  ).toBe(true);
+  expect(destination.contains(within(own).getByText("Discard 1"))).toBe(false);
+  expect(destination.contains(within(own).getByText("4 cards"))).toBe(false);
+  expect(
+    destination.contains(within(own).getByRole("button", { name: "View all" })),
+  ).toBe(false);
+  fireEvent.click(within(own).getByLabelText("Discard pile 1, 2 of Hearts"));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 0,
+  });
+});
+
+it("temporarily collapses legal Discards, preserves unrelated inspection, and restores on source switching and cancellation", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: historyState() };
+  render(<GameRoomPage />);
+  const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+  const opponent = screen.getByRole("group", { name: "Bob Discard pile 1" });
+  for (const pile of [own, opponent])
+    fireEvent.click(within(pile).getByRole("button", { name: "View all" }));
+  const historyId = within(own)
+    .getByRole("button", { name: "Close" })
+    .getAttribute("aria-controls");
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  expect(
+    within(own).queryByLabelText("Covered Discard pile 1, 4 of Clubs"),
+  ).toBeNull();
+  expect(
+    within(own)
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(within(opponent).getByRole("button", { name: "Close" })).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hand King of Diamonds" }),
+  );
+  expect(
+    within(own)
+      .getByRole("button", { name: "Close" })
+      .getAttribute("aria-controls"),
+  ).toBe(historyId);
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.keyDown(screen.getByRole("region", { name: "Game board" }), {
+    key: "Escape",
+  });
+  expect(within(own).getByRole("button", { name: "Close" })).toBeTruthy();
+  expect(screen.getByRole("status").textContent).toContain(
+    "Selection cancelled",
+  );
+  expect(gameRoom.view.submitAction).not.toHaveBeenCalled();
+});
+
+it.each(["source", "space"])(
+  "cancels selection on %s and restores inspection without treating chat as cancellation",
+  (cancel) => {
+    showGameRoom();
+    gameRoom.view = { ...gameRoom.view, state: historyState() };
+    render(<GameRoomPage />);
+    const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+    fireEvent.click(within(own).getByRole("button", { name: "View all" }));
+    const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+    fireEvent.click(hand);
+    fireEvent.click(screen.getByRole("textbox", { name: "Chat message" }));
+    expect(hand.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(
+      cancel === "source" ? hand : screen.getByText(/Draw pile:/),
+    );
+    expect(hand.getAttribute("aria-pressed")).toBe("false");
+    expect(within(own).getByRole("button", { name: "Close" })).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Selection cancelled",
+    );
+  },
+);
+
+it("waits for a completed tap before collapsing legal destination histories", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: historyState() };
+  render(<GameRoomPage />);
+  const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(within(own).getByRole("button", { name: "View all" }));
+  const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => hand,
+  });
+  fireEvent.pointerDown(hand, { pointerId: 1, pointerType: "touch" });
+  expect(
+    within(own).getByRole("button", { name: "Close" }).hasAttribute("disabled"),
+  ).toBe(false);
+  fireEvent.pointerUp(hand, { pointerId: 1, pointerType: "touch" });
+  expect(
+    within(own)
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+});
+
 it.each([1, 2, 3, 4] as const)(
   "keeps all 18 Build targets and %i Discard piles usable with three inspection-only opponents",
   (count) => {
@@ -1009,7 +1116,7 @@ it("expands histories independently in bottom-to-top order across snapshots and 
   const { rerender } = render(<GameRoomPage />);
   const pile = (name: string, index = 1) =>
     screen.getByRole("group", { name: `${name} Discard pile ${index}` });
-  const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  const hand = screen.getByRole("button", { name: "Hand King of Diamonds" });
   fireEvent.click(hand);
   for (const group of [pile("Alice"), pile("Alice", 2), pile("Bob")]) {
     fireEvent.click(within(group).getByRole("button", { name: "View all" }));
@@ -1068,7 +1175,7 @@ it("expands histories independently in bottom-to-top order across snapshots and 
   ).toBeTruthy();
   expect(
     screen
-      .getByRole("button", { name: "Hand 2 of Clubs" })
+      .getByRole("button", { name: "Hand King of Diamonds" })
       .getAttribute("aria-pressed"),
   ).toBe("false");
   expect(submitAction).not.toHaveBeenCalled();
@@ -1107,6 +1214,13 @@ it.each([0, 1])(
         .getAttribute("aria-controls"),
     ).toBe(historyId);
     expect(within(pile()).getByText("Top")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+    expect(
+      within(pile())
+        .getByRole("button", { name: "View all" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
 
     const reset = structuredClone(shrunk);
     reset.byId["player-1"]!.discards[0] = remaining
@@ -1216,7 +1330,7 @@ it("keeps tap selection and deselection usable with pointer-generated clicks", (
 });
 
 it.each([false, true])(
-  "keeps covered cards inspection-only and discards selected Hand on the pile body with expanded=%s",
+  "discards selected Hand on exposed covered destination cards with expanded=%s",
   (expanded) => {
     showGameRoom();
     const submitAction = vi.fn(() => true);
@@ -1230,9 +1344,6 @@ it.each([false, true])(
     fireEvent.click(
       within(pile).getByLabelText("Covered Discard pile 1, Ace of Diamonds"),
     );
-    expect(submitAction).not.toHaveBeenCalled();
-    expect(hand.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(pile);
     expect(submitAction).toHaveBeenCalledExactlyOnceWith({
       kind: "DISCARD_FROM_HAND",
       cardId: "nine",
@@ -1287,15 +1398,15 @@ it.each(["body", "older", "top", "empty"])(
       () => {
         switch (destination) {
           case "body":
-            return pile;
+            return within(pile).getByRole("button", {
+              name: "Discard Hand to pile 1",
+            });
           case "older":
             return within(pile).getByLabelText(
               "Covered Discard pile 1, 4 of Clubs",
             );
           case "top":
-            return within(pile).getByRole("button", {
-              name: "Discard pile 1, 2 of Hearts",
-            });
+            return within(pile).getByLabelText("Discard pile 1, 2 of Hearts");
           default:
             return screen.getByRole("button", {
               name: "Discard pile 2, empty",
@@ -1338,12 +1449,13 @@ it("keeps covered own cards and all expanded opponent cards inspection-only whil
       .getByRole("button", { name: "Hand 9 of Spades" })
       .getAttribute("aria-pressed"),
   ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
   fireEvent.click(within(own).getByRole("button", { name: "Close" }));
   expect(
     screen
       .getByRole("button", { name: "Hand 9 of Spades" })
       .getAttribute("aria-pressed"),
-  ).toBe("true");
+  ).toBe("false");
   fireEvent.click(within(own).getByRole("button", { name: "View all" }));
   const top = within(own).getByRole("button", {
     name: "Discard pile 1, 2 of Hearts",
@@ -1477,8 +1589,7 @@ it("selects a held touch Hand card and ends the Turn only after dropping on an o
   expect(submitAction).not.toHaveBeenCalled();
   Object.defineProperty(document, "elementFromPoint", {
     configurable: true,
-    value: () =>
-      screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
+    value: () => screen.getByLabelText("Discard pile 1, 2 of Hearts"),
   });
   fireEvent.pointerUp(hand, { pointerId: 2, pointerType: "touch" });
   expect(submitAction).toHaveBeenCalledExactlyOnceWith({
@@ -1737,14 +1848,14 @@ it("discards a non-wild Hand card and follows the next Turn", () => {
   ).toBeTruthy();
   expect(
     screen.getByRole("button", {
-      name: "Discard Hand to pile 2, over 7 of Clubs",
+      name: "Discard Hand to pile 2",
     }),
   ).toBeTruthy();
   const buildPile = screen.getByRole("button", { name: /Build pile build-1/ });
   expect(buildPile.hasAttribute("disabled")).toBe(true);
   fireEvent.click(
     screen.getByRole("button", {
-      name: "Discard Hand to pile 2, over 7 of Clubs",
+      name: "Discard Hand to pile 2",
     }),
   );
   expect(submitAction).toHaveBeenCalledExactlyOnceWith({
@@ -2002,7 +2113,7 @@ it("offers new Build destinations to an Ace Stock top and a King Discard top", (
   });
 });
 
-it("switches from Hand to a playable Discard top while keeping Hand discard available", () => {
+it("requires deselecting Hand before selecting a playable Discard top", () => {
   showGameRoom();
   const state = boardState();
   state.byId["player-1"]!.discards[0] = [
@@ -2012,6 +2123,10 @@ it("switches from Hand to a playable Discard top while keeping Hand discard avai
   gameRoom.view = { ...gameRoom.view, state, submitAction };
   render(<GameRoomPage />);
 
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  expect(
+    screen.queryByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),

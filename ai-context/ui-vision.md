@@ -56,6 +56,19 @@ The entry path, pending/error feedback, and existing Lobby controls are implemen
 - Keeps the current Authoritative state while one Action is pending and waits for server confirmation.
 - Includes minimal **feedback cues** (pulse, color flash, outline) to show accepted/rejected moves.
 
+#### Compact destinations and selection
+
+Implemented in [#104](https://github.com/maximobesteiro/montoncito/issues/104), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- The New Build pile slot and empty Discard slots use the board's card dimensions. The initial Build row reserves card height. Labels sit outside slot footprints.
+- A selected card outlines each legal destination's whole collapsed stack, including exposed covered-card portions. Labels, counts, and inspection controls remain outside the destination boundary. Covered cards and opponent cards remain unavailable as sources.
+- Completing a tap or activating a source with Enter or Space temporarily collapses its legal Discard destinations. The board remembers each pile's expansion preference separately from its rendered collapse. Unrelated histories stay open, and temporarily collapsed destinations cannot expand while targeting.
+- Selecting another available source recalculates destinations and restores histories that cease to be destinations. Tapping the selected source or unused board space, or pressing Escape, clears selection and restores remembered expansion. Inspection controls and chat keep their own behavior.
+- While a non-wild Hand card is selected, activating a legal Discard stack, including its playable top, submits that Hand discard and ends the Turn on server acceptance. Deselect the Hand card before selecting the Discard top as a source.
+- Enter and Space activate destination buttons. Screen-reader status reports the selected source, legal destination counts, and cancellation. Keyboard play uses selection and destination activation.
+- A pile reduced to zero or one card forgets its expansion preference, including during temporary collapse. Later growth stays collapsed. Entering a different Game room resets inspection.
+- Existing pointer drag submission remains available during this slice. Cards stay in their Authoritative locations until the server accepts an Action.
+
 ### 4. **Chat & Presence**
 - On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.
 - Below 1024px, chat starts closed. A safe-area-aware bottom entry has reserved space outside the scrollable board. It opens a bounded modal sheet with Close and backdrop dismissal. Opening the sheet clears selection and cancels drag without submitting a gameplay Action.

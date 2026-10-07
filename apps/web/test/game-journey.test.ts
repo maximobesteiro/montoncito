@@ -3080,7 +3080,10 @@ it.each([1440, 390])(
         const target = alice.page.getByRole("button", {
           name: "Build pile build-1, next 12",
         });
-        await target.scrollIntoViewIfNeeded();
+        // Keep the compact destination clear of the sticky navigation header.
+        await target.evaluate((element) =>
+          element.scrollIntoView({ block: "center" }),
+        );
         const end = (await target.boundingBox())!;
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchMove",
@@ -3152,7 +3155,13 @@ it.each([1440, 390])(
         alice.page,
         alice.page.locator(`[data-drag-source="hand:${discard.cardId}"]`),
       );
-      await tap(alice.page, ownHistory);
+      await tap(
+        alice.page,
+        ownHistory.getByRole("button", {
+          name: "Discard Hand to pile 1",
+          exact: true,
+        }),
+      );
       await synced(alice, bob, 4);
       await alice.page.getByText("Active: Bob", { exact: true }).waitFor();
       expect(await alice.page.locator("[data-drag-source]").count()).toBe(0);
@@ -3162,7 +3171,10 @@ it.each([1440, 390])(
       );
       await tap(
         bob.page,
-        bob.page.getByRole("group", { name: "Bob Discard pile 2" }),
+        bob.page.getByRole("button", {
+          name: "Discard pile 2, empty",
+          exact: true,
+        }),
       );
       await synced(alice, bob, 5);
       await tap(

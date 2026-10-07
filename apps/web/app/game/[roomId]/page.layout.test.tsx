@@ -264,6 +264,149 @@ async function box(locator: Locator) {
 }
 
 it.each([320, 390, 768, 1024, 1440])(
+  "uses card-sized empty slots and whole-stack destination bounds at %ipx",
+  async (width) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(2);
+      state.center.buildPiles = [];
+      state.byId["player-1"]!.discards[1] = [];
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 1 }),
+        state,
+      );
+      const slot = page.getByLabel("New Build pile", { exact: true });
+      await slot.waitFor();
+      const empty = page.getByLabel("Discard pile 2, empty", { exact: true });
+      for (const target of [slot, empty]) {
+        const bounds = await box(target);
+        expect(bounds.width).toBe(72);
+        expect(bounds.height).toBe(104);
+      }
+      expect(
+        (await box(page.getByRole("region", { name: "Build piles" }))).height,
+      ).toBeGreaterThan(104);
+      await page.getByRole("button", { name: "Hand 5 of Clubs" }).click();
+      const pile = page.getByRole("group", { name: "Alice Discard pile 1" });
+      const destination = pile.getByRole("button", {
+        name: "Discard Hand to pile 1",
+        exact: true,
+      });
+      const bounds = await box(destination);
+      const covered = await box(pile.getByLabel(/^Covered Discard/).first());
+      const top = await box(pile.getByLabel(/^Discard pile 1,/));
+      expect(bounds.x).toBe(covered.x);
+      expect(bounds.y).toBe(covered.y);
+      expect(bounds.width).toBe(72);
+      expect(bounds.y + bounds.height).toBe(top.y + top.height);
+      expect(
+        await destination.evaluate(
+          (element) => getComputedStyle(element).outlineWidth,
+        ),
+      ).toBe("4px");
+      const label = await box(pile.getByText("Discard 1", { exact: true }));
+      expect(label.y + label.height).toBeLessThanOrEqual(bounds.y);
+      const control = await box(pile.getByRole("button", { name: "View all" }));
+      expect(control.y).toBeGreaterThanOrEqual(bounds.y + bounds.height);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it.each(["Enter", "Space"])(
+  "selects, cancels, switches sources and activates whole-pile destinations with %s",
+  async (key) => {
+    const page = await browser.newPage({
+      viewport: { width: 1024, height: 900 },
+    });
+    page.setDefaultTimeout(3000);
+    try {
+      await mountChatPage(page);
+      const pile = page.getByRole("group", {
+        name: "Alice Discard pile 1",
+        exact: true,
+      });
+      const open = pile.getByRole("button", { name: "View all" });
+      await open.click();
+      const id = await pile
+        .getByRole("button", { name: "Close", exact: true })
+        .getAttribute("aria-controls");
+      const hand = page.getByRole("button", {
+        name: "Hand 5 of Clubs",
+        exact: true,
+      });
+      await hand.focus();
+      await page.keyboard.press(key);
+      expect(await hand.getAttribute("aria-pressed")).toBe("true");
+      expect(await open.isDisabled()).toBe(true);
+      expect(await page.getByRole("status").textContent()).toContain(
+        "legal Discard destinations",
+      );
+      await page.keyboard.press("Escape");
+      expect(await hand.getAttribute("aria-pressed")).toBe("false");
+      expect(
+        await pile
+          .getByRole("button", { name: "Close", exact: true })
+          .getAttribute("aria-controls"),
+      ).toBe(id);
+      expect(await page.getByRole("status").textContent()).toContain(
+        "Selection cancelled",
+      );
+      await hand.focus();
+      await page.keyboard.press(key);
+      const target = pile.getByRole("button", {
+        name: "Discard Hand to pile 1",
+        exact: true,
+      });
+      await target.focus();
+      await page.keyboard.press(key);
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+        { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 0 },
+      ]);
+      expect(
+        await pile
+          .getByRole("button", { name: "Close", exact: true })
+          .getAttribute("aria-controls"),
+      ).toBe(id);
+      const ace = page.getByRole("button", {
+        name: "Hand Ace of Clubs",
+        exact: true,
+      });
+      await ace.focus();
+      await page.keyboard.press(key);
+      const three = page.getByRole("button", {
+        name: "Hand 3 of Clubs",
+        exact: true,
+      });
+      await three.focus();
+      await page.keyboard.press(key);
+      expect(await ace.getAttribute("aria-pressed")).toBe("false");
+      const build = page.getByRole("button", {
+        name: "Build pile build-1, next 3",
+        exact: true,
+      });
+      expect(await build.getByText("build-1 → 3").count()).toBe(0);
+      expect(
+        await build.evaluate(
+          (element) => getComputedStyle(element).outlineWidth,
+        ),
+      ).toBe("4px");
+      await build.focus();
+      await page.keyboard.press(key);
+      expect(await page.evaluate(() => window.chatTest.actions[1])).toEqual({
+        kind: "PLAY_HAND_TO_BUILD",
+        cardId: "player-1-hand-3",
+        target: "build-1",
+      });
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it.each([320, 390, 768, 1024, 1440])(
   "fully exposes large own and opponent histories inline without overflow at %ipx",
   async (width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -493,16 +636,22 @@ it.each([320, 390, 768, 1024, 1440])(
               }),
             ).toMatchObject({ exposed: true });
             await page.mouse.click(corner.x + 1, corner.y + 1);
-            expect(
-              await page.evaluate(() => window.chatTest.actions.length),
-            ).toBe(0);
-            expect(
-              await page
-                .getByRole("button", { name: "Hand Joker" })
-                .getAttribute("aria-pressed"),
-            ).toBe("true");
+            if (pile === build) {
+              expect(
+                await page.evaluate(() => window.chatTest.actions.length),
+              ).toBeGreaterThan(0);
+              await page.getByRole("button", { name: "Hand Joker" }).click();
+            } else {
+              expect(
+                await page
+                  .getByRole("button", { name: "Hand Joker" })
+                  .getAttribute("aria-pressed"),
+              ).toBe("true");
+            }
           }
-          await top.scrollIntoViewIfNeeded();
+          await top.evaluate((element) =>
+            element.scrollIntoView({ block: "center" }),
+          );
           expect(
             await top.evaluate((element) => {
               const rect = element.getBoundingClientRect();
@@ -627,7 +776,8 @@ for (const width of [320, 390, 768, 1024, 1440]) {
           await newPile.evaluate(
             (element) =>
               element.getBoundingClientRect().y >=
-              element.previousElementSibling!.getBoundingClientRect().y,
+              element.parentElement!.previousElementSibling!.getBoundingClientRect()
+                .y,
           ),
         ).toBe(true);
 

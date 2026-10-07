@@ -19,6 +19,7 @@ interface DiscardPileProps {
   isHandDiscardOnlyTarget?: boolean;
   onHandDiscardClick?: () => void;
   isPending?: boolean;
+  temporarilyCollapsed?: boolean;
 }
 
 export function DiscardPile({
@@ -33,6 +34,7 @@ export function DiscardPile({
   isHandDiscardOnlyTarget = false,
   onHandDiscardClick,
   isPending = false,
+  temporarilyCollapsed = false,
 }: DiscardPileProps) {
   const topCard = peekTopCard(pile);
   const isDestination = isHandDiscardTarget || isHandDiscardOnlyTarget;
@@ -43,12 +45,7 @@ export function DiscardPile({
     <div
       role="group"
       aria-label={`${playerName} Discard pile ${number}`}
-      onClick={(event) => {
-        if ((event.target as Element).closest("button")) return;
-        if (isDestination) onHandDiscardClick?.();
-      }}
       className={`flex flex-col items-center gap-1 ${isPending ? "outline outline-4 outline-dashed" : ""}`}
-      data-drop-discard={isDestination ? pileIndex : undefined}
     >
       {isPending && <span className="text-xs font-bold">Pending</span>}
       <Pile
@@ -57,6 +54,7 @@ export function DiscardPile({
           kind: "overlapping",
           collapsedVisibleCount: isOpponent ? 1 : 3,
           expandable: true,
+          temporarilyCollapsed,
         }}
         label={pile.length > 1 ? `Discard ${number}` : undefined}
         onClick={topClick}
@@ -65,9 +63,7 @@ export function DiscardPile({
         dragSource={topCard && topClick ? `discard:${pileIndex}` : undefined}
         cardAriaLabel={
           topCard
-            ? isHandDiscardOnlyTarget
-              ? `Discard Hand to pile ${number}, over ${formatCardName(topCard)}`
-              : `Discard pile ${number}, ${formatCardName(topCard)}`
+            ? `Discard pile ${number}, ${formatCardName(topCard)}`
             : undefined
         }
         coveredCardAriaLabel={(card) =>
@@ -76,16 +72,19 @@ export function DiscardPile({
         emptyLabel="Empty"
         emptyAriaLabel={`Discard pile ${number}, empty`}
         onEmptyClick={topClick}
+        destination={
+          isDestination && onHandDiscardClick
+            ? {
+                label: topCard
+                  ? `Discard Hand to pile ${number}`
+                  : `Discard pile ${number}, empty`,
+                legal: true,
+                discardIndex: pileIndex,
+                onActivate: onHandDiscardClick,
+              }
+            : undefined
+        }
       />
-      {isHandDiscardTarget && onHandDiscardClick && (
-        <button
-          type="button"
-          className="brutal-button text-xs"
-          onClick={onHandDiscardClick}
-        >
-          Discard Hand to pile {number}
-        </button>
-      )}
     </div>
   );
 }

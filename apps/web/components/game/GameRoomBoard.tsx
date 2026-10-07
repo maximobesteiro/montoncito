@@ -12,6 +12,8 @@ import { validateMove } from "@mont/core-game";
 import type { ActionSubmission, PlayerAction } from "@mont/game-room";
 import { getValidMoves } from "@/lib/game-actions";
 import { GameBoard } from "./GameBoard";
+import { formatCardName } from "@/lib/format-card-name";
+import { peekTopCard } from "@mont/core-game";
 
 interface GameRoomBoardProps {
   chat?: ReactNode;
@@ -74,6 +76,8 @@ export function GameRoomBoard({
     null,
   );
   const drag = useRef<Drag | null>(null);
+  const [targetingComplete, setTargetingComplete] = useState(true);
+  const [cancelled, setCancelled] = useState(false);
   const board = useRef<HTMLElement>(null);
   const suppressPointerClick = useRef(false);
   const scrollFrame = useRef<number | null>(null);
@@ -151,6 +155,30 @@ export function GameRoomBoard({
     stopScrolling();
   }
 
+  function cancelSelection() {
+    setSelectedSource(null);
+    setCancelled(true);
+    setTargetingComplete(true);
+    cancelDrag();
+  }
+
+  function selectSource(source: SelectedSource) {
+    const same =
+      selected?.kind === source.kind &&
+      (source.kind === "hand"
+        ? selected.kind === "hand" && selected.cardId === source.cardId
+        : source.kind === "discard"
+          ? selected.kind === "discard" &&
+            selected.pileIndex === source.pileIndex
+          : true);
+    if (same) cancelSelection();
+    else {
+      setCancelled(false);
+      setTargetingComplete(true);
+      setSelectedSource(source);
+    }
+  }
+
   useEffect(() => {
     if (chatOpen) {
       setSelectedSource(null);
@@ -164,7 +192,7 @@ export function GameRoomBoard({
     setSelectedSource(null);
     cancelDrag();
     suppressPointerClick.current = false;
-  }, [seq]);
+  }, [seq, gameState]);
 
   useEffect(() => {
     if (!canInteract) {
@@ -250,6 +278,8 @@ export function GameRoomBoard({
       startY: event.clientY,
       moved: false,
     };
+    setTargetingComplete(false);
+    setCancelled(false);
     setSelectedSource(source);
     element.setPointerCapture?.(event.pointerId);
   }
@@ -281,6 +311,7 @@ export function GameRoomBoard({
     const gesture = drag.current;
     if (!gesture || event.pointerId !== gesture.pointerId) return;
     drag.current = null;
+    setTargetingComplete(true);
     stopScrolling();
     suppressPointerClick.current = true;
     if (!canInteract || event.type === "pointercancel") return;
@@ -288,9 +319,8 @@ export function GameRoomBoard({
     // Pointer capture keeps the gesture on its source. Hit-test at release to find the destination.
     const hit = document.elementFromPoint(event.clientX, event.clientY);
     if (!hit || !event.currentTarget.contains(hit)) return;
-    const build = hit.closest("[data-covered-card]")
-      ? undefined
-      : hit.closest<HTMLElement>("[data-drop-build]")?.dataset.dropBuild;
+    const build =
+      hit.closest<HTMLElement>("[data-drop-build]")?.dataset.dropBuild;
     const discard = hit.closest<HTMLElement>("[data-drop-discard]")?.dataset
       .dropDiscard;
     const { source } = gesture;
@@ -327,7 +357,7 @@ export function GameRoomBoard({
       hit.closest("[data-drag-source]") ===
         (event.target as Element).closest("[data-drag-source]")
     ) {
-      setSelectedSource(null);
+      cancelSelection();
     }
   }
 
@@ -352,6 +382,24 @@ export function GameRoomBoard({
           suppressPointerClick.current = false;
         }
       }}
+      onClick={(event) => {
+        if (
+          !(event.target as Element).closest(
+            "button, a, input, textarea, [data-pile-inspection], .game-room-chat",
+          )
+        )
+          cancelSelection();
+        else if (event.target === event.currentTarget) cancelSelection();
+      }}
+      onKeyDown={(event) => {
+        if (
+          event.key === "Escape" &&
+          !(event.target as Element).closest(".game-room-chat")
+        ) {
+          event.preventDefault();
+          cancelSelection();
+        }
+      }}
     >
       {pendingAction && (
         <p role="status" className="font-semibold">
@@ -359,6 +407,9 @@ export function GameRoomBoard({
         </p>
       )}
       <GameBoard
+        collapsedDiscardDestinations={
+          targetingComplete ? discardTargets : new Set()
+        }
         pendingAction={pendingAction?.action}
         chat={chat}
         gameState={gameState}
@@ -367,38 +418,22 @@ export function GameRoomBoard({
           canInteract
             ? (cardId) => {
                 if (selectableCards.has(cardId))
-                  setSelectedSource(
-                    selected?.kind === "hand" && selected.cardId === cardId
-                      ? null
-                      : { kind: "hand", cardId },
-                  );
+                  selectSource({ kind: "hand", cardId });
               }
             : undefined
         }
         onStockClick={
           canInteract && moves.stockToBuild.length > 0
-            ? () =>
-                setSelectedSource(
-                  selected?.kind === "stock" ? null : { kind: "stock" },
-                )
+            ? () => selectSource({ kind: "stock" })
             : undefined
         }
         onDiscardClick={
           canInteract
             ? (pileIndex) => {
-                if (
-                  selected?.kind === "hand" &&
-                  discardTargets.has(pileIndex) &&
-                  !selectableDiscardPiles.has(pileIndex)
-                )
+                if (selected?.kind === "hand" && discardTargets.has(pileIndex))
                   submit(discardFromHand(selected.cardId, pileIndex));
                 else if (selectableDiscardPiles.has(pileIndex))
-                  setSelectedSource(
-                    selected?.kind === "discard" &&
-                      selected.pileIndex === pileIndex
-                      ? null
-                      : { kind: "discard", pileIndex },
-                  );
+                  selectSource({ kind: "discard", pileIndex });
               }
             : undefined
         }
@@ -430,6 +465,15 @@ export function GameRoomBoard({
             : undefined
         }
       />
+      {!pendingAction && gameState.phase === "turn" && (
+        <p role="status" className="sr-only">
+          {selected
+            ? `${selected.kind === "hand" ? `Hand ${formatCardName(gameState.byId[currentPlayerId]!.hand.cards.find((card) => card.id === selected.cardId)!)}` : selected.kind === "stock" ? `Stock top ${formatCardName(peekTopCard(gameState.byId[currentPlayerId]!.stock.faceDown)!)}` : `Discard pile ${selected.pileIndex + 1}`} selected. ${buildTargets.size} legal Build destinations and ${discardTargets.size} legal Discard destinations. Activate a destination to play. Press Escape to cancel.`
+            : cancelled
+              ? "Selection cancelled. Inspection restored."
+              : "Select an available card to see legal destinations."}
+        </p>
+      )}
       {canEndTurn && (
         <button
           type="button"

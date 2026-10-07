@@ -22,6 +22,7 @@ interface PlayerAreaProps {
   handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
   pendingAction?: PlayerAction;
+  collapsedDiscardDestinations?: Set<number>;
 }
 
 export function PlayerArea({
@@ -40,6 +41,7 @@ export function PlayerArea({
   handDiscardOnlyTargets,
   onHandDiscardClick,
   pendingAction,
+  collapsedDiscardDestinations,
 }: PlayerAreaProps) {
   return (
     <div
@@ -109,6 +111,7 @@ export function PlayerArea({
                 ? pendingAction.pileIndex
                 : undefined
             }
+            collapsedDestinations={collapsedDiscardDestinations}
           />
         </div>
       </div>

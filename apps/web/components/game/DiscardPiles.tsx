@@ -14,6 +14,7 @@ interface DiscardPilesProps {
   handDiscardOnlyTargets?: Set<number>;
   onHandDiscardClick?: (pileIndex: number) => void;
   pendingPile?: number;
+  collapsedDestinations?: Set<number>;
 }
 
 export function DiscardPiles({
@@ -27,6 +28,7 @@ export function DiscardPiles({
   handDiscardOnlyTargets = new Set(),
   onHandDiscardClick,
   pendingPile,
+  collapsedDestinations = new Set(),
 }: DiscardPilesProps) {
   return (
     <div className="flex flex-wrap items-start gap-2">
@@ -46,6 +48,7 @@ export function DiscardPiles({
             onHandDiscardClick ? () => onHandDiscardClick(index) : undefined
           }
           isPending={pendingPile === index}
+          temporarilyCollapsed={collapsedDestinations.has(index)}
         />
       ))}
     </div>
