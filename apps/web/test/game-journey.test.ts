@@ -3063,7 +3063,7 @@ it.each([1440, 390])(
           .isVisible(),
       ).toBe(true);
 
-      // Real pointer capture and release hit-testing, including touch on Chromium.
+      // Real dnd-kit gestures, including touch on Chromium and server acceptance.
       const queen = alice.page.getByRole("button", {
         name: "Hand Queen of Clubs",
       });
@@ -3077,6 +3077,11 @@ it.each([1440, 390])(
           type: "touchStart",
           touchPoints: [{ x, y }],
         });
+        await cdp.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: x + 10, y }],
+        });
+        await alice.page.getByLabel("Moving Queen of Clubs").waitFor();
         const target = alice.page.getByRole("button", {
           name: "Build pile build-1, next 12",
         });
@@ -3091,6 +3096,9 @@ it.each([1440, 390])(
             { x: end.x + end.width / 2, y: end.y + end.height / 2 },
           ],
         });
+        await expect
+          .poll(() => target.getAttribute("data-drop-hovered"))
+          .toBe("true");
         await cdp.send("Input.dispatchTouchEvent", {
           type: "touchEnd",
           touchPoints: [],
@@ -3099,6 +3107,8 @@ it.each([1440, 390])(
       } else {
         await alice.page.mouse.move(x, y);
         await alice.page.mouse.down();
+        await alice.page.mouse.move(x + 10, y);
+        await alice.page.getByLabel("Moving Queen of Clubs").waitFor();
         const target = alice.page.getByRole("button", {
           name: "Build pile build-1, next 12",
         });
@@ -3108,6 +3118,9 @@ it.each([1440, 390])(
           end.x + end.width / 2,
           end.y + end.height / 2,
         );
+        await expect
+          .poll(() => target.getAttribute("data-drop-hovered"))
+          .toBe("true");
         await alice.page.mouse.up();
       }
       await synced(alice, bob, 1);

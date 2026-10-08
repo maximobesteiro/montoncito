@@ -263,6 +263,341 @@ async function box(locator: Locator) {
   return bounds!;
 }
 
+it("moves a floating Hand card with the mouse and submits once on a covered Build corner", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 1200 },
+  });
+  try {
+    await mountChatPage(page);
+    const source = page.getByRole("button", {
+      name: "Hand 3 of Clubs",
+      exact: true,
+    });
+    await source.scrollIntoViewIfNeeded();
+    const pickup = await box(source);
+    const x = pickup.x + 30;
+    const y = pickup.y + 40;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 3, y);
+    expect(await page.getByLabel("Moving 3 of Clubs").count()).toBe(0);
+    await page.mouse.move(x + 20, y - 20);
+    const overlay = page.getByLabel("Moving 3 of Clubs");
+    await overlay.waitFor();
+    await page.mouse.move(x + 40, y - 40);
+    const moved = await box(overlay);
+    expect(moved.x).toBeCloseTo(pickup.x + 40, 0);
+    expect(moved.y).toBeCloseTo(pickup.y - 40, 0);
+    expect(await box(source)).toEqual(pickup);
+    const target = page.getByRole("button", {
+      name: "Build pile build-1, next 3",
+      exact: true,
+    });
+    const bounds = await box(target);
+    await page.mouse.move(bounds.x + 1, bounds.y + 1);
+    await expect
+      .poll(() => target.getAttribute("data-drop-hovered"))
+      .toBe("true");
+    await page.mouse.up();
+    expect(await overlay.count()).toBe(0);
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+      {
+        kind: "PLAY_HAND_TO_BUILD",
+        cardId: "player-1-hand-3",
+        target: "build-1",
+      },
+    ]);
+    expect(await source.getAttribute("aria-pressed")).toBe("false");
+  } finally {
+    await page.close();
+  }
+});
+
+it.each(["outside", "label", "control", "source", "Escape", "blur"])(
+  "cancels a mouse drag at %s and restores expanded histories",
+  async (release) => {
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 1200 },
+    });
+    page.setDefaultTimeout(3000);
+    try {
+      await mountChatPage(page);
+      const pile = page.getByRole("group", {
+        name: "Alice Discard pile 1",
+        exact: true,
+      });
+      await pile.getByRole("button", { name: "View all" }).click();
+      const source = page.getByRole("button", {
+        name: "Hand 5 of Clubs",
+        exact: true,
+      });
+      await source.scrollIntoViewIfNeeded();
+      const pickup = await box(source);
+      await page.mouse.move(pickup.x + 30, pickup.y + 40);
+      await page.mouse.down();
+      await page.mouse.move(pickup.x + 40, pickup.y + 40);
+      const overlay = page.getByLabel("Moving 5 of Clubs");
+      await overlay.waitFor();
+      expect(
+        await pile.getByRole("button", { name: "View all" }).isDisabled(),
+      ).toBe(true);
+      if (release === "Escape") await page.keyboard.press("Escape");
+      else if (release === "blur")
+        await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+      else {
+        const target = pile.getByRole("button", {
+          name: "Discard Hand to pile 1",
+          exact: true,
+        });
+        await target.scrollIntoViewIfNeeded();
+        const bounds = await box(target);
+        const point =
+          release === "outside"
+            ? { x: bounds.x - 1, y: bounds.y + 50 }
+            : release === "source"
+              ? await box(source)
+              : await box(
+                  release === "label"
+                    ? pile.getByText("Discard 1", { exact: true })
+                    : pile.getByRole("button", { name: "View all" }),
+                );
+        await page.mouse.move(
+          point.x + (release === "outside" ? 0 : 20),
+          point.y + (release === "outside" ? 0 : 5),
+        );
+        expect(await target.getAttribute("data-drop-hovered")).toBe("false");
+      }
+      await page.mouse.up();
+      await overlay.waitFor({ state: "detached" });
+      expect(await source.getAttribute("aria-pressed")).toBe("false");
+      expect(
+        await pile
+          .getByRole("button", { name: "Close", exact: true })
+          .isEnabled(),
+      ).toBe(true);
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it("keeps the pickup fixed through collapse-induced scrolling and measures the collapsed Discard for release", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 900 },
+  });
+  page.setDefaultTimeout(3000);
+  try {
+    await mountChatPage(page);
+    const state = denseBoardState(2);
+    state.players = ["player-1", "player-2"];
+    state.byId["player-2"]!.discards = [[], []];
+    state.center.buildPiles = state.center.buildPiles.slice(0, 1);
+    // The expanded history fills the scroll container; collapsing it clamps scroll.
+    state.byId["player-1"]!.discards[0] = Array.from(
+      { length: 12 },
+      (_, i) => ({
+        kind: "standard" as const,
+        id: `history-${i}`,
+        rank: 7 as const,
+        suit: "Hearts" as const,
+      }),
+    );
+    await page.evaluate(
+      (state) => window.chatTest.update({ state, seq: 1 }),
+      state,
+    );
+    const pile = page.getByRole("group", {
+      name: "Alice Discard pile 1",
+      exact: true,
+    });
+    await pile.getByRole("button", { name: "View all" }).click();
+    const source = page.getByRole("button", {
+      name: "Hand 5 of Clubs",
+      exact: true,
+    });
+    await source.evaluate((element) =>
+      element.scrollIntoView({ block: "start" }),
+    );
+    const pickup = await box(source);
+    await page.mouse.move(pickup.x + 30, pickup.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(pickup.x + 40, pickup.y + 40);
+    const overlay = page.getByLabel("Moving 5 of Clubs");
+    await overlay.waitFor();
+    expect((await box(overlay)).x).toBeCloseTo(pickup.x, 0);
+    expect((await box(overlay)).y).toBeCloseTo(pickup.y, 0);
+    expect(Math.abs((await box(source)).y - pickup.y)).toBeGreaterThan(20);
+    await page.mouse.move(pickup.x + 50, pickup.y + 50);
+    expect((await box(overlay)).y).toBeCloseTo(pickup.y + 10, 0);
+    const destination = pile.getByRole("button", {
+      name: "Discard Hand to pile 1",
+      exact: true,
+    });
+    const bounds = await box(destination);
+    expect(bounds.height).toBe(144);
+    await page.mouse.move(bounds.x + 1, bounds.y + 1);
+    await expect
+      .poll(() => destination.getAttribute("data-drop-hovered"))
+      .toBe("true");
+    expect(
+      await destination.evaluate(
+        (element) => getComputedStyle(element).boxShadow,
+      ),
+    ).not.toBe("none");
+    await page.mouse.up();
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+      { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 0 },
+    ]);
+    expect(await overlay.count()).toBe(0);
+    expect(await source.count()).toBe(1);
+  } finally {
+    await page.close();
+  }
+});
+
+it.each([
+  {
+    name: "Stock top 3 of Clubs",
+    action: { kind: "PLAY_STOCK_TO_BUILD", target: "build-1" },
+  },
+  {
+    name: "Discard pile 1, 3 of Clubs",
+    action: { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, target: "build-1" },
+  },
+])("drags the eligible $name with the mouse", async ({ name, action }) => {
+  const page = await browser.newPage({
+    viewport: { width: 1440, height: 1200 },
+  });
+  page.setDefaultTimeout(3000);
+  try {
+    await mountChatPage(page);
+    const state = denseBoardState(2);
+    state.center.buildPiles = state.center.buildPiles.slice(0, 1);
+    await page.evaluate(
+      (state) => window.chatTest.update({ state, seq: 1 }),
+      state,
+    );
+    const source = page.getByRole("button", { name, exact: true });
+    await source.scrollIntoViewIfNeeded();
+    const pickup = await box(source);
+    await page.mouse.move(pickup.x + 30, pickup.y + 40);
+    await page.mouse.down();
+    await page.mouse.move(pickup.x + 40, pickup.y + 40);
+    await page.getByLabel("Moving 3 of Clubs").waitFor();
+    const target = page.getByRole("button", {
+      name: "Build pile build-1, next 3",
+      exact: true,
+    });
+    const bounds = await box(target);
+    await page.mouse.move(bounds.x + 30, bounds.y + 40);
+    await expect
+      .poll(() => target.getAttribute("data-drop-hovered"))
+      .toBe("true");
+    await page.mouse.up();
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+      action,
+    ]);
+    expect(await source.count()).toBe(1);
+  } finally {
+    await page.close();
+  }
+});
+
+it("keeps touch dragging functional and scrolls to an off-screen Build in the mobile board", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 900 },
+    hasTouch: true,
+  });
+  page.setDefaultTimeout(3000);
+  const input = await page.context().newCDPSession(page);
+  try {
+    await mountChatPage(page);
+    const source = page.getByRole("button", {
+      name: "Hand 3 of Clubs",
+      exact: true,
+    });
+    await source.scrollIntoViewIfNeeded();
+    const pickup = await box(source);
+    const scroll = page.locator(".app-shell");
+    const before = await scroll.evaluate((element) => element.scrollTop);
+    expect(before).toBeGreaterThan(100);
+    const touch = async (
+      type: "touchStart" | "touchMove" | "touchEnd",
+      x = pickup.x + 30,
+      y = pickup.y + 40,
+    ) => {
+      await input.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }],
+      });
+    };
+    await touch("touchStart");
+    await touch("touchMove", pickup.x + 40, pickup.y + 40);
+    const overlay = page.getByLabel("Moving 3 of Clubs");
+    await overlay.waitFor();
+    await touch("touchMove", pickup.x + 40, 5);
+    await expect
+      .poll(() => scroll.evaluate((element) => element.scrollTop), {
+        timeout: 5000,
+      })
+      .toBe(0);
+    expect((await box(overlay)).y).toBeCloseTo(-35, 0);
+    const target = page.getByRole("button", {
+      name: "Build pile build-1, next 3",
+      exact: true,
+    });
+    const bounds = await box(target);
+    await touch("touchMove", bounds.x + 1, bounds.y + 1);
+    await expect
+      .poll(() => target.getAttribute("data-drop-hovered"))
+      .toBe("true");
+    await touch("touchEnd");
+    await overlay.waitFor({ state: "detached" });
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+      {
+        kind: "PLAY_HAND_TO_BUILD",
+        cardId: "player-1-hand-3",
+        target: "build-1",
+      },
+    ]);
+    const ended = await scroll.evaluate((element) => element.scrollTop);
+    await page.waitForTimeout(100);
+    expect(await scroll.evaluate((element) => element.scrollTop)).toBe(ended);
+  } finally {
+    await input.detach();
+    await page.close();
+  }
+}, 15000);
+
+it("keeps physical touch taps selectable through normal capture release", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 900 },
+    hasTouch: true,
+  });
+  page.setDefaultTimeout(3000);
+  try {
+    await mountChatPage(page);
+    const source = page.getByRole("button", {
+      name: "Hand Ace of Clubs",
+      exact: true,
+    });
+    await source.tap();
+    expect(await source.getAttribute("aria-pressed")).toBe("true");
+    await source.tap();
+    expect(await source.getAttribute("aria-pressed")).toBe("false");
+    await source.tap();
+    await page
+      .getByRole("button", { name: "New Build pile", exact: true })
+      .tap();
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+      { kind: "PLAY_HAND_TO_BUILD", cardId: "player-1-hand-1", target: "new" },
+    ]);
+  } finally {
+    await page.close();
+  }
+});
+
 it.each([320, 390, 768, 1024, 1440])(
   "uses card-sized empty slots and whole-stack destination bounds at %ipx",
   async (width) => {
@@ -341,9 +676,12 @@ it.each(["Enter", "Space"])(
       await page.keyboard.press(key);
       expect(await hand.getAttribute("aria-pressed")).toBe("true");
       expect(await open.isDisabled()).toBe(true);
-      expect(await page.getByRole("status").textContent()).toContain(
-        "legal Discard destinations",
-      );
+      expect(
+        await page
+          .getByRole("region", { name: "Game board" })
+          .getByRole("status")
+          .textContent(),
+      ).toContain("legal Discard destinations");
       await page.keyboard.press("Escape");
       expect(await hand.getAttribute("aria-pressed")).toBe("false");
       expect(
@@ -351,9 +689,12 @@ it.each(["Enter", "Space"])(
           .getByRole("button", { name: "Close", exact: true })
           .getAttribute("aria-controls"),
       ).toBe(id);
-      expect(await page.getByRole("status").textContent()).toContain(
-        "Selection cancelled",
-      );
+      expect(
+        await page
+          .getByRole("region", { name: "Game board" })
+          .getByRole("status")
+          .textContent(),
+      ).toContain("Selection cancelled");
       await hand.focus();
       await page.keyboard.press(key);
       const target = pile.getByRole("button", {
