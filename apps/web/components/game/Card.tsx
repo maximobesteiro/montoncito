@@ -112,7 +112,7 @@ export function Card({
     text-foreground
     font-bold
     ${onClick ? "cursor-pointer" : ""}
-    ${dragSource ? "touch-none" : ""}
+    ${dragSource ? "select-none" : ""}
     ${isPlayable ? "ring-4 ring-btn-primary ring-offset-2" : ""}
     ${isPending ? "outline outline-4 outline-dashed outline-foreground" : ""}
     ${isDragging ? "opacity-40" : ""}

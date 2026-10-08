@@ -119,6 +119,11 @@ export function GameRoomChat({
         className="chat-mobile-entry brutal-border bg-card p-3 font-bold"
         aria-expanded={mobileOpen}
         aria-controls="game-room-chat"
+        onPointerDown={(event) => {
+          // An active drag suppresses clicks. Opening on a primary press still
+          // lets the chat sheet interrupt that gesture; onClick covers keyboard.
+          if (event.isPrimary && event.button === 0) changeMobileOpen(true);
+        }}
         onClick={() => changeMobileOpen(true)}
       >
         Open chat
