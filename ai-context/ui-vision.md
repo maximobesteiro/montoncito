@@ -80,7 +80,7 @@ Implemented in [#105](https://github.com/maximobesteiro/montoncito/issues/105), 
 - Destination measurements refresh after collapse and scrolling. Stack height changes have no animation. dnd-kit handles gesture tracking, collision detection, edge scrolling, and the click following a drag.
 - Legal release submits one existing Action through the Game room session. Outside release, including returning to the source, clears selection and restores inspection. Escape, pointer cancellation, lost capture, focus loss, chat opening, a new Authoritative state, and lost gameplay eligibility cancel an unsubmitted gesture and remove its preview and collapse override.
 - The overlay disappears on release or cancellation. Authoritative cards remain in their confirmed locations during a Pending Action, with existing pending feedback.
-- Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation. Inspection-position recovery belongs to a subsequent slice of #103.
+- Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation.
 
 #### Pending Action collapse
 
@@ -101,6 +101,16 @@ Implemented in [#107](https://github.com/maximobesteiro/montoncito/issues/107), 
 - The floating card starts at the source geometry captured before collapse and follows the finger. Finger coordinates inside the whole collapsed stack or card-sized empty slot determine the drop. Counts, inspection controls, labels and outside space never accept drops based on preview overlap.
 - Active edge scrolling uses the board's scroll container, whose mobile bottom edge stays above the chat dock and safe-area inset. Destination measurements refresh after collapse and scrolling. Submission, outside release, touch cancellation and chat interruption remove the preview and stop drag scrolling.
 - Touch uses its own cancellation events. Normal implicit pointer-capture release does not cancel a completed touch drop. Opening mobile chat on a primary press interrupts an active drag even while drag click suppression is in effect. Switching back to mouse or keyboard remains available after cancellation or server resolution.
+
+#### Inspection and viewport restoration
+
+Implemented in [#108](https://github.com/maximobesteiro/montoncito/issues/108), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- Before temporary destination collapse, remember the board's reading position. Invalid drops, release back on the source, deselection, unused-space taps, Escape and unsubmitted interruptions reopen remembered histories. Recover the reading position when the player has not navigated during targeting, even if collapse alone clamped browser scrolling.
+- Wheel, native touch, keyboard navigation and active-drag edge scrolling take precedence over the remembered reading position. Cancellation preserves the current visible board anchor as far as the restored geometry permits. Restoration also works without native browser scroll anchoring.
+- Switching between sources with the same Discard destinations retains their reading context. When a source switch reopens histories that cease to be destinations, preserve the current anchor and consume their old context. If those histories become destinations again, capture their current reading position before the new collapse.
+- Submission discards the old reading position. Pending collapse survives chat and reconnect. Acceptance, same-Sequence rejection, or pending-state resolution reopens histories around the current viewport anchor, including when a rejection alert or changed Authoritative state alters the layout. Chat scrolling does not replace board navigation, and the mobile chat dock stays outside the board scroll container.
+- Multiple histories restore together. Shorter histories constrain recovery to the available geometry. Zero/one-card histories still forget expansion before later growth, and a different Game room starts with fresh inspection and scroll context.
 
 ### 4. **Chat & Presence**
 - On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.

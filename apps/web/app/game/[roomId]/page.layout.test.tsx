@@ -7,7 +7,7 @@ import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 import { build } from "vite";
 import { denseBoardState } from "./dense-board.fixture";
-import type { Rank } from "@mont/core-game";
+import { applyMove, type Rank } from "@mont/core-game";
 
 const gameRoom = vi.hoisted(() => ({ view: {} as Record<string, unknown> }));
 vi.mock("next/navigation", () => ({
@@ -45,7 +45,7 @@ beforeAll(async () => {
         },
         load(id) {
           if (id === "\0test-navigation")
-            return 'export const useParams = () => ({roomId:"dense-room"});';
+            return 'export const useParams = () => ({roomId:window.__roomView?.roomId ?? "dense-room"});';
           if (id === "\0test-link")
             return 'import {createElement} from "react"; export default function Link({children,...props}) { return createElement("a",props,children); }';
           if (id === "\0test-room")
@@ -80,7 +80,7 @@ async function mountChatPage(page: Page) {
   await page.route("http://chat.test/**", (route) =>
     route.fulfill({
       contentType: "text/html",
-      body: '<div id="root"></div>',
+      body: '<!doctype html><div id="root"></div>',
     }),
   );
   await page.goto("http://chat.test/");
@@ -262,6 +262,444 @@ async function box(locator: Locator) {
   expect(bounds).not.toBeNull();
   return bounds!;
 }
+
+async function mountInspectionPage(page: Page) {
+  await mountChatPage(page);
+  // Exercise restoration without Chromium's optional native anchoring, as on Safari.
+  await page.addStyleTag({ content: "* { overflow-anchor: none; }" });
+  const state = denseBoardState(2);
+  state.players = ["player-1", "player-2"];
+  state.byId["player-2"]!.discards = [[], []];
+  state.center.buildPiles = state.center.buildPiles.slice(0, 1);
+  state.byId["player-1"]!.discards = [0, 1].map((pile) =>
+    Array.from({ length: 30 }, (_, i) => ({
+      kind: "standard" as const,
+      id: `history-${pile}-${i}`,
+      rank: 7 as const,
+      suit: "Hearts" as const,
+    })),
+  );
+  await page.evaluate(
+    (state) => window.chatTest.update({ state, seq: 1 }),
+    state,
+  );
+  const piles = [1, 2].map((index) =>
+    page.getByRole("group", {
+      name: `Alice Discard pile ${index}`,
+      exact: true,
+    }),
+  );
+  for (const pile of piles)
+    await pile.getByRole("button", { name: "View all" }).click();
+  const source = page.getByRole("button", {
+    name: "Hand 5 of Clubs",
+    exact: true,
+  });
+  const scroll = page.locator(
+    await page.evaluate(() =>
+      matchMedia("(min-width: 1024px)").matches
+        ? document.scrollingElement!.tagName.toLowerCase()
+        : ".app-shell",
+    ),
+  );
+  await scroll.evaluate((element) => {
+    element.scrollTop = 1800;
+  });
+  await source.evaluate((element) =>
+    (element as HTMLElement).focus({ preventScroll: true }),
+  );
+  const before = await scroll.evaluate((element) => element.scrollTop);
+  return { source, scroll, before, piles, state };
+}
+
+it.each([
+  { width: 390, ending: "Escape" },
+  { width: 1440, ending: "Escape" },
+  { width: 390, ending: "deselect" },
+  { width: 390, ending: "unused" },
+  { width: 390, ending: "blur" },
+  { width: 390, ending: "snapshot" },
+  { width: 390, ending: "chat" },
+])(
+  "recovers the reading position after collapse clamps scrolling and $ending cancels targeting at $width px",
+  async ({ width, ending }) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    try {
+      const { scroll, before, piles } = await mountInspectionPage(page);
+      await page.keyboard.press("Enter");
+      await expect
+        .poll(() => scroll.evaluate((element) => element.scrollTop))
+        .toBeLessThan(before - 20);
+      if (ending === "blur")
+        await page.evaluate(() => window.dispatchEvent(new Event("blur")));
+      else if (ending === "snapshot")
+        await page.evaluate(() =>
+          window.chatTest.update({
+            state: structuredClone(window.__roomView.state),
+            seq: 2,
+          }),
+        );
+      else if (ending === "chat")
+        await page.getByRole("button", { name: "Open chat" }).click();
+      else if (ending === "unused") await page.mouse.click(25, 300);
+      else
+        await page.keyboard.press(ending === "deselect" ? "Enter" : "Escape");
+      for (const pile of piles)
+        await pile
+          .getByRole("button", { name: "Close", exact: true })
+          .waitFor();
+      await expect
+        .poll(() => scroll.evaluate((element) => element.scrollTop))
+        .toBeCloseTo(before, 0);
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it.each([
+  { outcome: "accepted", nativeAnchoring: false },
+  { outcome: "rejected", nativeAnchoring: false },
+  { outcome: "accepted", nativeAnchoring: true },
+  { outcome: "rejected", nativeAnchoring: true },
+])(
+  "preserves the current opponent viewport anchor on $outcome with native anchoring=$nativeAnchoring",
+  async ({ outcome, nativeAnchoring }) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 600 },
+    });
+    try {
+      const { piles, before, scroll, state } = await mountInspectionPage(page);
+      if (nativeAnchoring)
+        await page.addStyleTag({ content: "* { overflow-anchor: auto; }" });
+      await page.keyboard.press("Enter");
+      await page
+        .getByRole("button", { name: "Discard Hand to pile 1", exact: true })
+        .click();
+      const opponent = page.getByRole("region", { name: "Bob", exact: true });
+      await opponent.evaluate((element) =>
+        element.scrollIntoView({ block: "start" }),
+      );
+      const anchor = (await box(opponent)).y;
+      expect(
+        await scroll.evaluate((element) => element.scrollTop),
+      ).toBeLessThan(before);
+      await page.getByRole("button", { name: "Open chat" }).click();
+      await page
+        .getByRole("textbox", { name: "Chat message" })
+        .fill("Keep reading after reconnect");
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await page.evaluate(() =>
+        window.chatTest.update({ connectionStatus: "connecting" }),
+      );
+      for (const pile of piles)
+        expect(
+          await pile.getByRole("button", { name: "View all" }).isDisabled(),
+        ).toBe(true);
+      await page.evaluate(() =>
+        window.chatTest.update({ connectionStatus: "connected" }),
+      );
+      const accepted = applyMove(state, {
+        kind: "DISCARD_FROM_HAND",
+        cardId: "player-1-hand-5",
+        pileIndex: 0,
+      });
+      expect(accepted.accepted).toBe(true);
+      await page.evaluate(
+        ({ outcome, state }) => {
+          window.chatTest.update({
+            pendingAction: null,
+            lastActionResult: {
+              version: 1,
+              actionId: "browser-action-1",
+              seq: outcome === "accepted" ? 2 : 1,
+              state,
+              ...(outcome === "rejected" ? { code: "ILLEGAL_ACTION" } : {}),
+            },
+            state,
+            seq: outcome === "accepted" ? 2 : 1,
+          });
+        },
+        { outcome, state: outcome === "accepted" ? accepted.state : state },
+      );
+      for (const pile of piles)
+        await pile
+          .getByRole("button", { name: "Close", exact: true })
+          .waitFor();
+      await page.getByRole("button", { name: "Close chat" }).click();
+      await expect
+        .poll(async () => (await box(opponent)).y)
+        .toBeCloseTo(anchor, 0);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it.each(["wheel", "touch", "edge"])(
+  "respects deliberate %s scrolling when targeting is cancelled",
+  async (method) => {
+    const page = await browser.newPage({
+      viewport: { width: method === "wheel" ? 1440 : 390, height: 600 },
+      hasTouch: true,
+    });
+    const input = await page.context().newCDPSession(page);
+    try {
+      const { source, scroll, piles } = await mountInspectionPage(page);
+      if (method === "edge") {
+        await source.scrollIntoViewIfNeeded();
+        const pickup = await box(source);
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchStart",
+          touchPoints: [{ x: pickup.x + 30, y: pickup.y + 40, id: 1 }],
+        });
+        await page.getByLabel("Moving 5 of Clubs").waitFor();
+        expect(
+          await scroll.evaluate((element) => element.scrollTop),
+        ).toBeGreaterThan(0);
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: pickup.x + 30, y: 5, id: 1 }],
+        });
+      } else {
+        await page.keyboard.press("Enter");
+        await piles[0]!.getByRole("button", { name: "View all" }).waitFor();
+        expect(
+          await scroll.evaluate((element) => element.scrollTop),
+        ).toBeGreaterThan(0);
+        if (method === "wheel") {
+          await page.mouse.move(1000, 300);
+          await page.mouse.wheel(0, -2500);
+        } else {
+          await input.send("Input.synthesizeScrollGesture", {
+            x: 350,
+            y: 100,
+            yDistance: 2500,
+            gestureSourceType: "touch",
+          });
+        }
+      }
+      await expect
+        .poll(() => scroll.evaluate((element) => element.scrollTop), {
+          timeout: 5000,
+        })
+        .toBe(0);
+      if (method === "edge")
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchCancel",
+          touchPoints: [],
+        });
+      else await page.keyboard.press("Escape");
+      for (const pile of piles)
+        await pile
+          .getByRole("button", { name: "Close", exact: true })
+          .waitFor();
+      expect(await scroll.evaluate((element) => element.scrollTop)).toBe(0);
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+    } finally {
+      await input.detach();
+      await page.close();
+    }
+  },
+  15000,
+);
+
+it("retains affected inspection across source switches and starts fresh after those destinations reopen", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 600 } });
+  const select = async (name: string) => {
+    await page
+      .getByRole("button", { name, exact: true })
+      .evaluate((element) =>
+        (element as HTMLElement).focus({ preventScroll: true }),
+      );
+    await page.keyboard.press("Enter");
+  };
+  try {
+    const { scroll, before, piles } = await mountInspectionPage(page);
+    await page.keyboard.press("Enter");
+    await select("Hand 3 of Clubs");
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(() => scroll.evaluate((element) => element.scrollTop))
+      .toBe(before);
+    await select("Hand 5 of Clubs");
+    const opponent = page.getByRole("region", { name: "Bob", exact: true });
+    await opponent.scrollIntoViewIfNeeded();
+    const anchor = (await box(opponent)).y;
+    await select("Stock top 3 of Clubs");
+    for (const pile of piles)
+      await pile.getByRole("button", { name: "Close", exact: true }).waitFor();
+    expect((await box(opponent)).y).toBeCloseTo(anchor, 0);
+    await page.keyboard.press("Escape");
+    expect((await box(opponent)).y).toBeCloseTo(anchor, 0);
+    // The same interaction may reopen inspection and later collapse it again.
+    await select("Stock top 3 of Clubs");
+    await scroll.evaluate((element) => {
+      element.scrollTop = 1600;
+    });
+    await select("Hand 5 of Clubs");
+    await page.keyboard.press("Escape");
+    await expect
+      .poll(() => scroll.evaluate((element) => element.scrollTop))
+      .toBe(1600);
+  } finally {
+    await page.close();
+  }
+});
+
+it.each(["source", "outside", "Escape", "pointercancel"])(
+  "restores the long-history viewport after a mouse drag ends at %s without navigation",
+  async (ending) => {
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      const { source, scroll, piles } = await mountInspectionPage(page);
+      await source.evaluate((element) =>
+        element.scrollIntoView({ block: "start" }),
+      );
+      await scroll.evaluate((element) => {
+        element.scrollTop -= 200;
+      });
+      const before = await scroll.evaluate((element) => element.scrollTop);
+      const pickup = await box(source);
+      await page.mouse.move(pickup.x + 30, pickup.y + 40);
+      await page.mouse.down();
+      await page.mouse.move(pickup.x + 40, pickup.y + 40);
+      const overlay = page.getByLabel("Moving 5 of Clubs");
+      await overlay.waitFor();
+      if (ending === "Escape") await page.keyboard.press("Escape");
+      else if (ending === "pointercancel")
+        await source.dispatchEvent("pointercancel", { pointerType: "mouse" });
+      else {
+        const target =
+          ending === "source" ? await box(source) : { x: 5, y: 300 };
+        await page.mouse.move(target.x + 20, target.y + 40);
+      }
+      await page.mouse.up();
+      await overlay.waitFor({ state: "detached" });
+      for (const pile of piles)
+        await pile
+          .getByRole("button", { name: "Close", exact: true })
+          .waitFor();
+      await expect
+        .poll(() => scroll.evaluate((element) => element.scrollTop))
+        .toBeCloseTo(before, 0);
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it.each([0, 1])(
+  "forgets a %i-card history during pending collapse and anchors the remaining shrinking history",
+  async (count) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 600 },
+    });
+    try {
+      const { piles, state } = await mountInspectionPage(page);
+      await page.keyboard.press("Enter");
+      await page
+        .getByRole("button", { name: "Discard Hand to pile 1", exact: true })
+        .click();
+      const shorter = structuredClone(state);
+      shorter.byId["player-1"]!.discards[0] = shorter.byId[
+        "player-1"
+      ]!.discards[0]!.slice(0, count);
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 2 }),
+        shorter,
+      );
+      if (count === 0)
+        await piles[0]!.getByText("Empty", { exact: true }).waitFor();
+      else
+        await piles[0]!
+          .getByLabel("Discard pile 1, 7 of Hearts", { exact: true })
+          .waitFor();
+      shorter.byId["player-1"]!.discards[0] = state.byId[
+        "player-1"
+      ]!.discards[0]!.slice(0, 2);
+      shorter.byId["player-1"]!.discards[1] = state.byId[
+        "player-1"
+      ]!.discards[1]!.slice(0, 6);
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 3 }),
+        shorter,
+      );
+      await piles[0]!.getByRole("button", { name: "View all" }).waitFor();
+      const opponent = page.getByRole("region", { name: "Bob", exact: true });
+      await opponent.evaluate((element) =>
+        element.scrollIntoView({ block: "start" }),
+      );
+      const anchor = (await box(opponent)).y;
+      await page.evaluate(() =>
+        window.chatTest.update({ pendingAction: null }),
+      );
+      await piles[1]!
+        .getByRole("button", { name: "Close", exact: true })
+        .waitFor();
+      expect(
+        await piles[0]!
+          .getByRole("button", { name: "Close", exact: true })
+          .count(),
+      ).toBe(0);
+      expect(
+        await piles[0]!.getByRole("button", { name: "View all" }).isEnabled(),
+      ).toBe(true);
+      expect((await box(opponent)).y).toBeCloseTo(anchor, 0);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it("resets inspection and discards the previous room's reading position when room identity changes", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 600 } });
+  try {
+    const { piles, scroll, before, state } = await mountInspectionPage(page);
+    await page.keyboard.press("Enter");
+    await page.evaluate(
+      (state) =>
+        window.chatTest.update({
+          roomId: "another-room",
+          state,
+          seq: 0,
+          pendingAction: null,
+          lastActionResult: null,
+        }),
+      state,
+    );
+    await page.getByText("another-room", { exact: true }).waitFor();
+    for (const pile of piles) {
+      expect(
+        await pile.getByRole("button", { name: "Close", exact: true }).count(),
+      ).toBe(0);
+      expect(
+        await pile.getByRole("button", { name: "View all" }).isEnabled(),
+      ).toBe(true);
+    }
+    const current = await scroll.evaluate((element) => element.scrollTop);
+    expect(current).toBeLessThan(before);
+    await page
+      .getByRole("button", { name: "Hand 5 of Clubs", exact: true })
+      .evaluate((element) =>
+        (element as HTMLElement).focus({ preventScroll: true }),
+      );
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    expect(await scroll.evaluate((element) => element.scrollTop)).toBe(current);
+    for (const pile of piles)
+      expect(
+        await pile.getByRole("button", { name: "Close", exact: true }).count(),
+      ).toBe(0);
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+  } finally {
+    await page.close();
+  }
+});
 
 it("moves a floating Hand card with the mouse and submits once on a covered Build corner", async () => {
   const page = await browser.newPage({
