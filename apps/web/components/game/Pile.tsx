@@ -1,6 +1,6 @@
 "use client";
 
-import type { Card as GameCard } from "@mont/core-game";
+import type { BuildPileTarget, Card as GameCard } from "@mont/core-game";
 import { peekTopCard, removeTopCard } from "@mont/core-game";
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { Card, cardDimensions, type CardSize } from "./Card";
@@ -25,11 +25,14 @@ type PilePresentation =
       temporarilyCollapsed?: boolean;
     };
 
+export type PileDestinationIdentity =
+  | { kind: "build"; buildId: BuildPileTarget; discardIndex?: never }
+  | { kind: "discard"; discardIndex: number; buildId?: never };
+
 export interface PileDestination {
   label: string;
   legal: boolean;
-  buildId?: string;
-  discardIndex?: number;
+  identity: PileDestinationIdentity;
   onActivate: () => void;
 }
 
@@ -151,16 +154,14 @@ export function PileFootprint({
 }) {
   const fallbackId = useId();
   const { setNodeRef, isOver } = useDroppable({
-    id:
-      destination?.buildId !== undefined
-        ? `build:${destination.buildId}`
-        : destination?.discardIndex !== undefined
-          ? `discard:${destination.discardIndex}`
-          : fallbackId,
+    id: destination
+      ? destination.identity.kind === "build"
+        ? `build:${destination.identity.buildId}`
+        : `discard:${destination.identity.discardIndex}`
+      : fallbackId,
     disabled: !destination?.legal,
     data: {
-      buildId: destination?.buildId,
-      discardIndex: destination?.discardIndex,
+      destination: destination?.identity,
       label: destination?.label,
     },
   });
@@ -179,8 +180,14 @@ export function PileFootprint({
             "aria-label": destination.label,
             disabled: !destination.legal,
             "data-legal-target": destination.legal,
-            "data-drop-build": destination.buildId,
-            "data-drop-discard": destination.discardIndex,
+            "data-drop-build":
+              destination.identity.kind === "build"
+                ? destination.identity.buildId
+                : undefined,
+            "data-drop-discard":
+              destination.identity.kind === "discard"
+                ? destination.identity.discardIndex
+                : undefined,
             onClick: destination.onActivate,
           }
         : {})}

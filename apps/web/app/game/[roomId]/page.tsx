@@ -127,7 +127,7 @@ export default function GameRoomPage() {
               canSubmit={connectionStatus === "connected"}
               submitAction={submitAction}
               chatOpen={mobileChatOpen}
-              chat={
+              chat={(onOpen) => (
                 <GameRoomChat
                   key={roomId}
                   roomId={roomId}
@@ -137,8 +137,9 @@ export default function GameRoomPage() {
                   canSend={connectionStatus === "connected"}
                   onSendMessage={sendChat}
                   onMobileOpenChange={setMobileChatOpen}
+                  onOpen={onOpen}
                 />
-              }
+              )}
             />
             {submissionError && (
               <p className="mt-2 font-semibold" role="alert">

@@ -16,8 +16,6 @@ interface DiscardPileProps {
   isPlayable?: boolean;
   isSelected?: boolean;
   isHandDiscardTarget?: boolean;
-  isHandDiscardOnlyTarget?: boolean;
-  onHandDiscardClick?: () => void;
   isPending?: boolean;
   temporarilyCollapsed?: boolean;
 }
@@ -31,13 +29,10 @@ export function DiscardPile({
   isPlayable = false,
   isSelected = false,
   isHandDiscardTarget = false,
-  isHandDiscardOnlyTarget = false,
-  onHandDiscardClick,
   isPending = false,
   temporarilyCollapsed = false,
 }: DiscardPileProps) {
   const topCard = peekTopCard(pile);
-  const isDestination = isHandDiscardTarget || isHandDiscardOnlyTarget;
   const topClick = isPlayable ? onCardClick : undefined;
   const number = pileIndex + 1;
 
@@ -73,14 +68,14 @@ export function DiscardPile({
         emptyAriaLabel={`Discard pile ${number}, empty`}
         onEmptyClick={topClick}
         destination={
-          isDestination && onHandDiscardClick
+          isHandDiscardTarget && onCardClick
             ? {
                 label: topCard
                   ? `Discard Hand to pile ${number}`
                   : `Discard pile ${number}, empty`,
                 legal: true,
-                discardIndex: pileIndex,
-                onActivate: onHandDiscardClick,
+                identity: { kind: "discard", discardIndex: pileIndex },
+                onActivate: onCardClick,
               }
             : undefined
         }

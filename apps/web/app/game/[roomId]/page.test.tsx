@@ -34,6 +34,10 @@ import GameRoomPage from "./page";
 import { denseBoardState } from "./dense-board.fixture";
 
 beforeEach(() => {
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => null,
+  });
   // jsdom has no PointerEvent constructor; use mouse coordinates plus pointer identity.
   class TestPointerEvent extends MouseEvent {
     readonly pointerId: number;
@@ -83,6 +87,11 @@ function releaseOver(
   target: () => Element,
   pointerType: string,
 ) {
+  // Match the visible hit to the controlled destination geometry in this DOM seam.
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => target(),
+  });
   const geometry = vi
     .spyOn(HTMLElement.prototype, "getBoundingClientRect")
     .mockImplementation(function (this: HTMLElement) {
@@ -201,6 +210,40 @@ function boardState(): GameState {
   ];
   return state;
 }
+
+it.each(["other Turn", "disconnected", "chat"])(
+  "announces useful waiting instructions when gameplay is unavailable because of %s",
+  (reason) => {
+    showGameRoom();
+    const state = boardState();
+    if (reason === "other Turn") state.turn.activePlayer = "player-2";
+    gameRoom.view = {
+      ...gameRoom.view,
+      state,
+      connectionStatus: reason === "disconnected" ? "connecting" : "connected",
+    };
+    if (reason === "chat")
+      vi.mocked(window.matchMedia).mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList);
+    render(<GameRoomPage />);
+    if (reason === "chat")
+      fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    const status = within(
+      screen.getByRole("region", { name: "Game board" }),
+    ).getByRole("status");
+    expect(status.textContent).not.toContain("Select an available card");
+    expect(status.textContent).toContain(
+      reason === "other Turn"
+        ? "Wait for your Turn"
+        : reason === "disconnected"
+          ? "Wait for the Game room connection"
+          : "Close chat",
+    );
+  },
+);
 
 it.each([
   { count: 0, covered: 0 },
@@ -1543,7 +1586,7 @@ it.each([1, 2, 3, 4] as const)(
   "keeps all 18 Build targets and %i Discard piles usable with three inspection-only opponents",
   (count) => {
     showGameRoom();
-    const submitAction = vi.fn((_action: Move) => true);
+    const submitAction = vi.fn<(action: Move) => boolean>(() => true);
     gameRoom.view = {
       ...gameRoom.view,
       state: denseBoardState(count),
