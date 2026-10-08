@@ -32,6 +32,7 @@ import { getValidMoves } from "@/lib/game-actions";
 import { formatCardName } from "@/lib/format-card-name";
 import { GameBoard } from "./GameBoard";
 import { Card, type CardSize } from "./Card";
+import { InspectionViewport, getBoardScrollHost } from "./InspectionViewport";
 
 interface GameRoomBoardProps {
   chat?: ReactNode;
@@ -135,6 +136,7 @@ export function GameRoomBoard({
   const [pendingDiscardDestinations, setPendingDiscardDestinations] =
     useState<Set<number> | null>(null);
   const pickup = useRef<DOMRect | null>(null);
+  const board = useRef<HTMLElement | null>(null);
   const targetingActive = useRef(false);
   const submitted = useRef(false);
   const myTurn =
@@ -301,6 +303,9 @@ export function GameRoomBoard({
   return (
     <DndContext
       sensors={sensors}
+      autoScroll={{
+        canScroll: (element) => element === getBoardScrollHost(board.current),
+      }}
       collisionDetection={pointerWithin}
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       accessibility={{
@@ -344,121 +349,132 @@ export function GameRoomBoard({
       }}
     >
       <DestinationMeasurements />
-      <section
-        aria-label="Game board"
-        onLostPointerCapture={
-          moving
-            ? (event) => {
-                // Touch implicitly releases pointer capture before touchend. The touch
-                // sensor owns touchcancel; this is only an interruption for pointers.
-                if (event.pointerType !== "touch") cancelSelection();
-              }
-            : undefined
-        }
-        onClick={(event) => {
-          if (
-            !(event.target as Element).closest(
-              "button, a, input, textarea, [data-pile-inspection], .game-room-chat",
-            )
-          )
-            cancelSelection();
-        }}
-        onKeyDown={(event) => {
-          if (
-            event.key === "Escape" &&
-            !(event.target as Element).closest(".game-room-chat")
-          ) {
-            event.preventDefault();
-            cancelSelection();
-          }
-        }}
+      <InspectionViewport
+        targeting={!!selected}
+        pending={!!pendingAction || pendingDiscardDestinations !== null}
+        destinations={[...(pendingDiscardDestinations ?? discardTargets)]
+          .sort()
+          .join(",")}
       >
-        {pendingAction && (
-          <p role="status" className="font-semibold">
-            Action pending. Waiting for the server before you can play again.
-          </p>
-        )}
-        <GameBoard
-          collapsedDiscardDestinations={
-            pendingDiscardDestinations ?? discardTargets
-          }
-          pendingAction={pendingAction?.action}
-          chat={chat}
-          gameState={gameState}
-          currentPlayerId={currentPlayerId}
-          onHandCardClick={
-            canInteract
-              ? (cardId) => {
-                  if (selectableCards.has(cardId))
-                    selectSource({ kind: "hand", cardId });
+        <section
+          ref={board}
+          aria-label="Game board"
+          onLostPointerCapture={
+            moving
+              ? (event) => {
+                  // Touch implicitly releases pointer capture before touchend. The touch
+                  // sensor owns touchcancel; this is only an interruption for pointers.
+                  if (event.pointerType !== "touch") cancelSelection();
                 }
               : undefined
           }
-          onStockClick={
-            canInteract && moves.stockToBuild.length > 0
-              ? () => selectSource({ kind: "stock" })
-              : undefined
-          }
-          onDiscardClick={
-            canInteract
-              ? (pileIndex) => {
-                  if (
-                    selected?.kind === "hand" &&
-                    discardTargets.has(pileIndex)
-                  )
-                    submit(discardFromHand(selected.cardId, pileIndex));
-                  else if (selectableDiscardPiles.has(pileIndex))
-                    selectSource({ kind: "discard", pileIndex });
-                }
-              : undefined
-          }
-          onBuildPileClick={
-            selected
-              ? (target) => {
-                  if (buildTargets.has(target))
-                    submit(playToBuild(selected, target));
-                }
-              : undefined
-          }
-          playableHandCards={canInteract ? selectableCards : new Set()}
-          selectedHandCard={selected?.kind === "hand" ? selected.cardId : null}
-          isStockPlayable={canInteract && moves.stockToBuild.length > 0}
-          isStockSelected={selected?.kind === "stock"}
-          selectedDiscardPile={
-            selected?.kind === "discard" ? selected.pileIndex : null
-          }
-          playableBuildPiles={buildTargets}
-          playableDiscardPiles={visibleDiscardPiles}
-          handDiscardTargets={overlappingDiscardTargets}
-          handDiscardOnlyTargets={handDiscardOnlyTargets}
-          onHandDiscardClick={
-            selected?.kind === "hand"
-              ? (pileIndex) => {
-                  if (discardTargets.has(pileIndex))
-                    submit(discardFromHand(selected.cardId, pileIndex));
-                }
-              : undefined
-          }
-        />
-        {!pendingAction && gameState.phase === "turn" && (
-          <p role="status" className="sr-only">
-            {selected
-              ? `${selected.kind === "hand" ? `Hand ${formatCardName(gameState.byId[currentPlayerId]!.hand.cards.find((card) => card.id === selected.cardId)!)}` : selected.kind === "stock" ? `Stock top ${formatCardName(peekTopCard(gameState.byId[currentPlayerId]!.stock.faceDown)!)}` : `Discard pile ${selected.pileIndex + 1}`} selected. ${buildTargets.size} legal Build destinations and ${discardTargets.size} legal Discard destinations. Activate a destination to play. Press Escape to cancel.`
-              : cancelled
-                ? "Selection cancelled. Inspection restored."
-                : "Select an available card to see legal destinations."}
-          </p>
-        )}
-        {canEndTurn && (
-          <button
-            type="button"
-            className="brutal-button"
-            onClick={() => submit({ kind: "END_TURN" })}
-          >
-            End Turn
-          </button>
-        )}
-      </section>
+          onClick={(event) => {
+            if (
+              !(event.target as Element).closest(
+                "button, a, input, textarea, [data-pile-inspection], .game-room-chat",
+              )
+            )
+              cancelSelection();
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Escape" &&
+              !(event.target as Element).closest(".game-room-chat")
+            ) {
+              event.preventDefault();
+              cancelSelection();
+            }
+          }}
+        >
+          {pendingAction && (
+            <p role="status" className="font-semibold">
+              Action pending. Waiting for the server before you can play again.
+            </p>
+          )}
+          <GameBoard
+            collapsedDiscardDestinations={
+              pendingDiscardDestinations ?? discardTargets
+            }
+            pendingAction={pendingAction?.action}
+            chat={chat}
+            gameState={gameState}
+            currentPlayerId={currentPlayerId}
+            onHandCardClick={
+              canInteract
+                ? (cardId) => {
+                    if (selectableCards.has(cardId))
+                      selectSource({ kind: "hand", cardId });
+                  }
+                : undefined
+            }
+            onStockClick={
+              canInteract && moves.stockToBuild.length > 0
+                ? () => selectSource({ kind: "stock" })
+                : undefined
+            }
+            onDiscardClick={
+              canInteract
+                ? (pileIndex) => {
+                    if (
+                      selected?.kind === "hand" &&
+                      discardTargets.has(pileIndex)
+                    )
+                      submit(discardFromHand(selected.cardId, pileIndex));
+                    else if (selectableDiscardPiles.has(pileIndex))
+                      selectSource({ kind: "discard", pileIndex });
+                  }
+                : undefined
+            }
+            onBuildPileClick={
+              selected
+                ? (target) => {
+                    if (buildTargets.has(target))
+                      submit(playToBuild(selected, target));
+                  }
+                : undefined
+            }
+            playableHandCards={canInteract ? selectableCards : new Set()}
+            selectedHandCard={
+              selected?.kind === "hand" ? selected.cardId : null
+            }
+            isStockPlayable={canInteract && moves.stockToBuild.length > 0}
+            isStockSelected={selected?.kind === "stock"}
+            selectedDiscardPile={
+              selected?.kind === "discard" ? selected.pileIndex : null
+            }
+            playableBuildPiles={buildTargets}
+            playableDiscardPiles={visibleDiscardPiles}
+            handDiscardTargets={overlappingDiscardTargets}
+            handDiscardOnlyTargets={handDiscardOnlyTargets}
+            onHandDiscardClick={
+              selected?.kind === "hand"
+                ? (pileIndex) => {
+                    if (discardTargets.has(pileIndex))
+                      submit(discardFromHand(selected.cardId, pileIndex));
+                  }
+                : undefined
+            }
+          />
+          {!pendingAction && gameState.phase === "turn" && (
+            <p role="status" className="sr-only">
+              {selected
+                ? `${selected.kind === "hand" ? `Hand ${formatCardName(gameState.byId[currentPlayerId]!.hand.cards.find((card) => card.id === selected.cardId)!)}` : selected.kind === "stock" ? `Stock top ${formatCardName(peekTopCard(gameState.byId[currentPlayerId]!.stock.faceDown)!)}` : `Discard pile ${selected.pileIndex + 1}`} selected. ${buildTargets.size} legal Build destinations and ${discardTargets.size} legal Discard destinations. Activate a destination to play. Press Escape to cancel.`
+                : cancelled
+                  ? "Selection cancelled. Inspection restored."
+                  : "Select an available card to see legal destinations."}
+            </p>
+          )}
+          {canEndTurn && (
+            <button
+              type="button"
+              className="brutal-button"
+              onClick={() => submit({ kind: "END_TURN" })}
+            >
+              End Turn
+            </button>
+          )}
+        </section>
+      </InspectionViewport>
       {typeof document !== "undefined" &&
         createPortal(
           <DragOverlay
