@@ -382,129 +382,227 @@ it.each(["outside", "label", "control", "source", "Escape", "blur"])(
   },
 );
 
-it("keeps the pickup fixed through collapse-induced scrolling and measures the collapsed Discard for release", async () => {
-  const page = await browser.newPage({
-    viewport: { width: 1440, height: 900 },
-  });
-  page.setDefaultTimeout(3000);
-  try {
-    await mountChatPage(page);
-    const state = denseBoardState(2);
-    state.players = ["player-1", "player-2"];
-    state.byId["player-2"]!.discards = [[], []];
-    state.center.buildPiles = state.center.buildPiles.slice(0, 1);
-    // The expanded history fills the scroll container; collapsing it clamps scroll.
-    state.byId["player-1"]!.discards[0] = Array.from(
-      { length: 12 },
-      (_, i) => ({
-        kind: "standard" as const,
-        id: `history-${i}`,
-        rank: 7 as const,
-        suit: "Hearts" as const,
-      }),
-    );
-    await page.evaluate(
-      (state) => window.chatTest.update({ state, seq: 1 }),
-      state,
-    );
-    const pile = page.getByRole("group", {
-      name: "Alice Discard pile 1",
-      exact: true,
+it.each(["mouse", "touch"])(
+  "keeps the %s pickup fixed through collapse-induced scrolling and measures the collapsed Discard for release",
+  async (method) => {
+    const page = await browser.newPage({
+      viewport: { width: method === "touch" ? 390 : 1440, height: 900 },
+      hasTouch: method === "touch",
     });
-    await pile.getByRole("button", { name: "View all" }).click();
-    const source = page.getByRole("button", {
-      name: "Hand 5 of Clubs",
-      exact: true,
-    });
-    await source.evaluate((element) =>
-      element.scrollIntoView({ block: "start" }),
-    );
-    const pickup = await box(source);
-    await page.mouse.move(pickup.x + 30, pickup.y + 40);
-    await page.mouse.down();
-    await page.mouse.move(pickup.x + 40, pickup.y + 40);
-    const overlay = page.getByLabel("Moving 5 of Clubs");
-    await overlay.waitFor();
-    expect((await box(overlay)).x).toBeCloseTo(pickup.x, 0);
-    expect((await box(overlay)).y).toBeCloseTo(pickup.y, 0);
-    expect(Math.abs((await box(source)).y - pickup.y)).toBeGreaterThan(20);
-    await page.mouse.move(pickup.x + 50, pickup.y + 50);
-    expect((await box(overlay)).y).toBeCloseTo(pickup.y + 10, 0);
-    const destination = pile.getByRole("button", {
-      name: "Discard Hand to pile 1",
-      exact: true,
-    });
-    const bounds = await box(destination);
-    expect(bounds.height).toBe(144);
-    await page.mouse.move(bounds.x + 1, bounds.y + 1);
-    await expect
-      .poll(() => destination.getAttribute("data-drop-hovered"))
-      .toBe("true");
-    expect(
-      await destination.evaluate(
-        (element) => getComputedStyle(element).boxShadow,
-      ),
-    ).not.toBe("none");
-    await page.mouse.up();
-    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
-      { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 0 },
-    ]);
-    expect(await overlay.count()).toBe(0);
-    expect(await source.count()).toBe(1);
-  } finally {
-    await page.close();
-  }
-});
+    const input = await page.context().newCDPSession(page);
+    const move = async (x: number, y: number) => {
+      if (method === "mouse") await page.mouse.move(x, y);
+      else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x, y, id: 1 }],
+        });
+    };
+    page.setDefaultTimeout(3000);
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(2);
+      state.players = ["player-1", "player-2"];
+      state.byId["player-2"]!.discards = [[], []];
+      state.center.buildPiles = state.center.buildPiles.slice(0, 1);
+      // The expanded history fills the scroll container; collapsing it clamps scroll.
+      state.byId["player-1"]!.discards[0] = Array.from(
+        { length: 12 },
+        (_, i) => ({
+          kind: "standard" as const,
+          id: `history-${i}`,
+          rank: 7 as const,
+          suit: "Hearts" as const,
+        }),
+      );
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 1 }),
+        state,
+      );
+      const pile = page.getByRole("group", {
+        name: "Alice Discard pile 1",
+        exact: true,
+      });
+      await pile.getByRole("button", { name: "View all" }).click();
+      const expandedHeight = (await box(pile)).height;
+      const source = page.getByRole("button", {
+        name: "Hand 5 of Clubs",
+        exact: true,
+      });
+      await source.evaluate(
+        (element, method) =>
+          element.scrollIntoView({
+            block: method === "touch" ? "center" : "start",
+          }),
+        method,
+      );
+      const pickup = await box(source);
+      if (method === "touch") {
+        expect(
+          await page.evaluate(
+            ({ x, y }) =>
+              document
+                .elementFromPoint(x + 40, y + 40)
+                ?.closest("[data-drag-source]")
+                ?.getAttribute("aria-label"),
+            pickup,
+          ),
+        ).toBe("Hand 5 of Clubs");
+      }
+      if (method === "mouse") {
+        await page.mouse.move(pickup.x + 30, pickup.y + 40);
+        await page.mouse.down();
+        await move(pickup.x + 40, pickup.y + 40);
+      } else {
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchStart",
+          touchPoints: [{ x: pickup.x + 40, y: pickup.y + 40, id: 1 }],
+        });
+        await page.waitForTimeout(100);
+        expect(
+          await pile
+            .getByRole("button", { name: "Close", exact: true })
+            .count(),
+        ).toBe(1);
+        expect(await source.getAttribute("aria-pressed")).toBe("false");
+      }
+      const overlay = page.getByLabel("Moving 5 of Clubs");
+      await overlay.waitFor();
+      expect((await box(overlay)).x).toBeCloseTo(pickup.x, 0);
+      expect((await box(overlay)).y).toBeCloseTo(pickup.y, 0);
+      if (method === "mouse")
+        expect(Math.abs((await box(source)).y - pickup.y)).toBeGreaterThan(20);
+      expect((await box(pile)).height).toBeLessThan(expandedHeight - 20);
+      const movement = method === "touch" ? 30 : 10;
+      await move(pickup.x + 40 + movement, pickup.y + 40 + movement);
+      await expect
+        .poll(async () => (await box(overlay)).y)
+        .toBeCloseTo(pickup.y + movement, 0);
+      const destination = pile.getByRole("button", {
+        name: "Discard Hand to pile 1",
+        exact: true,
+      });
+      if (method === "touch")
+        await destination.evaluate((element) =>
+          element.scrollIntoView({ block: "center" }),
+        );
+      const bounds = await box(destination);
+      expect(bounds.height).toBe(144);
+      await move(bounds.x + 1, bounds.y + 1);
+      await expect
+        .poll(() => destination.getAttribute("data-drop-hovered"))
+        .toBe("true");
+      expect(
+        await destination.evaluate(
+          (element) => getComputedStyle(element).boxShadow,
+        ),
+      ).not.toBe("none");
+      if (method === "mouse") await page.mouse.up();
+      else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchEnd",
+          touchPoints: [],
+        });
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+        { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 0 },
+      ]);
+      expect(await overlay.count()).toBe(0);
+      expect(await source.count()).toBe(1);
+    } finally {
+      await input.detach();
+      await page.close();
+    }
+  },
+);
 
 it.each([
   {
     name: "Stock top 3 of Clubs",
+    method: "mouse",
     action: { kind: "PLAY_STOCK_TO_BUILD", target: "build-1" },
   },
   {
     name: "Discard pile 1, 3 of Clubs",
+    method: "mouse",
     action: { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, target: "build-1" },
   },
-])("drags the eligible $name with the mouse", async ({ name, action }) => {
-  const page = await browser.newPage({
-    viewport: { width: 1440, height: 1200 },
-  });
-  page.setDefaultTimeout(3000);
-  try {
-    await mountChatPage(page);
-    const state = denseBoardState(2);
-    state.center.buildPiles = state.center.buildPiles.slice(0, 1);
-    await page.evaluate(
-      (state) => window.chatTest.update({ state, seq: 1 }),
-      state,
-    );
-    const source = page.getByRole("button", { name, exact: true });
-    await source.scrollIntoViewIfNeeded();
-    const pickup = await box(source);
-    await page.mouse.move(pickup.x + 30, pickup.y + 40);
-    await page.mouse.down();
-    await page.mouse.move(pickup.x + 40, pickup.y + 40);
-    await page.getByLabel("Moving 3 of Clubs").waitFor();
-    const target = page.getByRole("button", {
-      name: "Build pile build-1, next 3",
-      exact: true,
+  {
+    name: "Stock top 3 of Clubs",
+    method: "touch",
+    action: { kind: "PLAY_STOCK_TO_BUILD", target: "build-1" },
+  },
+  {
+    name: "Discard pile 1, 3 of Clubs",
+    method: "touch",
+    action: { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, target: "build-1" },
+  },
+])(
+  "drags the eligible $name with $method",
+  async ({ name, action, method }) => {
+    const page = await browser.newPage({
+      viewport: { width: method === "touch" ? 390 : 1440, height: 1200 },
+      hasTouch: method === "touch",
     });
-    const bounds = await box(target);
-    await page.mouse.move(bounds.x + 30, bounds.y + 40);
-    await expect
-      .poll(() => target.getAttribute("data-drop-hovered"))
-      .toBe("true");
-    await page.mouse.up();
-    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
-      action,
-    ]);
-    expect(await source.count()).toBe(1);
-  } finally {
-    await page.close();
-  }
-});
+    const input = await page.context().newCDPSession(page);
+    page.setDefaultTimeout(3000);
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(2);
+      state.center.buildPiles = state.center.buildPiles.slice(0, 1);
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 1 }),
+        state,
+      );
+      const source = page.getByRole("button", { name, exact: true });
+      await source.scrollIntoViewIfNeeded();
+      const pickup = await box(source);
+      if (method === "mouse") {
+        await page.mouse.move(pickup.x + 30, pickup.y + 40);
+        await page.mouse.down();
+        await page.mouse.move(pickup.x + 40, pickup.y + 40);
+      } else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchStart",
+          touchPoints: [{ x: pickup.x + 30, y: pickup.y + 40, id: 1 }],
+        });
+      await page.getByLabel("Moving 3 of Clubs").waitFor();
+      const target = page.getByRole("button", {
+        name: "Build pile build-1, next 3",
+        exact: true,
+      });
+      if (method === "touch")
+        await target.evaluate((element) =>
+          element.scrollIntoView({ block: "center" }),
+        );
+      const bounds = await box(target);
+      if (method === "mouse")
+        await page.mouse.move(bounds.x + 30, bounds.y + 40);
+      else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: bounds.x + 1, y: bounds.y + 1, id: 1 }],
+        });
+      await expect
+        .poll(() => target.getAttribute("data-drop-hovered"))
+        .toBe("true");
+      if (method === "mouse") await page.mouse.up();
+      else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchEnd",
+          touchPoints: [],
+        });
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+        action,
+      ]);
+      expect(await source.count()).toBe(1);
+    } finally {
+      await input.detach();
+      await page.close();
+    }
+  },
+);
 
-it("keeps touch dragging functional and scrolls to an off-screen Build in the mobile board", async () => {
+it("holds to drag and scrolls to an off-screen Build in the mobile board", async () => {
   const page = await browser.newPage({
     viewport: { width: 390, height: 900 },
     hasTouch: true,
@@ -533,7 +631,10 @@ it("keeps touch dragging functional and scrolls to an off-screen Build in the mo
       });
     };
     await touch("touchStart");
-    await touch("touchMove", pickup.x + 40, pickup.y + 40);
+    await page.waitForTimeout(100);
+    expect(await page.getByLabel("Moving 3 of Clubs").count()).toBe(0);
+    expect(await source.getAttribute("aria-pressed")).toBe("false");
+    await page.waitForTimeout(150);
     const overlay = page.getByLabel("Moving 3 of Clubs");
     await overlay.waitFor();
     await touch("touchMove", pickup.x + 40, 5);
@@ -570,6 +671,67 @@ it("keeps touch dragging functional and scrolls to an off-screen Build in the mo
   }
 }, 15000);
 
+it("scrolls natively from a playable card before the hold without selecting or collapsing histories", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 900 },
+    hasTouch: true,
+  });
+  const input = await page.context().newCDPSession(page);
+  try {
+    await mountChatPage(page);
+    const pile = page.getByRole("group", {
+      name: "Alice Discard pile 1",
+      exact: true,
+    });
+    await pile.getByRole("button", { name: "View all" }).click();
+    const source = page.getByRole("button", {
+      name: "Hand 5 of Clubs",
+      exact: true,
+    });
+    await source.scrollIntoViewIfNeeded();
+    const pickup = await box(source);
+    const scroll = page.locator(".app-shell");
+    const before = await scroll.evaluate((element) => element.scrollTop);
+    await input.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: pickup.x + 30, y: pickup.y + 40, id: 1 }],
+    });
+    expect(
+      await pile.getByRole("button", { name: "Close", exact: true }).count(),
+    ).toBe(1);
+    for (let step = 1; step <= 5; step++) {
+      await input.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          { x: pickup.x + 30, y: pickup.y + 40 - step * 30, id: 1 },
+        ],
+      });
+      expect(await source.getAttribute("aria-pressed")).toBe("false");
+      expect(await page.getByLabel("Moving 5 of Clubs").count()).toBe(0);
+      expect(
+        await pile.getByRole("button", { name: "Close", exact: true }).count(),
+      ).toBe(1);
+    }
+    await input.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await expect
+      .poll(() => scroll.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(before + 50);
+    await page.waitForTimeout(250);
+    expect(await source.getAttribute("aria-pressed")).toBe("false");
+    expect(await page.getByLabel("Moving 5 of Clubs").count()).toBe(0);
+    expect(
+      await pile.getByRole("button", { name: "Close", exact: true }).count(),
+    ).toBe(1);
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+  } finally {
+    await input.detach();
+    await page.close();
+  }
+});
+
 it("keeps physical touch taps selectable through normal capture release", async () => {
   const page = await browser.newPage({
     viewport: { width: 390, height: 900 },
@@ -597,6 +759,115 @@ it("keeps physical touch taps selectable through normal capture release", async 
     await page.close();
   }
 });
+
+it.each(["outside", "label", "touchcancel", "chat"])(
+  "stops mobile edge scrolling and clears an unsubmitted hold drag on %s",
+  async (ending) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 600 },
+      hasTouch: true,
+    });
+    page.setDefaultTimeout(3000);
+    const input = await page.context().newCDPSession(page);
+    const touch = async (
+      type: "touchStart" | "touchMove" | "touchEnd" | "touchCancel",
+      x = 0,
+      y = 0,
+    ) => {
+      await input.send("Input.dispatchTouchEvent", {
+        type,
+        touchPoints:
+          type === "touchEnd" || type === "touchCancel"
+            ? []
+            : [{ x, y, id: 1 }],
+      });
+    };
+    try {
+      await input.send("Emulation.setSafeAreaInsetsOverride", {
+        insets: { bottom: 24 },
+      });
+      await mountChatPage(page);
+      const pile = page.getByRole("group", {
+        name: "Alice Discard pile 1",
+        exact: true,
+      });
+      await pile.getByRole("button", { name: "View all" }).click();
+      const source = page.getByRole("button", {
+        name: "Hand 5 of Clubs",
+        exact: true,
+      });
+      await source.scrollIntoViewIfNeeded();
+      const pickup = await box(source);
+      const scroll = page.locator(".app-shell");
+      const viewport = await box(scroll);
+      const dock = await box(page.getByRole("button", { name: "Open chat" }));
+      // The active scrolling edge is above the dock, not the physical screen edge.
+      expect(viewport.y + viewport.height).toBe(504);
+      expect(dock.y).toBeGreaterThanOrEqual(viewport.y + viewport.height);
+      await touch("touchStart", pickup.x + 30, pickup.y + 40);
+      const overlay = page.getByLabel("Moving 5 of Clubs");
+      await overlay.waitFor();
+      const before = await scroll.evaluate((element) => element.scrollTop);
+      await touch("touchMove", pickup.x + 30, viewport.y + viewport.height - 5);
+      await expect
+        .poll(() => scroll.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(before + 40);
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+      if (ending === "touchcancel") await touch("touchCancel");
+      else if (ending === "chat") {
+        await page.getByRole("button", { name: "Open chat" }).click();
+        await page.getByRole("button", { name: "Close chat" }).waitFor();
+        await overlay.waitFor({ state: "detached" });
+        await touch("touchEnd");
+      } else {
+        const target = pile.getByRole("button", {
+          name: "Discard Hand to pile 1",
+          exact: true,
+        });
+        await target.evaluate((element) =>
+          element.scrollIntoView({ block: "center" }),
+        );
+        const bounds = await box(target);
+        // Overlap of the floating card is insufficient; the finger is outside.
+        const label = await box(pile.getByText(/^\d+ cards$/));
+        await touch(
+          "touchMove",
+          ending === "outside" ? bounds.x - 1 : label.x + label.width / 2,
+          ending === "outside" ? bounds.y + 30 : label.y + label.height / 2,
+        );
+        await expect
+          .poll(() => target.getAttribute("data-drop-hovered"))
+          .not.toBe("true");
+        await touch("touchEnd");
+      }
+      await overlay.waitFor({ state: "detached" });
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+      const stopped = await scroll.evaluate((element) => element.scrollTop);
+      await page.waitForTimeout(150);
+      expect(await scroll.evaluate((element) => element.scrollTop)).toBe(
+        stopped,
+      );
+      if (ending === "chat")
+        await page.getByRole("button", { name: "Close chat" }).click();
+      expect(await source.getAttribute("aria-pressed")).toBe("false");
+      expect(
+        await pile.getByRole("button", { name: "Close", exact: true }).count(),
+      ).toBe(1);
+      // A mouse action still works after the touch gesture, without a stale sensor.
+      await source.click();
+      await page
+        .getByRole("button", { name: "Discard Hand to pile 1", exact: true })
+        .click();
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+        { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 0 },
+      ]);
+    } finally {
+      await input.detach();
+      await page.close();
+    }
+  },
+  15000,
+);
 
 it.each([320, 390, 768, 1024, 1440])(
   "uses card-sized empty slots and whole-stack destination bounds at %ipx",

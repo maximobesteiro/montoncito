@@ -12,6 +12,7 @@ import {
   DragOverlay,
   MeasuringStrategy,
   PointerSensor,
+  TouchSensor,
   pointerWithin,
   useSensor,
   useSensors,
@@ -47,6 +48,20 @@ type SelectedSource =
   | { kind: "hand"; cardId: string }
   | { kind: "stock" }
   | { kind: "discard"; pileIndex: number };
+
+// Touch needs touchmove prevention only after the hold. Pointer events cannot
+// prevent native panning once it starts, so reserve that sensor for mouse/pen.
+class BoardPointerSensor extends PointerSensor {
+  static activators: typeof PointerSensor.activators =
+    PointerSensor.activators.map(
+      (activator): (typeof PointerSensor.activators)[number] => ({
+        ...activator,
+        handler: (event, options) =>
+          event.nativeEvent.pointerType !== "touch" &&
+          activator.handler(event, options),
+      }),
+    );
+}
 
 function playToBuild(
   source: SelectedSource,
@@ -171,10 +186,19 @@ export function GameRoomBoard({
     canInteract && validateMove(gameState, { kind: "END_TURN" }) === null;
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(BoardPointerSensor, {
       activationConstraint: { distance: 5 },
       onActivation({ event }) {
         // Capture before selection collapses legal histories and reflows the board.
+        pickup.current =
+          (event.target as Element)
+            .closest<HTMLElement>("[data-drag-source]")
+            ?.getBoundingClientRect() ?? null;
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 5 },
+      onActivation({ event }) {
         pickup.current =
           (event.target as Element)
             .closest<HTMLElement>("[data-drag-source]")
@@ -305,7 +329,15 @@ export function GameRoomBoard({
       <DestinationMeasurements />
       <section
         aria-label="Game board"
-        onLostPointerCapture={moving ? cancelSelection : undefined}
+        onLostPointerCapture={
+          moving
+            ? (event) => {
+                // Touch implicitly releases pointer capture before touchend. The touch
+                // sensor owns touchcancel; this is only an interruption for pointers.
+                if (event.pointerType !== "touch") cancelSelection();
+              }
+            : undefined
+        }
         onClick={(event) => {
           if (
             !(event.target as Element).closest(

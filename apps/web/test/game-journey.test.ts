@@ -3077,10 +3077,6 @@ it.each([1440, 390])(
           type: "touchStart",
           touchPoints: [{ x, y }],
         });
-        await cdp.send("Input.dispatchTouchEvent", {
-          type: "touchMove",
-          touchPoints: [{ x: x + 10, y }],
-        });
         await alice.page.getByLabel("Moving Queen of Clubs").waitFor();
         const target = alice.page.getByRole("button", {
           name: "Build pile build-1, next 12",

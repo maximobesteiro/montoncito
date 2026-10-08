@@ -80,7 +80,17 @@ Implemented in [#105](https://github.com/maximobesteiro/montoncito/issues/105), 
 - Destination measurements refresh after collapse and scrolling. Stack height changes have no animation. dnd-kit handles gesture tracking, collision detection, edge scrolling, and the click following a drag.
 - Legal release submits one existing Action through the Game room session. Outside release, including returning to the source, clears selection and restores inspection. Escape, pointer cancellation, lost capture, focus loss, chat opening, a new Authoritative state, and lost gameplay eligibility cancel an unsubmitted gesture and remove its preview and collapse override.
 - The overlay disappears on release or cancellation. Authoritative cards remain in their confirmed locations during a Pending Action, with existing pending feedback.
-- Touch dragging remains available with the movement threshold and the existing drag-enabled card touch policy. Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation. Touch hold-versus-scroll refinement, pending-collapse retention, and inspection-position recovery belong to the subsequent slices of #103.
+- Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation. Pending-collapse retention and inspection-position recovery belong to the subsequent slices of #103.
+
+#### Mobile tap, hold and scroll
+
+Implemented in [#107](https://github.com/maximobesteiro/montoncito/issues/107), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- A short tap selects or deselects a playable card. Selection collapses legal destination histories only after the tap completes. A stationary touch hold of about 200 ms activates the floating card. Mouse and pen retain the five-pixel movement threshold; keyboard play retains selection and destination activation.
+- Playable cards allow native panning before activation. Moving before the hold completes abandons the drag attempt and scrolls without selecting a card or collapsing destinations. Sources prevent text selection without disabling native touch scrolling.
+- The floating card starts at the source geometry captured before collapse and follows the finger. Finger coordinates inside the whole collapsed stack or card-sized empty slot determine the drop. Counts, inspection controls, labels and outside space never accept drops based on preview overlap.
+- Active edge scrolling uses the board's scroll container, whose mobile bottom edge stays above the chat dock and safe-area inset. Destination measurements refresh after collapse and scrolling. Submission, outside release, touch cancellation and chat interruption remove the preview and stop drag scrolling.
+- Touch uses its own cancellation events. Normal implicit pointer-capture release does not cancel a completed touch drop. Opening mobile chat on a primary press interrupts an active drag even while drag click suppression is in effect. Switching back to mouse or keyboard remains available after cancellation or server resolution.
 
 ### 4. **Chat & Presence**
 - On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.
