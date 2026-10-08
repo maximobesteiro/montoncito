@@ -30,12 +30,15 @@
 - Lobby Shuffle fetches suggestions available across all current Lobby memberships. If none remain, the editor invites the guest to enter a custom name. Save checks availability again on the server. Departure, kick and match-start navigation close the editor and discard late responses; a late save cannot replace newer client state or change names in an existing match.
 - Direct invites and Join a Game enter immediately with an available confirmed nickname. A conflicting name opens the same editor before admission and explains that the guest has not joined. The initial suggestion and Shuffle change only the draft. Save confirms the shared name and admission together; Cancel returns home without either. A rejected replacement keeps the useful draft and previous confirmed name. Full or started Lobbies retain their admission errors. If an admission response is lost, the page checks the confirmed profile and membership before reporting the result; an unavailable check explains the uncertain outcome and offers retry.
 
-#### Casual Game design, agreed and pending implementation
+#### Casual Game
+
+The entry path, pending/error feedback, and existing Lobby controls are implemented in [#99](https://github.com/maximobesteiro/montoncito/issues/99). Automatic nickname replacements and canonical cross-tab persistence are implemented in [#100](https://github.com/maximobesteiro/montoncito/issues/100). Lost-response recovery is implemented in [#101](https://github.com/maximobesteiro/montoncito/issues/101), completing [spec #98](https://github.com/maximobesteiro/montoncito/issues/98).
 
 - Casual Game returns the guest to their oldest open public Lobby membership. Otherwise it joins the oldest public, open Lobby with space, or creates a public Lobby with default settings if none exists. Custom settings are eligible, and disconnected Lobbies remain eligible during their deletion grace period.
 - Entry shows a pending state such as `Finding a game...` and prevents duplicate submissions. Success opens the existing Lobby screen, where players review settings, edit their nickname, mark ready, and wait for the host to start. Casual Game does not start the match automatically.
 - Nickname conflicts do not open a pre-admission editor. The server appends the first available `_2`, `_3`, and so on to the current confirmed name, trimming the base when needed to fit 32 characters. This becomes the shared confirmed nickname shown on the homepage and in joined open Lobbies. Players can edit it after entry. Invitations and Join a Game keep their existing confirmation flow.
-- A failed entry shows a recoverable error. A lost response must recover the original selection rather than claim another seat.
+- A failed entry shows a recoverable error. Retrying Casual Game checks the same uncertain attempt, including after reload. A lost response recovers the original selection even if it is now private, full or started. Confirmed members of started matches open the Game room directly.
+- If the original destination or membership disappears, the page explains that it is unavailable and offers `Find another game` as an explicit fresh attempt. Restart recovery restores the remembered nickname but cannot restore a lost room or uncertain operation. Successful entry completes the attempt; later Casual Game clicks perform normal selection.
 
 ### 2. **Game Room / Board**
 - The heart of the UI — renders the current match state via **WebSocket** events.
@@ -53,8 +56,67 @@
 - Keeps the current Authoritative state while one Action is pending and waits for server confirmation.
 - Includes minimal **feedback cues** (pulse, color flash, outline) to show accepted/rejected moves.
 
+#### Compact destinations and selection
+
+Implemented in [#104](https://github.com/maximobesteiro/montoncito/issues/104), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- The New Build pile slot and empty Discard slots use the board's card dimensions. The initial Build row reserves card height. Labels sit outside slot footprints.
+- A selected card outlines each legal destination's whole collapsed stack, including exposed covered-card portions. Labels, counts, and inspection controls remain outside the destination boundary. Covered cards and opponent cards remain unavailable as sources.
+- Completing a tap or activating a source with Enter or Space temporarily collapses its legal Discard destinations. The board remembers each pile's expansion preference separately from its rendered collapse. Unrelated histories stay open, and temporarily collapsed destinations cannot expand while targeting.
+- Selecting another available source recalculates destinations and restores histories that cease to be destinations. Tapping the selected source or unused board space, or pressing Escape, clears selection and restores remembered expansion. Inspection controls and chat keep their own behavior.
+- While a non-wild Hand card is selected, activating a legal Discard stack, including its playable top, submits that Hand discard and ends the Turn on server acceptance. Deselect the Hand card before selecting the Discard top as a source.
+- Enter and Space activate destination buttons. Screen-reader status reports the selected source, legal destination counts, and cancellation. Keyboard play uses selection and destination activation.
+- A pile reduced to zero or one card forgets its expansion preference, including during temporary collapse. Later growth stays collapsed. Entering a different Game room resets inspection.
+- Cards stay in their Authoritative locations until the server accepts an Action.
+
+#### Visible desktop card movement
+
+Implemented in [#105](https://github.com/maximobesteiro/montoncito/issues/105), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- Eligible Hand cards, Stock tops, and Discard tops use dnd-kit dragging with a five-pixel movement threshold. Ordinary clicks still select or deselect. Keyboard play continues to use source selection and destination activation.
+- A floating card starts at its captured pickup position and follows the pointer. Legal destination histories collapse at drag activation, without moving the preview when collapse reflows or scrolls the board. The source keeps its footprint and dims while dragging.
+- Legal destinations have a thick primary-color outline. The destination under the pointer adds an outer foreground ring and a light primary-color fill. Screen-reader status names the hovered destination and explains outside-drop cancellation.
+- Drops require pointer coordinates inside the entire collapsed stack or card-sized empty slot. Exposed covered Build and Discard layers accept legal drops. Labels, counts, inspection controls, and the space outside a stack do not. Card overlap alone never accepts a drop or snaps to a nearby pile.
+- Only the visible portion of a destination accepts a drop. Board viewport clipping and occluding controls, including the mobile chat dock, exclude hidden rectangles from hover and release targeting.
+- Destination measurements refresh after collapse and scrolling. Stack height changes have no animation. dnd-kit handles gesture tracking, collision detection, edge scrolling, and the click following a drag.
+- Legal release submits one existing Action through the Game room session. Outside release, including returning to the source, clears selection and restores inspection. Escape, pointer cancellation, lost capture, focus loss, chat opening, a new Authoritative state, and lost gameplay eligibility cancel an unsubmitted gesture and remove its preview and collapse override.
+- The overlay disappears on release or cancellation. Authoritative cards remain in their confirmed locations during a Pending Action, with existing pending feedback.
+- Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation.
+
+#### Pending Action collapse
+
+Implemented in [#106](https://github.com/maximobesteiro/montoncito/issues/106), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- Successful submission freezes the source's legal Discard destination set separately from selection and gameplay eligibility. Selection and the floating card clear, but those destinations remain collapsed with expansion controls disabled until the Pending Action resolves. Unrelated inspection remains usable.
+- Chat opening, focus loss, changed snapshots, disconnection, and reconnect cancel unsubmitted targeting. They do not clear a submitted Action's collapse override. Cards remain in Authoritative locations with source and destination pending feedback, and gameplay cannot submit a second Action. Connected chat remains usable.
+- Acceptance or rejection restores remembered expansion. Rejection can resolve at the same Sequence number, so restoration follows the Action result or pending-state resolution rather than snapshot advancement. This restoration does not recover an old inspection reading position.
+- A pile reaching zero or one card still forgets its expansion preference during the override. Later growth stays collapsed after resolution. Entering another Game room resets retained presentation and inspection.
+- Acceptance has one screen-reader status announcement per Action result. Rejection uses the existing readable alert and Dismiss control. Replayed results and chat updates do not remount the same result announcement.
+
+#### Mobile tap, hold and scroll
+
+Implemented in [#107](https://github.com/maximobesteiro/montoncito/issues/107), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- A short tap selects or deselects a playable card. Selection collapses legal destination histories only after the tap completes. A stationary touch hold of about 200 ms activates the floating card. Mouse and pen retain the five-pixel movement threshold; keyboard play retains selection and destination activation.
+- Playable cards allow native panning before activation. Moving before the hold completes abandons the drag attempt and scrolls without selecting a card or collapsing destinations. Sources prevent text selection without disabling native touch scrolling.
+- Pre-hold movement beyond the five-pixel tolerance suppresses the gesture's synthesized click, even when the browser has not started native scrolling. The next tap and keyboard activation remain available.
+- The floating card starts at the source geometry captured before collapse and follows the finger. Finger coordinates inside the whole collapsed stack or card-sized empty slot determine the drop. Counts, inspection controls, labels and outside space never accept drops based on preview overlap.
+- Active edge scrolling uses the board's scroll container, whose mobile bottom edge stays above the chat dock and safe-area inset. Destination measurements refresh after collapse and scrolling. Submission, outside release, touch cancellation and chat interruption remove the preview and stop drag scrolling.
+- Touch uses its own cancellation events. Normal implicit pointer-capture release does not cancel a completed touch drop. Opening mobile chat on a primary press interrupts an active drag even while drag click suppression is in effect. Switching back to mouse or keyboard remains available after cancellation or server resolution.
+
+#### Inspection and viewport restoration
+
+Implemented in [#108](https://github.com/maximobesteiro/montoncito/issues/108), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- Before temporary destination collapse, remember the board's reading position. Invalid drops, release back on the source, deselection, unused-space taps, Escape and unsubmitted interruptions reopen remembered histories. Recover the reading position when the player has not navigated during targeting, even if collapse alone clamped browser scrolling.
+- Wheel, native touch, keyboard navigation and active-drag edge scrolling take precedence over the remembered reading position. Cancellation preserves the current visible board anchor as far as the restored geometry permits. Restoration also works without native browser scroll anchoring.
+- Switching between sources with the same Discard destinations retains their reading context. When a source switch reopens histories that cease to be destinations, preserve the current anchor and consume their old context. If those histories become destinations again, capture their current reading position before the new collapse.
+- Submission discards the old reading position. Pending collapse survives chat and reconnect. Acceptance, same-Sequence rejection, or pending-state resolution reopens histories around the current viewport anchor, including when a rejection alert or changed Authoritative state alters the layout. Chat scrolling does not replace board navigation, and the mobile chat dock stays outside the board scroll container.
+- Multiple histories restore together. Shorter histories constrain recovery to the available geometry. Zero/one-card histories still forget expansion before later growth, and a different Game room starts with fresh inspection and scroll context.
+
 ### 4. **Chat & Presence**
 - On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.
+- Expanding desktop chat cancels unsubmitted targeting and restores inspection. A Pending Action retains its destination collapse. The open desktop panel still allows fresh board interactions.
 - Below 1024px, chat starts closed. A safe-area-aware bottom entry has reserved space outside the scrollable board. It opens a bounded modal sheet with Close and backdrop dismissal. Opening the sheet clears selection and cancels drag without submitting a gameplay Action.
 - Recovered history does not raise unread; only live arrivals while closed do. Chat retains messages and drafts offline, disables Send until connected, and stays available during a Pending Action and after game over.
 - Shows connected players and presence indicators.

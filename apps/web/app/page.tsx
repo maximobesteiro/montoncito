@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MenuButton } from "../components/MenuButton";
 import { Modal } from "../components/Modal";
@@ -14,6 +14,12 @@ import {
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
+import {
+  enterCasualGame,
+  completeCasualEntry,
+  startFreshCasualEntry,
+  CasualDestinationUnavailableError,
+} from "@/lib/casual-entry";
 
 export default function Home() {
   const router = useRouter();
@@ -25,6 +31,9 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [entering, setEntering] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [finding, setFinding] = useState(false);
+  const casualPending = useRef(false);
+  const [casualUnavailable, setCasualUnavailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +94,33 @@ export default function Home() {
     }
   };
 
+  const handleCasualGame = async () => {
+    if (entering || casualPending.current) return;
+    casualPending.current = true;
+    setEntering(true);
+    setFinding(true);
+    setError(null);
+    try {
+      const room = await enterCasualGame();
+      if (room.status !== "open") completeCasualEntry();
+      router.push(
+        room.status === "open" ? `/room/${room.slug}` : `/game/${room.id}`,
+      );
+    } catch (error) {
+      const unavailable = error instanceof CasualDestinationUnavailableError;
+      setCasualUnavailable(unavailable);
+      setError(
+        unavailable
+          ? error.message
+          : "Couldn't find a game. Retry Casual Game to check the same attempt.",
+      );
+    } finally {
+      casualPending.current = false;
+      setEntering(false);
+      setFinding(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-background p-4 sm:p-8 font-sans">
       <main className="w-full max-w-md flex flex-col gap-4">
@@ -130,10 +166,29 @@ export default function Home() {
           {error && <p role="alert">{error}</p>}
         </section>
         <MenuButton
-          title="Casual Game"
+          title={finding ? "Finding a game..." : "Casual Game"}
+          disabled={entering || casualUnavailable}
           subtitle="Join any game awaiting players"
-          onClick={() => {}}
+          onClick={() => void handleCasualGame()}
         />
+        {casualUnavailable && (
+          <button
+            type="button"
+            className="brutal-button px-3 py-2"
+            disabled={entering}
+            onClick={() => {
+              try {
+                startFreshCasualEntry();
+                setCasualUnavailable(false);
+                void handleCasualGame();
+              } catch {
+                setError("Couldn't start a fresh attempt. Please try again.");
+              }
+            }}
+          >
+            Find another game
+          </button>
+        )}
 
         <MenuButton
           title="Join a Game"

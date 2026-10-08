@@ -1,9 +1,10 @@
 "use client";
 
-import type { Card as GameCard } from "@mont/core-game";
+import type { BuildPileTarget, Card as GameCard } from "@mont/core-game";
 import { peekTopCard, removeTopCard } from "@mont/core-game";
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { Card, cardDimensions, type CardSize } from "./Card";
+import { useDroppable } from "@dnd-kit/core";
 
 const pileSizeConfig: Record<
   CardSize,
@@ -21,7 +22,19 @@ type PilePresentation =
       kind: "overlapping";
       collapsedVisibleCount: number;
       expandable: boolean;
+      temporarilyCollapsed?: boolean;
     };
+
+export type PileDestinationIdentity =
+  | { kind: "build"; buildId: BuildPileTarget; discardIndex?: never }
+  | { kind: "discard"; discardIndex: number; buildId?: never };
+
+export interface PileDestination {
+  label: string;
+  legal: boolean;
+  identity: PileDestinationIdentity;
+  onActivate: () => void;
+}
 
 interface PileProps {
   cards: readonly GameCard[];
@@ -39,6 +52,7 @@ interface PileProps {
   emptyLabel?: string;
   emptyAriaLabel?: string;
   onEmptyClick?: () => void;
+  destination?: PileDestination;
 }
 
 export function Pile({
@@ -57,28 +71,29 @@ export function Pile({
   emptyLabel = "—",
   emptyAriaLabel,
   onEmptyClick,
+  destination,
 }: PileProps) {
   const config = cardDimensions[size];
   const topCard = peekTopCard(cards);
 
-  const EmptyElement = onEmptyClick ? "button" : "div";
+  const EmptyElement = onEmptyClick && !destination ? "button" : "div";
   const top = topCard ? (
     <Card
       card={topCard}
       faceUp={faceUp}
       size={size}
-      onClick={onClick}
-      isPlayable={isPlayable}
+      onClick={destination ? undefined : onClick}
+      isPlayable={destination ? false : isPlayable}
       ariaLabel={cardAriaLabel}
       isSelected={isSelected}
-      dragSource={dragSource}
+      dragSource={destination ? undefined : dragSource}
     />
   ) : (
     <EmptyElement
-      {...(onEmptyClick
+      {...(onEmptyClick && !destination
         ? { type: "button" as const, onClick: onEmptyClick }
         : {})}
-      aria-label={emptyAriaLabel}
+      aria-label={destination ? undefined : emptyAriaLabel}
       className={`brutal-border border-dashed bg-surface flex items-center justify-center text-text-subtle text-xs ${onEmptyClick ? "border-btn-primary" : ""}`}
       style={{ width: config.width, height: config.height }}
     >
@@ -87,7 +102,10 @@ export function Pile({
   );
 
   return (
-    <div className={`flex flex-col items-center gap-1 ${className}`}>
+    <div
+      data-pile-inspection
+      className={`flex flex-col items-center gap-1 ${className}`}
+    >
       {label && (
         <div className="text-xs font-bold brutal-border px-1 py-0.5 bg-card">
           {label}
@@ -101,6 +119,7 @@ export function Pile({
           coveredCardAriaLabel={coveredCardAriaLabel}
           faceUp={faceUp}
           top={top}
+          destination={destination}
         />
       ) : presentation.kind === "stacked" ? (
         <StackedLayout
@@ -109,11 +128,78 @@ export function Pile({
           coveredFaceUp={presentation.coveredFaceUp}
           coveredCardAriaLabel={coveredCardAriaLabel}
           top={top}
+          destination={destination}
         />
       ) : (
-        top
+        <PileFootprint destination={destination}>{top}</PileFootprint>
       )}
     </div>
+  );
+}
+
+export function PileFootprint({
+  destination,
+  children,
+  style,
+  id,
+  className = "",
+  ariaLabel,
+}: {
+  destination?: PileDestination;
+  children: ReactNode;
+  style?: CSSProperties;
+  id?: string;
+  className?: string;
+  ariaLabel?: string;
+}) {
+  const fallbackId = useId();
+  const { setNodeRef, isOver } = useDroppable({
+    id: destination
+      ? destination.identity.kind === "build"
+        ? `build:${destination.identity.buildId}`
+        : `discard:${destination.identity.discardIndex}`
+      : fallbackId,
+    disabled: !destination?.legal,
+    data: {
+      destination: destination?.identity,
+      label: destination?.label,
+    },
+  });
+  const Element = destination ? "button" : "div";
+  return (
+    <Element
+      id={id}
+      ref={setNodeRef}
+      {...(!destination ? { "aria-label": ariaLabel } : {})}
+      data-drop-hovered={destination?.legal && isOver}
+      style={style}
+      className={`relative block shrink-0 p-0 ${destination?.legal ? "outline outline-4 outline-btn-primary outline-offset-2 cursor-pointer" : ""} ${destination?.legal && isOver ? "ring-4 ring-foreground ring-offset-4 bg-btn-primary" : ""} ${className}`}
+      {...(destination
+        ? {
+            type: "button" as const,
+            "aria-label": destination.label,
+            disabled: !destination.legal,
+            "data-legal-target": destination.legal,
+            "data-drop-build":
+              destination.identity.kind === "build"
+                ? destination.identity.buildId
+                : undefined,
+            "data-drop-discard":
+              destination.identity.kind === "discard"
+                ? destination.identity.discardIndex
+                : undefined,
+            onClick: destination.onActivate,
+          }
+        : {})}
+    >
+      {children}
+      {destination?.legal && isOver && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-btn-primary/15"
+        />
+      )}
+    </Element>
   );
 }
 
@@ -123,6 +209,7 @@ interface StackedLayoutProps {
   coveredFaceUp: boolean;
   coveredCardAriaLabel?: (card: GameCard) => string;
   top: ReactNode;
+  destination?: PileDestination;
 }
 
 function StackedLayout({
@@ -131,6 +218,7 @@ function StackedLayout({
   coveredFaceUp,
   coveredCardAriaLabel,
   top,
+  destination,
 }: StackedLayoutProps) {
   const covered = removeTopCard(cards).pile.slice(-2);
   const config = cardDimensions[size];
@@ -138,8 +226,8 @@ function StackedLayout({
   const topOffset = covered.length * offset;
 
   return (
-    <div
-      className="relative"
+    <PileFootprint
+      destination={destination}
       style={{
         width: config.width + topOffset,
         height: config.height + topOffset,
@@ -162,7 +250,7 @@ function StackedLayout({
       <div style={{ position: "absolute", left: topOffset, top: topOffset }}>
         {top}
       </div>
-    </div>
+    </PileFootprint>
   );
 }
 
@@ -183,7 +271,10 @@ function CoveredCard({
     <div
       data-covered-card
       style={style}
-      onClick={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        if (!(event.target as Element).closest('[data-legal-target="true"]'))
+          event.stopPropagation();
+      }}
     >
       <Card card={card} size={size} faceUp={faceUp} ariaLabel={ariaLabel} />
     </div>
@@ -197,6 +288,7 @@ interface OverlappingLayoutProps {
   coveredCardAriaLabel?: (card: GameCard) => string;
   faceUp: boolean;
   top: ReactNode;
+  destination?: PileDestination;
 }
 
 function OverlappingLayout({
@@ -206,13 +298,15 @@ function OverlappingLayout({
   coveredCardAriaLabel,
   faceUp,
   top,
+  destination,
 }: OverlappingLayoutProps) {
   const [expanded, setExpanded] = useState(false);
   const id = useId();
   const canExpand = presentation.expandable && cards.length > 1;
   // Reset before rendering so a later growing pile cannot reopen old inspection.
   if (!canExpand && expanded) setExpanded(false);
-  const showHistory = canExpand && expanded;
+  const showHistory =
+    canExpand && expanded && !presentation.temporarilyCollapsed;
   const visibleCards = showHistory
     ? cards
     : cards.slice(-Math.max(1, presentation.collapsedVisibleCount));
@@ -223,9 +317,9 @@ function OverlappingLayout({
 
   return (
     <>
-      <div
+      <PileFootprint
+        destination={destination}
         id={id}
-        className="relative"
         style={{
           width: config.width,
           height: config.height + Math.max(0, visibleCards.length - 1) * offset,
@@ -249,7 +343,7 @@ function OverlappingLayout({
         >
           {top}
         </div>
-      </div>
+      </PileFootprint>
       {showHistory && <span className="text-xs font-bold">Top</span>}
       {canExpand && (
         <>
@@ -261,6 +355,7 @@ function OverlappingLayout({
             className="brutal-button text-xs"
             aria-expanded={showHistory}
             aria-controls={id}
+            disabled={presentation.temporarilyCollapsed}
             onClick={(event) => {
               event.stopPropagation();
               setExpanded((previous) => !previous);

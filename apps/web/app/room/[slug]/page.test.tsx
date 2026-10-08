@@ -139,7 +139,7 @@ it("shows recovered Lobby chat with sender names and current-player highlighting
 it("renews only an existing member and navigates to the Game room if play starts during reconnection", async () => {
   render(<WaitingRoomPage />);
   await waitFor(() => expect(harness.connect).toHaveBeenCalled());
-  harness.apiFetch.mockImplementation(async (url: string) => ({
+  harness.apiFetch.mockImplementation(async () => ({
     id: "room-1",
     slug: "sample-room",
     ownerId: "player-1",
@@ -156,6 +156,8 @@ it("renews only an existing member and navigates to the Game room if play starts
   }));
   const renew = harness.connect.mock.calls.at(-1)?.[1] as () => Promise<string>;
   expect(await renew()).toBe("renewed");
+  const connected = harness.connect.mock.calls.at(-1)?.[2] as () => void;
+  connected();
   await waitFor(() =>
     expect(harness.router.push).toHaveBeenCalledWith("/game/room-1"),
   );

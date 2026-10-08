@@ -18,6 +18,14 @@ import {
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
+import {
+  getCasualEntry,
+  forgetCasualEntry,
+  completeCasualEntry,
+  startFreshCasualEntry,
+  CasualDestinationUnavailableError,
+  CasualEntryLookupError,
+} from "@/lib/casual-entry";
 
 type RoomView = {
   id: string;
@@ -44,18 +52,17 @@ export default function WaitingRoomPage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
   const sanitizedSlug = useMemo(() => slug.slice(0, 15).toLowerCase(), [slug]);
+  const [casualEntry, setCasualEntry] =
+    useState<ReturnType<typeof getCasualEntry>>();
+  const [entryLookupFailed, setEntryLookupFailed] = useState(false);
+  const [admissionAttempt, setAdmissionAttempt] = useState(0);
 
-  const clientId = useMemo(() => {
-    try {
-      return getOrCreateClientId();
-    } catch {
-      return null;
-    }
-  }, []);
+  const [clientId, setClientId] = useState<string | null>(null);
 
   const [room, setRoom] = useState<RoomView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [casualUnavailable, setCasualUnavailable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [starting, setStarting] = useState(false);
   const [kickingPlayerId, setKickingPlayerId] = useState<string | null>(null);
@@ -70,7 +77,6 @@ export default function WaitingRoomPage() {
   useEffect(() => subscribeGuestProfile(setAdmissionProfile), []);
   const [needsNickname, setNeedsNickname] = useState(false);
   const [admitted, setAdmitted] = useState(false);
-  const [admissionAttempt, setAdmissionAttempt] = useState(0);
   const unresolvedAdmission = useRef<string | null>(null);
   const retryAdmission = useRef<null | ((draft: string) => Promise<void>)>(
     null,
@@ -129,25 +135,36 @@ export default function WaitingRoomPage() {
     let cancelled = false;
     let unsub: null | (() => void) = null;
     const boot = async () => {
-      if (!clientId) return;
+      let casualEntry: ReturnType<typeof getCasualEntry>;
       setLoading(true);
       setError(null);
+      setCasualUnavailable(false);
+      setEntryLookupFailed(false);
       setAdmitted(false);
       setNeedsNickname(false);
       setRoom(null);
 
       try {
+        casualEntry = getCasualEntry(sanitizedSlug);
+        const clientId = getOrCreateClientId();
+        setClientId(clientId);
+        setCasualEntry(casualEntry);
         let profile = await initializeGuestProfile(clientId);
         if (cancelled) return;
         setSuggestions(profile.suggestions);
         setAdmissionProfile(profile);
         // 1) Resolve room by slug (for deep-link support)
         const resolved = await withGuestProfileRecovery(profile, (current) =>
-          apiFetch<RoomView>(`/rooms/by-slug/${sanitizedSlug}`, {
-            method: "GET",
-            clientId,
-            headers: { "x-profile-generation": current.generation },
-          }),
+          apiFetch<RoomView>(
+            casualEntry
+              ? `/rooms/${casualEntry.id}`
+              : `/rooms/by-slug/${sanitizedSlug}`,
+            {
+              method: "GET",
+              clientId,
+              headers: { "x-profile-generation": current.generation },
+            },
+          ),
         );
         profile = resolved.profile;
         let view = resolved.value;
@@ -158,7 +175,12 @@ export default function WaitingRoomPage() {
         // 1b) If we're the host, re-apply locally saved settings (best-effort).
         // This mitigates room recreation/reset after everyone leaves.
         const saved = getRoomSettings(sanitizedSlug);
-        if (saved && view.ownerId === clientId && view.status === "open") {
+        if (
+          !casualEntry &&
+          saved &&
+          view.ownerId === clientId &&
+          view.status === "open"
+        ) {
           try {
             view = await apiFetch<RoomView>(`/rooms/${view.id}`, {
               method: "PATCH",
@@ -180,6 +202,7 @@ export default function WaitingRoomPage() {
         // Note: response includes updated room view (including *you* in players list).
         const connectMembership = (joinRes: Admission) => {
           if (cancelled) return;
+          if (casualEntry) completeCasualEntry();
 
           // Update local room immediately so the joining player sees themselves
           const {
@@ -220,6 +243,7 @@ export default function WaitingRoomPage() {
               router.push(`/game/${ev.roomId}`);
             }
             if (ev.type === "KICKED") {
+              if (casualEntry) forgetCasualEntry(casualEntry.id);
               liveRoomRevision.current++;
               invalidateNicknameEditor();
               sock.disconnect();
@@ -235,33 +259,66 @@ export default function WaitingRoomPage() {
             // Note: PLAYER_JOINED and PLAYER_LEFT are presence indicators (online/offline status)
             // but don't change the room's player list. Use ROOM_UPDATED for actual roster changes.
           });
-          sock.connect(wsJoinToken, async () => {
+          const synchronizeRoom = async () => {
+            const revision = liveRoomRevision.current;
             try {
-              const { wsJoinToken: renewed } = await apiFetch<{
-                wsJoinToken: string;
-              }>(`/rooms/${view.id}/socket-token`, {
-                method: "POST",
-                clientId,
-              });
-              const revision = liveRoomRevision.current;
               const current = await apiFetch<RoomView>(`/rooms/${view.id}`, {
                 method: "GET",
                 clientId,
               });
-              if (!cancelled && revision === liveRoomRevision.current)
-                setRoom(current);
-              return renewed;
+              if (cancelled || revision !== liveRoomRevision.current) return;
+              if (!current.players.some((player) => player.id === clientId))
+                throw new ApiHttpError(
+                  403,
+                  "Your Lobby membership was removed.",
+                );
+              setRoom(current);
             } catch (error) {
-              if (
-                error instanceof ApiHttpError &&
-                (error.status === 403 || error.status === 404)
-              ) {
-                sock.disconnect();
-                if (!cancelled) router.push("/");
-              }
-              throw error;
+              if (cancelled || revision !== liveRoomRevision.current) return;
+              sock.disconnect();
+              setAdmitted(false);
+              invalidateNicknameEditor();
+              const unavailable = Boolean(
+                casualEntry &&
+                  error instanceof ApiHttpError &&
+                  (error.status === 403 || error.status === 404),
+              );
+              setCasualUnavailable(unavailable);
+              setError(
+                unavailable
+                  ? new CasualDestinationUnavailableError().message
+                  : "Couldn't synchronize this Lobby. Retry entry to check your membership and current game.",
+              );
             }
-          });
+          };
+          sock.connect(
+            wsJoinToken,
+            async () => {
+              try {
+                const { wsJoinToken: renewed } = await apiFetch<{
+                  wsJoinToken: string;
+                }>(`/rooms/${view.id}/socket-token`, {
+                  method: "POST",
+                  clientId,
+                });
+                return renewed;
+              } catch (error) {
+                if (
+                  error instanceof ApiHttpError &&
+                  (error.status === 403 || error.status === 404)
+                ) {
+                  sock.disconnect();
+                  if (!cancelled) router.push("/");
+                }
+                throw error;
+              }
+            },
+            () => {
+              // Subscribe first, then read after each actual connection. A start
+              // between boot's snapshot and subscription must not be missed.
+              void synchronizeRoom();
+            },
+          );
         };
         const reconcileAdmission = async () => {
           try {
@@ -299,6 +356,20 @@ export default function WaitingRoomPage() {
           }
         };
         const admit = async (draft?: string) => {
+          if (
+            casualEntry ||
+            (view.status !== "open" &&
+              view.players.some((player) => player.id === clientId))
+          ) {
+            // Recover confirmed Casual admission or a seated match member.
+            // The token endpoint verifies membership even if the read is stale.
+            const token = await apiFetch<{ wsJoinToken: string }>(
+              `/rooms/${view.id}/socket-token`,
+              { method: "POST", clientId },
+            );
+            connectMembership({ ...view, ...token, profile });
+            return;
+          }
           if (
             unresolvedAdmission.current === view.id &&
             !(await reconcileAdmission())
@@ -416,7 +487,20 @@ export default function WaitingRoomPage() {
         }
       } catch (e) {
         if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load room");
+        setEntryLookupFailed(e instanceof CasualEntryLookupError);
+        const unavailable = Boolean(
+          casualEntry &&
+            e instanceof ApiHttpError &&
+            (e.status === 403 || e.status === 404),
+        );
+        setCasualUnavailable(unavailable);
+        setError(
+          unavailable
+            ? new CasualDestinationUnavailableError().message
+            : e instanceof Error
+              ? e.message
+              : "Failed to load room",
+        );
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -433,7 +517,6 @@ export default function WaitingRoomPage() {
       getSocketClient().disconnect();
     };
   }, [
-    clientId,
     router,
     sanitizedSlug,
     showToast,
@@ -442,7 +525,7 @@ export default function WaitingRoomPage() {
   ]);
 
   useEffect(() => {
-    if (!room) return;
+    if (!room || !admitted) return;
     if (
       room.status !== "open" &&
       room.gameId &&
@@ -451,7 +534,7 @@ export default function WaitingRoomPage() {
       invalidateNicknameEditor();
       router.push(`/game/${room.id}`);
     }
-  }, [room, router, invalidateNicknameEditor, clientId]);
+  }, [room, router, invalidateNicknameEditor, clientId, admitted]);
 
   const patchRoom = async (
     patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
@@ -570,6 +653,7 @@ export default function WaitingRoomPage() {
         method: "POST",
         clientId,
       });
+      if (casualEntry) forgetCasualEntry(casualEntry.id);
       router.push("/");
     } catch (e) {
       showToast(
@@ -635,9 +719,18 @@ export default function WaitingRoomPage() {
                 <button
                   className="brutal-button mt-2 bg-card"
                   disabled={loading}
-                  onClick={() => setAdmissionAttempt((attempt) => attempt + 1)}
+                  onClick={() => {
+                    if (casualUnavailable) {
+                      startFreshCasualEntry();
+                      router.push("/");
+                    } else setAdmissionAttempt((attempt) => attempt + 1);
+                  }}
                 >
-                  Retry admission
+                  {casualUnavailable
+                    ? "Find another game"
+                    : casualEntry || entryLookupFailed
+                      ? "Retry entry"
+                      : "Retry admission"}
                 </button>
               )}
             </div>

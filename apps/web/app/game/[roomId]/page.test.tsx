@@ -6,6 +6,8 @@ import {
   render,
   screen,
   within,
+  waitFor,
+  act,
 } from "@testing-library/react";
 import {
   applyMove,
@@ -32,6 +34,10 @@ import GameRoomPage from "./page";
 import { denseBoardState } from "./dense-board.fixture";
 
 beforeEach(() => {
+  Object.defineProperty(document, "elementFromPoint", {
+    configurable: true,
+    value: () => null,
+  });
   // jsdom has no PointerEvent constructor; use mouse coordinates plus pointer identity.
   class TestPointerEvent extends MouseEvent {
     readonly pointerId: number;
@@ -67,10 +73,13 @@ beforeEach(() => {
   window.sessionStorage.clear();
   gameRoom.roomId = "room-1";
 });
-afterEach(() => {
+afterEach(async () => {
+  fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
   cleanup();
+  // Sensor click suppression outlives release briefly, just like a browser click.
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  Reflect.deleteProperty(document, "elementFromPoint");
 });
 
 function releaseOver(
@@ -78,16 +87,80 @@ function releaseOver(
   target: () => Element,
   pointerType: string,
 ) {
+  // Match the visible hit to the controlled destination geometry in this DOM seam.
   Object.defineProperty(document, "elementFromPoint", {
     configurable: true,
     value: () => target(),
   });
-  fireEvent.pointerDown(source, { pointerId: 1, pointerType, button: 0 });
-  fireEvent.pointerUp(source, {
+  const geometry = vi
+    .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+    .mockImplementation(function (this: HTMLElement) {
+      let destination: Element | null = null;
+      try {
+        destination = target().closest(
+          "[data-drop-build], [data-drop-discard]",
+        );
+      } catch {
+        /* not selected yet */
+      }
+      return new DOMRect(
+        this === destination ? 200 : 0,
+        this === destination ? 200 : 0,
+        72,
+        104,
+      );
+    });
+  if (pointerType === "touch") {
+    return beginTouchDrag(source).then(() => {
+      // TouchSensor listens on the original target, as native touch events do.
+      fireEvent.touchMove(source, {
+        touches: [{ identifier: 1, clientX: 210, clientY: 210 }],
+      });
+      fireEvent.touchEnd(source, {
+        touches: [],
+        changedTouches: [{ identifier: 1, clientX: 210, clientY: 210 }],
+      });
+      geometry.mockRestore();
+    });
+  }
+  beginDrag(source, pointerType);
+  fireEvent.pointerMove(document, {
     pointerId: 1,
     pointerType,
+    clientX: 210,
+    clientY: 210,
+  });
+  fireEvent.pointerUp(document, {
+    pointerId: 1,
+    pointerType,
+    clientX: 210,
+    clientY: 210,
+  });
+  geometry.mockRestore();
+}
+
+async function beginTouchDrag(source: Element) {
+  fireEvent.touchStart(source, {
+    touches: [{ identifier: 1, clientX: 10, clientY: 10 }],
+  });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 220));
+  });
+}
+
+function beginDrag(source: Element, pointerType = "mouse", pointerId = 1) {
+  fireEvent.pointerDown(source, {
+    pointerId,
+    pointerType,
+    button: 0,
     clientX: 10,
     clientY: 10,
+  });
+  fireEvent.pointerMove(document, {
+    pointerId,
+    pointerType,
+    clientX: 20,
+    clientY: 20,
   });
 }
 
@@ -137,6 +210,40 @@ function boardState(): GameState {
   ];
   return state;
 }
+
+it.each(["other Turn", "disconnected", "chat"])(
+  "announces useful waiting instructions when gameplay is unavailable because of %s",
+  (reason) => {
+    showGameRoom();
+    const state = boardState();
+    if (reason === "other Turn") state.turn.activePlayer = "player-2";
+    gameRoom.view = {
+      ...gameRoom.view,
+      state,
+      connectionStatus: reason === "disconnected" ? "connecting" : "connected",
+    };
+    if (reason === "chat")
+      vi.mocked(window.matchMedia).mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as unknown as MediaQueryList);
+    render(<GameRoomPage />);
+    if (reason === "chat")
+      fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    const status = within(
+      screen.getByRole("region", { name: "Game board" }),
+    ).getByRole("status");
+    expect(status.textContent).not.toContain("Select an available card");
+    expect(status.textContent).toContain(
+      reason === "other Turn"
+        ? "Wait for your Turn"
+        : reason === "disconnected"
+          ? "Wait for the Game room connection"
+          : "Close chat",
+    );
+  },
+);
 
 it.each([
   { count: 0, covered: 0 },
@@ -216,7 +323,8 @@ it.each([
       name: `Build pile stack, next ${count + 1}`,
     });
     const build = within(target);
-    expect(build.getByText(`stack → ${count + 1}`)).toBeTruthy();
+    expect(screen.getByText(`stack → ${count + 1}`)).toBeTruthy();
+    expect(build.queryByText(`stack → ${count + 1}`)).toBeNull();
     expect(target.getAttribute("data-drop-build")).toBe("stack");
     expect(target.getAttribute("data-legal-target")).toBe("true");
     expect(build.queryAllByRole("button")).toHaveLength(0);
@@ -230,7 +338,6 @@ it.each([
       const card = build.getByLabelText(`Covered Build ${name}`);
       expect(card.textContent).toContain("♠");
       expect(card.hasAttribute("data-drag-source")).toBe(false);
-      fireEvent.click(card);
     }
     expect(
       screen
@@ -251,8 +358,8 @@ it.each([
 );
 
 it.each(["mouse", "touch"])(
-  "ignores a %s drop on a covered Build layer and still accepts a drop on its top",
-  (pointerType) => {
+  "accepts a %s drop on an exposed covered Build layer",
+  async (pointerType) => {
     showGameRoom();
     const state = boardState();
     state.center.buildPiles[0]!.cards.push({
@@ -268,19 +375,12 @@ it.each(["mouse", "touch"])(
     const source = screen.getByRole("button", {
       name: "Hand King of Diamonds",
     });
-    releaseOver(
+    await releaseOver(
       source,
       () => screen.getByLabelText("Covered Build Ace of Spades"),
       pointerType,
     );
-    expect(submitAction).not.toHaveBeenCalled();
-    expect(source.getAttribute("aria-pressed")).toBe("true");
-    releaseOver(
-      source,
-      () => screen.getByLabelText("Build top 2 of Spades"),
-      pointerType,
-    );
-    expect(submitAction).toHaveBeenCalledWith({
+    expect(submitAction).toHaveBeenCalledExactlyOnceWith({
       kind: "PLAY_HAND_TO_BUILD",
       cardId: "king",
       target: "build-1",
@@ -550,7 +650,11 @@ it("announces the named viewer as winner after the final Stock play and keeps th
   expect(
     screen.getByRole("heading", { name: "Alice wins! (You)" }),
   ).toBeTruthy();
-  expect(screen.getByRole("status").textContent).toContain("Alice wins!");
+  expect(
+    within(screen.getByRole("region", { name: "Game board" })).getByRole(
+      "status",
+    ).textContent,
+  ).toContain("Alice wins!");
   expect(screen.getByText(/Final board is read-only/)).toBeTruthy();
   expect(screen.getByText("Stock (0)")).toBeTruthy();
   expect(screen.getByText("build-1 → 2")).toBeTruthy();
@@ -639,7 +743,7 @@ it("marks the pending source and target without moving cards across updates and 
   rerender(<GameRoomPage />);
   expect(screen.queryByText("Pending")).toBeNull();
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.queryByText(/Action accepted|success/i)).toBeNull();
+  expect(screen.getAllByText("Action accepted.")).toHaveLength(1);
 });
 
 it("announces a readable rejection on the latest board, replaces it, and offers Dismiss", () => {
@@ -823,6 +927,7 @@ it("opens mobile chat closed by default, cancels selection and drag, and restore
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   render(<GameRoomPage />);
   const source = screen.getByRole("button", { name: "Hand Ace of Hearts" });
+  fireEvent.click(source);
   fireEvent.pointerDown(source, { pointerId: 1, pointerType: "touch" });
   expect(source.getAttribute("aria-pressed")).toBe("true");
   fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
@@ -830,10 +935,6 @@ it("opens mobile chat closed by default, cancels selection and drag, and restore
   expect(
     screen.queryByRole("button", { name: "Hand Ace of Hearts" }),
   ).toBeNull();
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () => screen.getByRole("button", { name: "New Build pile" }),
-  });
   fireEvent.pointerUp(screen.getByRole("region", { name: "Game board" }), {
     pointerId: 1,
     pointerType: "touch",
@@ -862,17 +963,652 @@ function historyState(): GameState {
   return state;
 }
 
+it.each(["accepted", "rejected"])(
+  "retains submitted destinations until %s, then restores remembered inspection",
+  (outcome) => {
+    showGameRoom();
+    const state = historyState();
+    const action: Move = {
+      kind: "PLAY_HAND_TO_BUILD",
+      cardId: "two",
+      target: "build-1",
+    };
+    const submitAction = vi.fn(() => true);
+    gameRoom.view = { ...gameRoom.view, state, submitAction };
+    const { rerender } = render(<GameRoomPage />);
+    const own = () =>
+      screen.getByRole("group", { name: "Alice Discard pile 1" });
+    const opponent = screen.getByRole("group", { name: "Bob Discard pile 1" });
+    for (const pile of [own(), opponent])
+      fireEvent.click(within(pile).getByRole("button", { name: "View all" }));
+    const historyId = within(own())
+      .getByRole("button", { name: "Close" })
+      .getAttribute("aria-controls");
+    fireEvent.click(screen.getByRole("button", { name: "Hand 2 of Clubs" }));
+    fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
+    const checkCollapsed = () => {
+      expect(
+        within(own()).queryByLabelText("Covered Discard pile 1, 4 of Clubs"),
+      ).toBeNull();
+      expect(
+        within(own())
+          .getByRole("button", { name: "View all" })
+          .hasAttribute("disabled"),
+      ).toBe(true);
+      expect(
+        within(opponent).getByRole("button", { name: "Close" }),
+      ).toBeTruthy();
+    };
+    // Successful submission clears selection before the session renders pending.
+    checkCollapsed();
+    gameRoom.view = {
+      ...gameRoom.view,
+      pendingAction: { version: 1, actionId: "collapse", baseSeq: 0, action },
+    };
+    rerender(<GameRoomPage />);
+    checkCollapsed();
+    expect(screen.getByLabelText("Hand 2 of Clubs").textContent).toContain(
+      "Pending",
+    );
+    expect(screen.getByLabelText("Build top Ace of Spades")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Hand 9 of Spades"));
+    fireEvent.click(screen.getByLabelText("Build top Ace of Spades"));
+    expect(submitAction).toHaveBeenCalledExactlyOnceWith(action);
+
+    const resultState =
+      outcome === "accepted" ? applyMove(state, action).state : state;
+    gameRoom.view = {
+      ...gameRoom.view,
+      state: resultState,
+      seq: outcome === "accepted" ? 1 : 0,
+      pendingAction: null,
+      lastActionResult: {
+        version: 1,
+        actionId: "collapse",
+        state: resultState,
+        seq: outcome === "accepted" ? 1 : 0,
+        ...(outcome === "rejected" ? { code: "ILLEGAL_ACTION" } : {}),
+      },
+    };
+    rerender(<GameRoomPage />);
+    const restored = within(own()).getByRole("button", { name: "Close" });
+    expect(restored.hasAttribute("disabled")).toBe(false);
+    expect(restored.getAttribute("aria-controls")).toBe(historyId);
+    expect(
+      within(own()).getByLabelText("Covered Discard pile 1, 4 of Clubs"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Pending")).toBeNull();
+    if (outcome === "accepted") {
+      expect(screen.queryByLabelText("Hand 2 of Clubs")).toBeNull();
+      expect(screen.getByLabelText("Build top 2 of Clubs")).toBeTruthy();
+    }
+  },
+);
+
+it("keeps pending collapse through chat, focus loss, reconnect and changed snapshots without a second Action", () => {
+  vi.mocked(window.matchMedia).mockReturnValue({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  } as unknown as MediaQueryList);
+  showGameRoom();
+  const state = historyState();
+  const action: Move = {
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 1,
+  };
+  const pendingAction = {
+    version: 1,
+    actionId: "retained",
+    baseSeq: 0,
+    action,
+  };
+  const submitAction = vi.fn(() => true);
+  const sendChat = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction, sendChat };
+  const { rerender } = render(<GameRoomPage />);
+  const own = () => screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(within(own()).getByRole("button", { name: "View all" }));
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard pile 2, empty" }),
+  );
+  // Neither another source nor a destination is actionable before pending renders.
+  expect(screen.queryByRole("button", { name: /^Hand / })).toBeNull();
+  fireEvent.click(screen.getByLabelText("Hand Ace of Hearts"));
+  gameRoom.view = { ...gameRoom.view, pendingAction };
+  rerender(<GameRoomPage />);
+  const checkPending = () => {
+    expect(
+      within(own())
+        .getByRole("button", { name: "View all" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      within(own()).queryByLabelText("Covered Discard pile 1, 4 of Clubs"),
+    ).toBeNull();
+    expect(screen.getByLabelText("Hand 9 of Spades").textContent).toContain(
+      "Pending",
+    );
+    expect(
+      within(
+        screen.getByRole("group", { name: "Alice Discard pile 2" }),
+      ).getByText("Pending"),
+    ).toBeTruthy();
+    expect(submitAction).toHaveBeenCalledExactlyOnceWith(action);
+  };
+  fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+  checkPending();
+  fireEvent.change(screen.getByRole("textbox", { name: "Chat message" }), {
+    target: { value: "Still here" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(sendChat).toHaveBeenCalledExactlyOnceWith("Still here");
+  fireEvent(window, new Event("blur"));
+  checkPending();
+  for (const connectionStatus of ["connecting", "synchronizing", "connected"]) {
+    gameRoom.view = {
+      ...gameRoom.view,
+      connectionStatus,
+      state: structuredClone(state),
+      pendingAction: structuredClone(pendingAction),
+    };
+    rerender(<GameRoomPage />);
+    checkPending();
+  }
+  fireEvent.click(screen.getByRole("button", { name: "Close chat" }));
+  checkPending();
+  gameRoom.view = { ...gameRoom.view, pendingAction: null };
+  rerender(<GameRoomPage />);
+  expect(
+    within(own())
+      .getByRole("button", { name: "Close" })
+      .hasAttribute("disabled"),
+  ).toBe(false);
+  expect(screen.queryByText(/Selection cancelled/)).toBeNull();
+});
+
+it.each([0, 1])(
+  "forgets expansion at %i cards while pending and does not resurrect it on resolution",
+  (remaining) => {
+    showGameRoom();
+    const state = historyState();
+    gameRoom.view = {
+      ...gameRoom.view,
+      state,
+      submitAction: vi.fn(() => true),
+    };
+    const { rerender } = render(<GameRoomPage />);
+    const own = () =>
+      screen.getByRole("group", { name: "Alice Discard pile 1" });
+    fireEvent.click(within(own()).getByRole("button", { name: "View all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard pile 2, empty" }),
+    );
+    gameRoom.view = {
+      ...gameRoom.view,
+      pendingAction: {
+        actionId: "reset",
+        action: { kind: "DISCARD_FROM_HAND", cardId: "nine", pileIndex: 1 },
+      },
+    };
+    rerender(<GameRoomPage />);
+    const shrunk = structuredClone(state);
+    shrunk.byId["player-1"]!.discards[0] = remaining
+      ? shrunk.byId["player-1"]!.discards[0]!.slice(-1)
+      : [];
+    gameRoom.view = { ...gameRoom.view, state: shrunk, seq: 1 };
+    rerender(<GameRoomPage />);
+    expect(
+      within(own()).queryByRole("button", { name: /View all|Close/ }),
+    ).toBeNull();
+    gameRoom.view = { ...gameRoom.view, state: structuredClone(state), seq: 2 };
+    rerender(<GameRoomPage />);
+    expect(
+      within(own())
+        .getByRole("button", { name: "View all" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    gameRoom.view = { ...gameRoom.view, pendingAction: null };
+    rerender(<GameRoomPage />);
+    const control = within(own()).getByRole("button", { name: "View all" });
+    expect(control.getAttribute("aria-expanded")).toBe("false");
+    expect(control.hasAttribute("disabled")).toBe(false);
+  },
+);
+
+it("clears pending presentation and remembered inspection on a different room identity", () => {
+  showGameRoom();
+  gameRoom.view = {
+    ...gameRoom.view,
+    state: historyState(),
+    submitAction: vi.fn(() => true),
+  };
+  const { rerender } = render(<GameRoomPage />);
+  const own = () => screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(within(own()).getByRole("button", { name: "View all" }));
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Discard pile 2, empty" }),
+  );
+  gameRoom.view = {
+    ...gameRoom.view,
+    pendingAction: {
+      actionId: "old-room",
+      action: { kind: "DISCARD_FROM_HAND", cardId: "nine", pileIndex: 1 },
+    },
+  };
+  rerender(<GameRoomPage />);
+  gameRoom.roomId = "room-2";
+  gameRoom.view = { ...gameRoom.view, pendingAction: null };
+  rerender(<GameRoomPage />);
+  const control = within(own()).getByRole("button", { name: "View all" });
+  expect(control.getAttribute("aria-expanded")).toBe("false");
+  expect(control.hasAttribute("disabled")).toBe(false);
+  expect(
+    screen
+      .getByRole("button", { name: "Hand 9 of Spades" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+});
+
+it("announces an accepted Action once and does not remount its announcement on replay or chat changes", () => {
+  showGameRoom();
+  const state = historyState();
+  gameRoom.view = {
+    ...gameRoom.view,
+    state,
+    lastActionResult: { version: 1, actionId: "accepted", seq: 1, state },
+  };
+  const { rerender } = render(<GameRoomPage />);
+  const announcement = screen.getByText("Action accepted.");
+  expect(announcement.getAttribute("role")).toBe("status");
+  gameRoom.view = {
+    ...gameRoom.view,
+    liveChatCount: 1,
+    lastActionResult: structuredClone(gameRoom.view.lastActionResult),
+  };
+  rerender(<GameRoomPage />);
+  expect(screen.getAllByText("Action accepted.")).toEqual([announcement]);
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+it("restores inspection on immediate rejection even if pending was never rendered", () => {
+  showGameRoom();
+  const state = historyState();
+  gameRoom.view = { ...gameRoom.view, state, submitAction: vi.fn(() => true) };
+  const { rerender } = render(<GameRoomPage />);
+  const own = () => screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(within(own()).getByRole("button", { name: "View all" }));
+  fireEvent.click(screen.getByRole("button", { name: "Hand 2 of Clubs" }));
+  fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
+  expect(
+    within(own())
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  gameRoom.view = {
+    ...gameRoom.view,
+    lastActionResult: {
+      actionId: "fast-rejection",
+      seq: 0,
+      state,
+      code: "ILLEGAL_ACTION",
+    },
+  };
+  rerender(<GameRoomPage />);
+  expect(
+    within(own())
+      .getByRole("button", { name: "Close" })
+      .hasAttribute("disabled"),
+  ).toBe(false);
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  const alert = screen.getByRole("alert");
+  gameRoom.view = {
+    ...gameRoom.view,
+    lastActionResult: structuredClone(gameRoom.view.lastActionResult),
+  };
+  rerender(<GameRoomPage />);
+  expect(screen.getByRole("alert")).toBe(alert);
+});
+
+it("freezes all legal Discard destinations on a drag submission until pending resolves", async () => {
+  showGameRoom();
+  const state = historyState();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state, submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  const own = () => screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(within(own()).getByRole("button", { name: "View all" }));
+  releaseOver(
+    screen.getByRole("button", { name: "Hand 9 of Spades" }),
+    () => screen.getByRole("button", { name: "Discard pile 2, empty" }),
+    "mouse",
+  );
+  await waitFor(() =>
+    expect(screen.queryByLabelText("Moving 9 of Spades")).toBeNull(),
+  );
+  expect(
+    within(own())
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  const action: Move = {
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 1,
+  };
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith(action);
+  gameRoom.view = {
+    ...gameRoom.view,
+    pendingAction: { actionId: "drag-collapse", action },
+  };
+  rerender(<GameRoomPage />);
+  expect(
+    within(own())
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(screen.getByLabelText("Hand 9 of Spades").textContent).toContain(
+    "Pending",
+  );
+  gameRoom.view = { ...gameRoom.view, pendingAction: null };
+  rerender(<GameRoomPage />);
+  expect(within(own()).getByRole("button", { name: "Close" })).toBeTruthy();
+});
+
+it.each(["chat", "blur", "snapshot", "disconnect", "other-turn"])(
+  "restores expanded inspection when an unsubmitted selection is interrupted by %s",
+  (interruption) => {
+    vi.mocked(window.matchMedia).mockReturnValue({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    } as unknown as MediaQueryList);
+    showGameRoom();
+    const state = historyState();
+    const submitAction = vi.fn(() => true);
+    gameRoom.view = { ...gameRoom.view, state, submitAction };
+    const { rerender } = render(<GameRoomPage />);
+    const own = () =>
+      screen.getByRole("group", { name: "Alice Discard pile 1" });
+    fireEvent.click(within(own()).getByRole("button", { name: "View all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+    if (interruption === "chat")
+      fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    else if (interruption === "blur") fireEvent(window, new Event("blur"));
+    else {
+      const next = structuredClone(state);
+      if (interruption === "other-turn") next.turn.activePlayer = "player-2";
+      gameRoom.view = {
+        ...gameRoom.view,
+        state: next,
+        connectionStatus:
+          interruption === "disconnect" ? "connecting" : "connected",
+      };
+      rerender(<GameRoomPage />);
+    }
+    expect(
+      within(own())
+        .getByRole("button", { name: "Close" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    fireEvent.click(
+      within(
+        screen.getByRole("group", { name: "Alice Discard pile 2" }),
+      ).getByLabelText("Discard pile 2, empty"),
+    );
+    expect(submitAction).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  "blur",
+  "snapshot",
+  "disconnect",
+  "synchronizing",
+  "pending",
+  "other-turn",
+  "gameover",
+])(
+  "cancels an active preview and its collapse override on %s without a late Action",
+  async (interruption) => {
+    showGameRoom();
+    const state = historyState();
+    const submitAction = vi.fn(() => true);
+    gameRoom.view = { ...gameRoom.view, state, submitAction };
+    const { rerender } = render(<GameRoomPage />);
+    const pile = screen.getByRole("group", { name: "Alice Discard pile 1" });
+    fireEvent.click(within(pile).getByRole("button", { name: "View all" }));
+    const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+    beginDrag(hand);
+    expect(screen.getByLabelText("Moving 9 of Spades")).toBeTruthy();
+    expect(
+      within(pile)
+        .getByRole("button", { name: "View all" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    if (interruption === "blur") fireEvent(window, new Event("blur"));
+    else {
+      const next = structuredClone(state);
+      if (interruption === "other-turn") next.turn.activePlayer = "player-2";
+      if (interruption === "gameover") {
+        next.phase = "gameover";
+        next.winner = "player-2";
+      }
+      gameRoom.view = {
+        ...gameRoom.view,
+        state: ["snapshot", "other-turn", "gameover"].includes(interruption)
+          ? next
+          : state,
+        connectionStatus:
+          interruption === "disconnect"
+            ? "connecting"
+            : interruption === "synchronizing"
+              ? "synchronizing"
+              : "connected",
+        pendingAction:
+          interruption === "pending"
+            ? {
+                actionId: "another",
+                action: { kind: "PLAY_STOCK_TO_BUILD", target: "new" },
+              }
+            : null,
+      };
+      rerender(<GameRoomPage />);
+    }
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Moving 9 of Spades")).toBeNull(),
+    );
+    expect(
+      within(pile)
+        .getByRole("button", { name: "Close" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    fireEvent.pointerMove(document, {
+      pointerId: 1,
+      clientX: 210,
+      clientY: 210,
+    });
+    fireEvent.pointerUp(document, { pointerId: 1, clientX: 210, clientY: 210 });
+    expect(submitAction).not.toHaveBeenCalled();
+    expect(
+      state.byId["player-1"]!.hand.cards.some((card) => card.id === "nine"),
+    ).toBe(true);
+  },
+);
+
+it("cancels a pre-activation press across disconnect and reconnect", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: historyState(), submitAction };
+  const { rerender } = render(<GameRoomPage />);
+  const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+  fireEvent.pointerDown(hand, {
+    pointerId: 1,
+    button: 0,
+    clientX: 10,
+    clientY: 10,
+  });
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "connecting" };
+  rerender(<GameRoomPage />);
+  gameRoom.view = { ...gameRoom.view, connectionStatus: "connected" };
+  rerender(<GameRoomPage />);
+  fireEvent.pointerMove(document, { pointerId: 1, clientX: 210, clientY: 210 });
+  fireEvent.pointerUp(document, { pointerId: 1, clientX: 210, clientY: 210 });
+  expect(screen.queryByLabelText("Moving 9 of Spades")).toBeNull();
+  expect(
+    screen
+      .getByRole("button", { name: "Hand 9 of Spades" })
+      .getAttribute("aria-pressed"),
+  ).toBe("false");
+  expect(submitAction).not.toHaveBeenCalled();
+});
+
+it("prioritizes the whole Discard destination over its playable top and keeps labels and controls outside targeting", () => {
+  showGameRoom();
+  const submitAction = vi.fn(() => true);
+  gameRoom.view = { ...gameRoom.view, state: historyState(), submitAction };
+  render(<GameRoomPage />);
+  const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  const destination = within(own).getByRole("button", {
+    name: "Discard Hand to pile 1",
+  });
+  expect(
+    destination.contains(
+      within(own).getByLabelText("Covered Discard pile 1, Ace of Diamonds"),
+    ),
+  ).toBe(true);
+  expect(destination.contains(within(own).getByText("Discard 1"))).toBe(false);
+  expect(destination.contains(within(own).getByText("4 cards"))).toBe(false);
+  expect(
+    destination.contains(within(own).getByRole("button", { name: "View all" })),
+  ).toBe(false);
+  fireEvent.click(within(own).getByLabelText("Discard pile 1, 2 of Hearts"));
+  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
+    kind: "DISCARD_FROM_HAND",
+    cardId: "nine",
+    pileIndex: 0,
+  });
+});
+
+it("temporarily collapses legal Discards, preserves unrelated inspection, and restores on source switching and cancellation", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: historyState() };
+  render(<GameRoomPage />);
+  const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+  const opponent = screen.getByRole("group", { name: "Bob Discard pile 1" });
+  for (const pile of [own, opponent])
+    fireEvent.click(within(pile).getByRole("button", { name: "View all" }));
+  const historyId = within(own)
+    .getByRole("button", { name: "Close" })
+    .getAttribute("aria-controls");
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  expect(
+    within(own).queryByLabelText("Covered Discard pile 1, 4 of Clubs"),
+  ).toBeNull();
+  expect(
+    within(own)
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  expect(within(opponent).getByRole("button", { name: "Close" })).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Hand King of Diamonds" }),
+  );
+  expect(
+    within(own)
+      .getByRole("button", { name: "Close" })
+      .getAttribute("aria-controls"),
+  ).toBe(historyId);
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  fireEvent.keyDown(screen.getByRole("region", { name: "Game board" }), {
+    key: "Escape",
+  });
+  expect(within(own).getByRole("button", { name: "Close" })).toBeTruthy();
+  expect(
+    within(screen.getByRole("region", { name: "Game board" })).getByRole(
+      "status",
+    ).textContent,
+  ).toContain("Selection cancelled");
+  expect(gameRoom.view.submitAction).not.toHaveBeenCalled();
+});
+
+it.each(["source", "space"])(
+  "cancels selection on %s and restores inspection without treating chat as cancellation",
+  (cancel) => {
+    showGameRoom();
+    gameRoom.view = { ...gameRoom.view, state: historyState() };
+    render(<GameRoomPage />);
+    const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+    fireEvent.click(within(own).getByRole("button", { name: "View all" }));
+    const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+    fireEvent.click(hand);
+    fireEvent.click(screen.getByRole("textbox", { name: "Chat message" }));
+    expect(hand.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(
+      cancel === "source" ? hand : screen.getByText(/Draw pile:/),
+    );
+    expect(hand.getAttribute("aria-pressed")).toBe("false");
+    expect(within(own).getByRole("button", { name: "Close" })).toBeTruthy();
+    expect(
+      within(screen.getByRole("region", { name: "Game board" })).getByRole(
+        "status",
+      ).textContent,
+    ).toContain("Selection cancelled");
+  },
+);
+
+it("waits for a completed tap before collapsing legal destination histories", () => {
+  showGameRoom();
+  gameRoom.view = { ...gameRoom.view, state: historyState() };
+  render(<GameRoomPage />);
+  const own = screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(within(own).getByRole("button", { name: "View all" }));
+  const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+  fireEvent.pointerDown(hand, { pointerId: 1, pointerType: "touch" });
+  expect(
+    within(own).getByRole("button", { name: "Close" }).hasAttribute("disabled"),
+  ).toBe(false);
+  fireEvent.pointerUp(hand, { pointerId: 1, pointerType: "touch" });
+  fireEvent.click(hand, { detail: 1 });
+  expect(
+    within(own)
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+});
+
 it.each([1, 2, 3, 4] as const)(
   "keeps all 18 Build targets and %i Discard piles usable with three inspection-only opponents",
   (count) => {
     showGameRoom();
-    const submitAction = vi.fn(() => true);
+    const submitAction = vi.fn<(action: Move) => boolean>(() => true);
     gameRoom.view = {
       ...gameRoom.view,
       state: denseBoardState(count),
       submitAction,
     };
-    render(<GameRoomPage />);
+    const { rerender } = render(<GameRoomPage />);
+    const acceptLastSubmission = (seq: number) => {
+      const action = submitAction.mock.calls.at(-1)![0] as Move;
+      const result = applyMove(gameRoom.view.state as GameState, action);
+      expect(result.accepted).toBe(true);
+      gameRoom.view = {
+        ...gameRoom.view,
+        state: result.state,
+        seq,
+        lastActionResult: {
+          actionId: `accepted-${seq}`,
+          seq,
+          state: result.state,
+        },
+      };
+      rerender(<GameRoomPage />);
+    };
     fireEvent.click(screen.getByRole("button", { name: "Hand 3 of Clubs" }));
     for (let index = 1; index <= 18; index++) {
       const build = screen.getByRole("button", {
@@ -889,6 +1625,7 @@ it.each([1, 2, 3, 4] as const)(
       cardId: "player-1-hand-3",
       target: "build-18",
     });
+    acceptLastSubmission(1);
     fireEvent.click(screen.getByRole("button", { name: "Hand Ace of Clubs" }));
     fireEvent.click(screen.getByRole("button", { name: "New Build pile" }));
     expect(submitAction).toHaveBeenLastCalledWith({
@@ -896,6 +1633,7 @@ it.each([1, 2, 3, 4] as const)(
       cardId: "player-1-hand-1",
       target: "new",
     });
+    acceptLastSubmission(2);
     fireEvent.click(screen.getByRole("button", { name: "Hand 5 of Clubs" }));
     for (let pile = 1; pile <= count; pile++) {
       expect(
@@ -975,12 +1713,12 @@ it("shows three compact own cards, only the opponent top, and history controls o
   }
 });
 
-it("drags a legal Hand card by mouse onto an existing Build pile", () => {
+it("submits a mouse Hand drop once and keeps Authoritative cards with pending feedback", async () => {
   showGameRoom();
   const state = boardState();
   const submitAction = vi.fn(() => true);
   gameRoom.view = { ...gameRoom.view, state, submitAction };
-  render(<GameRoomPage />);
+  const { rerender } = render(<GameRoomPage />);
 
   const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
   releaseOver(
@@ -996,6 +1734,27 @@ it("drags a legal Hand card by mouse onto an existing Build pile", () => {
     target: "build-1",
   });
   expect(screen.getByLabelText("Hand 2 of Clubs")).toBeTruthy();
+  gameRoom.view = {
+    ...gameRoom.view,
+    pendingAction: {
+      version: 1,
+      actionId: "drag-action",
+      baseSeq: 0,
+      action: { kind: "PLAY_HAND_TO_BUILD", cardId: "two", target: "build-1" },
+    },
+  };
+  rerender(<GameRoomPage />);
+  await waitFor(() =>
+    expect(screen.queryByLabelText("Moving 2 of Clubs")).toBeNull(),
+  );
+  expect(screen.getByLabelText("Hand 2 of Clubs").textContent).toContain(
+    "Pending",
+  );
+  expect(screen.getByLabelText("Build top Ace of Spades")).toBeTruthy();
+  expect(
+    state.byId["player-1"]!.hand.cards.some((card) => card.id === "two"),
+  ).toBe(true);
+  expect(submitAction).toHaveBeenCalledTimes(1);
 });
 
 it("expands histories independently in bottom-to-top order across snapshots and closes them on leaving the room", () => {
@@ -1009,7 +1768,7 @@ it("expands histories independently in bottom-to-top order across snapshots and 
   const { rerender } = render(<GameRoomPage />);
   const pile = (name: string, index = 1) =>
     screen.getByRole("group", { name: `${name} Discard pile ${index}` });
-  const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
+  const hand = screen.getByRole("button", { name: "Hand King of Diamonds" });
   fireEvent.click(hand);
   for (const group of [pile("Alice"), pile("Alice", 2), pile("Bob")]) {
     fireEvent.click(within(group).getByRole("button", { name: "View all" }));
@@ -1068,7 +1827,7 @@ it("expands histories independently in bottom-to-top order across snapshots and 
   ).toBeTruthy();
   expect(
     screen
-      .getByRole("button", { name: "Hand 2 of Clubs" })
+      .getByRole("button", { name: "Hand King of Diamonds" })
       .getAttribute("aria-pressed"),
   ).toBe("false");
   expect(submitAction).not.toHaveBeenCalled();
@@ -1107,6 +1866,13 @@ it.each([0, 1])(
         .getAttribute("aria-controls"),
     ).toBe(historyId);
     expect(within(pile()).getByText("Top")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+    expect(
+      within(pile())
+        .getByRole("button", { name: "View all" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
 
     const reset = structuredClone(shrunk);
     reset.byId["player-1"]!.discards[0] = remaining
@@ -1193,10 +1959,6 @@ it("keeps tap selection and deselection usable with pointer-generated clicks", (
   gameRoom.view = { ...gameRoom.view, state: boardState() };
   render(<GameRoomPage />);
   const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () => hand,
-  });
   fireEvent.pointerDown(hand, {
     pointerId: 1,
     pointerType: "mouse",
@@ -1216,7 +1978,7 @@ it("keeps tap selection and deselection usable with pointer-generated clicks", (
 });
 
 it.each([false, true])(
-  "keeps covered cards inspection-only and discards selected Hand on the pile body with expanded=%s",
+  "discards selected Hand on exposed covered destination cards with expanded=%s",
   (expanded) => {
     showGameRoom();
     const submitAction = vi.fn(() => true);
@@ -1230,9 +1992,6 @@ it.each([false, true])(
     fireEvent.click(
       within(pile).getByLabelText("Covered Discard pile 1, Ace of Diamonds"),
     );
-    expect(submitAction).not.toHaveBeenCalled();
-    expect(hand.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(pile);
     expect(submitAction).toHaveBeenCalledExactlyOnceWith({
       kind: "DISCARD_FROM_HAND",
       cardId: "nine",
@@ -1241,16 +2000,12 @@ it.each([false, true])(
   },
 );
 
-it("keeps a previously selected card selected when a drag returns to its source", () => {
+it("clears a previously selected card when a drag returns to its source", () => {
   showGameRoom();
   gameRoom.view = { ...gameRoom.view, state: boardState() };
   render(<GameRoomPage />);
   const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
   fireEvent.click(hand);
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () => hand,
-  });
   fireEvent.pointerDown(hand, {
     pointerId: 1,
     pointerType: "mouse",
@@ -1270,32 +2025,32 @@ it("keeps a previously selected card selected when a drag returns to its source"
     clientX: 20,
     clientY: 200,
   });
-  expect(hand.getAttribute("aria-pressed")).toBe("true");
+  expect(hand.getAttribute("aria-pressed")).toBe("false");
 });
 
 it.each(["body", "older", "top", "empty"])(
-  "drops Hand on the expanded own Discard %s as a discard destination",
-  (destination) => {
+  "drops Hand on the temporarily collapsed own Discard %s as a discard destination",
+  async (destination) => {
     showGameRoom();
     const submitAction = vi.fn(() => true);
     gameRoom.view = { ...gameRoom.view, state: historyState(), submitAction };
     render(<GameRoomPage />);
     const pile = screen.getByRole("group", { name: "Alice Discard pile 1" });
     fireEvent.click(within(pile).getByRole("button", { name: "View all" }));
-    releaseOver(
+    await releaseOver(
       screen.getByRole("button", { name: "Hand 9 of Spades" }),
       () => {
         switch (destination) {
           case "body":
-            return pile;
+            return within(pile).getByRole("button", {
+              name: "Discard Hand to pile 1",
+            });
           case "older":
             return within(pile).getByLabelText(
-              "Covered Discard pile 1, 4 of Clubs",
+              "Covered Discard pile 1, 5 of Hearts",
             );
           case "top":
-            return within(pile).getByRole("button", {
-              name: "Discard pile 1, 2 of Hearts",
-            });
+            return within(pile).getByLabelText("Discard pile 1, 2 of Hearts");
           default:
             return screen.getByRole("button", {
               name: "Discard pile 2, empty",
@@ -1338,12 +2093,13 @@ it("keeps covered own cards and all expanded opponent cards inspection-only whil
       .getByRole("button", { name: "Hand 9 of Spades" })
       .getAttribute("aria-pressed"),
   ).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
   fireEvent.click(within(own).getByRole("button", { name: "Close" }));
   expect(
     screen
       .getByRole("button", { name: "Hand 9 of Spades" })
       .getAttribute("aria-pressed"),
-  ).toBe("true");
+  ).toBe("false");
   fireEvent.click(within(own).getByRole("button", { name: "View all" }));
   const top = within(own).getByRole("button", {
     name: "Discard pile 1, 2 of Hearts",
@@ -1363,7 +2119,7 @@ it("keeps covered own cards and all expanded opponent cards inspection-only whil
   });
 });
 
-it("cancels an in-flight Discard-top drag on a new snapshot without closing its history", () => {
+it("cancels an in-flight Discard-top drag on a new snapshot without closing its history", async () => {
   showGameRoom();
   const state = historyState();
   const submitAction = vi.fn(() => true);
@@ -1374,18 +2130,15 @@ it("cancels an in-flight Discard-top drag on a new snapshot without closing its 
   const top = within(pile).getByRole("button", {
     name: "Discard pile 1, 2 of Hearts",
   });
-  fireEvent.pointerDown(top, { pointerId: 1, pointerType: "touch" });
+  await beginTouchDrag(top);
+  expect(screen.getByLabelText("Moving 2 of Hearts")).toBeTruthy();
   const updated = structuredClone(state);
   updated.byId["player-1"]!.discards[0]!.pop();
   gameRoom.view = { ...gameRoom.view, state: updated, seq: 1 };
   rerender(<GameRoomPage />);
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () => screen.getByText("New Build pile"),
-  });
-  fireEvent.pointerUp(
+  fireEvent.touchEnd(
     within(pile).getByLabelText("Discard pile 1, Ace of Diamonds"),
-    { pointerId: 1, pointerType: "touch" },
+    { touches: [] },
   );
   expect(within(pile).getByRole("button", { name: "Close" })).toBeTruthy();
   expect(
@@ -1396,45 +2149,27 @@ it("cancels an in-flight Discard-top drag on a new snapshot without closing its 
   expect(submitAction).not.toHaveBeenCalled();
 });
 
-it("scrolls toward off-screen Build targets while a touch drag holds at the screen edge", () => {
+it("clears the floating card and restores inspection on touch cancellation", async () => {
   showGameRoom();
-  gameRoom.view = { ...gameRoom.view, state: boardState() };
-  let scrollStep: FrameRequestCallback | undefined;
-  const requestFrame = vi
-    .spyOn(window, "requestAnimationFrame")
-    .mockImplementation((step: FrameRequestCallback) => {
-      scrollStep = step;
-      return 1;
-    });
-  const cancelFrame = vi
-    .spyOn(window, "cancelAnimationFrame")
-    .mockImplementation(() => {});
-  const scrollBy = vi.spyOn(window, "scrollBy").mockImplementation(() => {});
-  try {
-    render(<GameRoomPage />);
-    const hand = screen.getByRole("button", { name: "Hand Ace of Hearts" });
-    fireEvent.pointerDown(hand, {
-      pointerId: 1,
-      pointerType: "touch",
-      clientX: 50,
-      clientY: 150,
-    });
-    fireEvent.pointerMove(hand, {
-      pointerId: 1,
-      pointerType: "touch",
-      clientX: 50,
-      clientY: 1,
-    });
-    scrollStep?.(0);
-    expect(scrollBy).toHaveBeenCalledWith(0, -12);
-    fireEvent.pointerCancel(hand, { pointerId: 1, pointerType: "touch" });
-    expect(window.cancelAnimationFrame).toHaveBeenCalledWith(1);
-  } finally {
-    cleanup();
-    scrollBy.mockRestore();
-    requestFrame.mockRestore();
-    cancelFrame.mockRestore();
-  }
+  gameRoom.view = { ...gameRoom.view, state: historyState() };
+  render(<GameRoomPage />);
+  const pile = screen.getByRole("group", { name: "Alice Discard pile 1" });
+  fireEvent.click(within(pile).getByRole("button", { name: "View all" }));
+  const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
+  await beginTouchDrag(hand);
+  expect(screen.getByLabelText("Moving 9 of Spades")).toBeTruthy();
+  expect(
+    within(pile)
+      .getByRole("button", { name: "View all" })
+      .hasAttribute("disabled"),
+  ).toBe(true);
+  fireEvent.touchCancel(hand, { touches: [] });
+  await waitFor(() =>
+    expect(screen.queryByLabelText("Moving 9 of Spades")).toBeNull(),
+  );
+  expect(hand.getAttribute("aria-pressed")).toBe("false");
+  expect(within(pile).getByRole("button", { name: "Close" })).toBeTruthy();
+  expect(gameRoom.view.submitAction).not.toHaveBeenCalled();
 });
 
 it("stops a drag if pointer capture is lost before release", () => {
@@ -1443,18 +2178,15 @@ it("stops a drag if pointer capture is lost before release", () => {
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   render(<GameRoomPage />);
   const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
-  fireEvent.pointerDown(hand, { pointerId: 5, pointerType: "touch" });
-  fireEvent.lostPointerCapture(hand, { pointerId: 5, pointerType: "touch" });
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () => screen.getByText("build-1 → 2"),
-  });
-  fireEvent.pointerUp(hand, { pointerId: 5, pointerType: "touch" });
+  beginDrag(hand, "mouse", 5);
+  expect(screen.getByLabelText("Moving 2 of Clubs")).toBeTruthy();
+  fireEvent.lostPointerCapture(hand, { pointerId: 5, pointerType: "mouse" });
+  fireEvent.pointerUp(hand, { pointerId: 5, pointerType: "mouse" });
   expect(submitAction).not.toHaveBeenCalled();
-  expect(hand.getAttribute("aria-pressed")).toBe("true");
+  expect(hand.getAttribute("aria-pressed")).toBe("false");
 });
 
-it("selects a held touch Hand card and ends the Turn only after dropping on an own Discard pile", () => {
+it("activates a moving touch Hand card and ends the Turn only after dropping on an own Discard pile", async () => {
   showGameRoom();
   const state = boardState();
   state.byId["player-1"]!.discards[0] = [
@@ -1464,7 +2196,7 @@ it("selects a held touch Hand card and ends the Turn only after dropping on an o
   gameRoom.view = { ...gameRoom.view, state, submitAction };
   render(<GameRoomPage />);
   const hand = screen.getByRole("button", { name: "Hand 9 of Spades" });
-  fireEvent.pointerDown(hand, { pointerId: 2, pointerType: "touch" });
+  await beginTouchDrag(hand);
   expect(hand.getAttribute("aria-pressed")).toBe("true");
   expect(
     screen
@@ -1475,12 +2207,12 @@ it("selects a held touch Hand card and ends the Turn only after dropping on an o
     screen.getByRole("button", { name: "Discard Hand to pile 1" }),
   ).toBeTruthy();
   expect(submitAction).not.toHaveBeenCalled();
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () =>
-      screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
-  });
-  fireEvent.pointerUp(hand, { pointerId: 2, pointerType: "touch" });
+  fireEvent.touchCancel(hand, { touches: [] });
+  await releaseOver(
+    hand,
+    () => screen.getByLabelText("Discard pile 1, 2 of Hearts"),
+    "touch",
+  );
   expect(submitAction).toHaveBeenCalledExactlyOnceWith({
     kind: "DISCARD_FROM_HAND",
     cardId: "nine",
@@ -1489,12 +2221,12 @@ it("selects a held touch Hand card and ends the Turn only after dropping on an o
   expect(screen.getByLabelText("Hand 9 of Spades")).toBeTruthy();
 });
 
-it("drags a touch Hand card to an empty own Discard pile", () => {
+it("drags a touch Hand card to an empty own Discard pile", async () => {
   showGameRoom();
   const submitAction = vi.fn(() => true);
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   render(<GameRoomPage />);
-  releaseOver(
+  await releaseOver(
     screen.getByRole("button", { name: "Hand 9 of Spades" }),
     () => screen.getByRole("button", { name: "Discard pile 2, empty" }),
     "touch",
@@ -1506,7 +2238,7 @@ it("drags a touch Hand card to an empty own Discard pile", () => {
   });
 });
 
-it("drags the Stock top by touch to a new Build pile", () => {
+it("drags the Stock top by touch to a new Build pile", async () => {
   showGameRoom();
   const state = boardState();
   state.byId["player-1"]!.stock.faceDown = [
@@ -1515,7 +2247,7 @@ it("drags the Stock top by touch to a new Build pile", () => {
   const submitAction = vi.fn(() => true);
   gameRoom.view = { ...gameRoom.view, state, submitAction };
   render(<GameRoomPage />);
-  releaseOver(
+  await releaseOver(
     screen.getByRole("button", { name: "Stock top Ace of Clubs" }),
     () => screen.getByRole("button", { name: "New Build pile" }),
     "touch",
@@ -1526,12 +2258,12 @@ it("drags the Stock top by touch to a new Build pile", () => {
   });
 });
 
-it("drags a wild Hand card to a new Build pile by touch", () => {
+it("drags a wild Hand card to a new Build pile by touch", async () => {
   showGameRoom();
   const submitAction = vi.fn(() => true);
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   render(<GameRoomPage />);
-  releaseOver(
+  await releaseOver(
     screen.getByRole("button", { name: "Hand Joker" }),
     () => screen.getByRole("button", { name: "New Build pile" }),
     "touch",
@@ -1565,40 +2297,37 @@ it("drags only the own Discard top by mouse to Build", () => {
   });
 });
 
-it("keeps a source selected after illegal or outside releases and never discards a wild Hand card", () => {
+it("clears selection after illegal or outside releases and never discards a wild Hand card", async () => {
   showGameRoom();
   const submitAction = vi.fn(() => true);
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   render(<GameRoomPage />);
   const king = screen.getByRole("button", { name: "Hand King of Diamonds" });
-  releaseOver(
+  await releaseOver(
     king,
     () => screen.getByRole("group", { name: "Alice Discard pile 1" }),
     "touch",
   );
-  expect(king.getAttribute("aria-pressed")).toBe("true");
+  expect(king.getAttribute("aria-pressed")).toBe("false");
   expect(screen.queryByRole("button", { name: /Discard pile/ })).toBeNull();
   releaseOver(king, () => document.body, "mouse");
-  expect(king.getAttribute("aria-pressed")).toBe("true");
+  expect(king.getAttribute("aria-pressed")).toBe("false");
   const two = screen.getByRole("button", { name: "Hand 2 of Clubs" });
   releaseOver(
     two,
     () => screen.getByRole("button", { name: "New Build pile" }),
     "mouse",
   );
-  expect(two.getAttribute("aria-pressed")).toBe("true");
+  expect(two.getAttribute("aria-pressed")).toBe("false");
   expect(submitAction).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: /Build pile build-1/ }));
-  expect(submitAction).toHaveBeenCalledExactlyOnceWith({
-    kind: "PLAY_HAND_TO_BUILD",
-    cardId: "two",
-    target: "build-1",
-  });
+  expect(
+    screen.queryByRole("button", { name: /Build pile build-1/ }),
+  ).toBeNull();
 });
 
 it.each(["connecting", "synchronizing", "connected"])(
   "blocks drag during %s when not ready for another Action",
-  (connectionStatus) => {
+  async (connectionStatus) => {
     showGameRoom();
     const state = boardState();
     if (connectionStatus === "connected") state.turn.activePlayer = "player-2";
@@ -1606,7 +2335,7 @@ it.each(["connecting", "synchronizing", "connected"])(
     gameRoom.view = { ...gameRoom.view, state, connectionStatus, submitAction };
     render(<GameRoomPage />);
     const hand = screen.getByLabelText("Hand 2 of Clubs");
-    releaseOver(hand, () => screen.getByText("New Build pile"), "touch");
+    await releaseOver(hand, () => screen.getByText("New Build pile"), "touch");
     expect(submitAction).not.toHaveBeenCalled();
     expect(
       screen.queryByRole("button", { name: "Hand 2 of Clubs" }),
@@ -1620,7 +2349,9 @@ it("blocks drag while an Action is pending, including after a previous pointer p
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   const { rerender } = render(<GameRoomPage />);
   const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
-  fireEvent.pointerDown(hand, { pointerId: 3, pointerType: "touch" });
+  fireEvent.touchStart(hand, {
+    touches: [{ identifier: 3, clientX: 10, clientY: 10 }],
+  });
   gameRoom.view = {
     ...gameRoom.view,
     pendingAction: {
@@ -1629,11 +2360,7 @@ it("blocks drag while an Action is pending, including after a previous pointer p
     },
   };
   rerender(<GameRoomPage />);
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () => screen.getByText("build-1 → 2"),
-  });
-  fireEvent.pointerUp(hand, { pointerId: 3, pointerType: "touch" });
+  fireEvent.touchEnd(hand, { touches: [] });
   expect(submitAction).not.toHaveBeenCalled();
   expect(screen.getByLabelText("Hand 2 of Clubs")).toBeTruthy();
 });
@@ -1644,14 +2371,12 @@ it("does not submit a drag released after disconnect", () => {
   gameRoom.view = { ...gameRoom.view, state: boardState(), submitAction };
   const { rerender } = render(<GameRoomPage />);
   const hand = screen.getByRole("button", { name: "Hand 2 of Clubs" });
-  fireEvent.pointerDown(hand, { pointerId: 4, pointerType: "touch" });
+  fireEvent.touchStart(hand, {
+    touches: [{ identifier: 4, clientX: 10, clientY: 10 }],
+  });
   gameRoom.view = { ...gameRoom.view, connectionStatus: "connecting" };
   rerender(<GameRoomPage />);
-  Object.defineProperty(document, "elementFromPoint", {
-    configurable: true,
-    value: () => screen.getByText("build-1 → 2"),
-  });
-  fireEvent.pointerUp(hand, { pointerId: 4, pointerType: "touch" });
+  fireEvent.touchEnd(hand, { touches: [] });
   expect(submitAction).not.toHaveBeenCalled();
 });
 
@@ -1695,7 +2420,11 @@ it("plays a legal Hand card to Build on server update", () => {
     },
   };
   rerender(<GameRoomPage />);
-  expect(screen.getByRole("status").textContent).toContain("Action pending");
+  expect(
+    within(screen.getByRole("region", { name: "Game board" })).getByRole(
+      "status",
+    ).textContent,
+  ).toContain("Action pending");
   expect(screen.getByLabelText("Hand 2 of Clubs")).toBeTruthy();
   expect(
     screen.queryByRole("button", { name: /Build pile build-1/ }),
@@ -1737,14 +2466,14 @@ it("discards a non-wild Hand card and follows the next Turn", () => {
   ).toBeTruthy();
   expect(
     screen.getByRole("button", {
-      name: "Discard Hand to pile 2, over 7 of Clubs",
+      name: "Discard Hand to pile 2",
     }),
   ).toBeTruthy();
   const buildPile = screen.getByRole("button", { name: /Build pile build-1/ });
   expect(buildPile.hasAttribute("disabled")).toBe(true);
   fireEvent.click(
     screen.getByRole("button", {
-      name: "Discard Hand to pile 2, over 7 of Clubs",
+      name: "Discard Hand to pile 2",
     }),
   );
   expect(submitAction).toHaveBeenCalledExactlyOnceWith({
@@ -1901,7 +2630,16 @@ it("plays only the top of an own Discard pile and clears selection on Build comp
     target: "build-1",
   });
   expect(result.accepted).toBe(true);
-  gameRoom.view = { ...gameRoom.view, state: result.state, seq: 1 };
+  gameRoom.view = {
+    ...gameRoom.view,
+    state: result.state,
+    seq: 1,
+    lastActionResult: {
+      actionId: "completed-build",
+      seq: 1,
+      state: result.state,
+    },
+  };
   rerender(<GameRoomPage />);
   expect(screen.getByText("Recycle pile: 12 cards")).toBeTruthy();
   expect(screen.queryByText("build-1 → 12")).toBeNull();
@@ -2002,7 +2740,7 @@ it("offers new Build destinations to an Ace Stock top and a King Discard top", (
   });
 });
 
-it("switches from Hand to a playable Discard top while keeping Hand discard available", () => {
+it("requires deselecting Hand before selecting a playable Discard top", () => {
   showGameRoom();
   const state = boardState();
   state.byId["player-1"]!.discards[0] = [
@@ -2012,6 +2750,10 @@ it("switches from Hand to a playable Discard top while keeping Hand discard avai
   gameRoom.view = { ...gameRoom.view, state, submitAction };
   render(<GameRoomPage />);
 
+  fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
+  expect(
+    screen.queryByRole("button", { name: "Discard pile 1, 2 of Hearts" }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Hand 9 of Spades" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Discard pile 1, 2 of Hearts" }),

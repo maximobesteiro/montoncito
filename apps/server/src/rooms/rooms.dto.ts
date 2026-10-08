@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+export const CasualEntrySchema = z.object({
+  operationId: z.uuid().optional(),
+});
+
 export const UpdateRoomSchema = z
   .object({
     visibility: z.enum(['public', 'private']).optional(),

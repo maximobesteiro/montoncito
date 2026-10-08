@@ -5,8 +5,8 @@ import {
   type BuildPile,
   type BuildPileTarget,
 } from "@mont/core-game";
-import type { CardSize } from "./Card";
-import { Pile } from "./Pile";
+import { cardDimensions, type CardSize } from "./Card";
+import { Pile, PileFootprint } from "./Pile";
 import { formatCardName } from "@/lib/format-card-name";
 
 interface BuildPilesProps {
@@ -24,90 +24,69 @@ export function BuildPiles({
   playablePiles = new Set(),
   pendingTarget,
 }: BuildPilesProps) {
+  const dimensions = cardDimensions[size];
   return (
     <section aria-label="Build piles" className="min-w-0 flex flex-col gap-2">
       <h3 className="text-lg font-bold">Build piles</h3>
-      <div className="flex gap-4 flex-wrap items-start">
+      <div
+        className="flex gap-4 flex-wrap items-start"
+        style={{ minHeight: dimensions.height }}
+      >
         {buildPiles.map((pile) => {
-          const topCard = topBuildCard(pile);
-          const isPlayable = playablePiles.has(pile.id);
-          const nextRank = pile.nextRank;
-          const label = `${pile.id} ${nextRank ? `→ ${nextRank}` : "(Complete)"}`;
-
-          const content = (
-            <Pile
-              cards={pile.cards}
-              presentation={{ kind: "stacked", coveredFaceUp: true }}
-              coveredCardAriaLabel={(card) =>
-                `Covered Build ${formatCardName(card)}`
-              }
-              cardAriaLabel={
-                topCard ? `Build top ${formatCardName(topCard)}` : undefined
-              }
-              size={size}
-              label={label}
-              isPlayable={isPlayable}
-            />
-          );
-          return onPileClick ? (
-            <button
-              type="button"
-              key={pile.id}
-              className={`
-                brutal-border
-                ${isPlayable ? "border-btn-primary" : ""}
-                bg-surface
-                p-2
-                brutal-shadow-sm
-                ${isPlayable ? "cursor-pointer hover:scale-105" : ""}
-                transition-transform
-              `}
-              aria-label={`Build pile ${pile.id}, next ${nextRank ?? "complete"}`}
-              data-legal-target={isPlayable}
-              data-drop-build={pile.id}
-              disabled={!isPlayable}
-              onClick={isPlayable ? () => onPileClick?.(pile.id) : undefined}
-            >
-              {content}
-            </button>
-          ) : (
-            <div
-              key={pile.id}
-              className={`brutal-border bg-surface p-2 brutal-shadow-sm ${pendingTarget === pile.id ? "outline outline-4 outline-dashed" : ""}`}
-            >
-              {content}
+          const top = topBuildCard(pile);
+          return (
+            <div key={pile.id} className="flex flex-col items-center gap-1">
+              <Pile
+                cards={pile.cards}
+                size={size}
+                presentation={{ kind: "stacked", coveredFaceUp: true }}
+                label={`${pile.id} ${pile.nextRank ? `→ ${pile.nextRank}` : "(Complete)"}`}
+                coveredCardAriaLabel={(card) =>
+                  `Covered Build ${formatCardName(card)}`
+                }
+                cardAriaLabel={
+                  top ? `Build top ${formatCardName(top)}` : undefined
+                }
+                destination={
+                  onPileClick
+                    ? {
+                        label: `Build pile ${pile.id}, next ${pile.nextRank ?? "complete"}`,
+                        legal: playablePiles.has(pile.id),
+                        identity: { kind: "build", buildId: pile.id },
+                        onActivate: () => onPileClick(pile.id),
+                      }
+                    : undefined
+                }
+              />
               {pendingTarget === pile.id && (
                 <span className="text-xs font-bold">Pending</span>
               )}
             </div>
           );
         })}
-        {onPileClick ? (
-          <button
-            type="button"
-            className={`
-            brutal-border bg-surface p-2 brutal-shadow-sm transition-transform
-            ${playablePiles.has("new") ? "border-btn-primary" : ""}
-            ${playablePiles.has("new") ? "cursor-pointer hover:scale-105" : ""}
-          `}
-            disabled={!playablePiles.has("new")}
-            data-drop-build="new"
-            onClick={
-              playablePiles.has("new") ? () => onPileClick("new") : undefined
+        <div className="flex flex-col items-center gap-1">
+          <span className="text-xs font-bold">New Build pile</span>
+          <PileFootprint
+            ariaLabel="New Build pile"
+            className="brutal-border border-dashed bg-surface flex items-center justify-center"
+            style={{ width: dimensions.width, height: dimensions.height }}
+            destination={
+              onPileClick
+                ? {
+                    label: "New Build pile",
+                    legal: playablePiles.has("new"),
+                    identity: { kind: "build", buildId: "new" },
+                    onActivate: () => onPileClick("new"),
+                  }
+                : undefined
             }
           >
-            New Build pile
-          </button>
-        ) : (
-          <div
-            className={`brutal-border bg-surface p-2 brutal-shadow-sm ${pendingTarget === "new" ? "outline outline-4 outline-dashed" : ""}`}
-          >
-            New Build pile
-            {pendingTarget === "new" && (
-              <span className="block text-xs font-bold">Pending</span>
-            )}
-          </div>
-        )}
+            <span aria-hidden="true">+</span>
+          </PileFootprint>
+          {pendingTarget === "new" && (
+            <span className="text-xs font-bold">Pending</span>
+          )}
+        </div>
       </div>
     </section>
   );

@@ -4,6 +4,8 @@ Coverage for [#65](https://github.com/maximobesteiro/montoncito/issues/65), the 
 
 Same-browser nickname consistency and restart recovery cover [#92](https://github.com/maximobesteiro/montoncito/issues/92).
 
+Casual Game entry covers [#99](https://github.com/maximobesteiro/montoncito/issues/99) of [spec #98](https://github.com/maximobesteiro/montoncito/issues/98). Browser journeys verify public fallback defaults despite remembered host settings, one-click joining and live rosters, full ready-member recovery, post-entry editing, host start, pending/error feedback and retry, and profile-generation recovery across a real server restart. `apps/server/src/rooms/casual-game.spec.ts` verifies authoritative selection and admission through real REST and Socket.IO, including custom settings, exclusions, oldest membership, grace-period admission, explicit departure, concurrent last-seat requests, and a finished match played through the public WebSocket protocol.
+
 ## Run
 
 ```sh
@@ -12,6 +14,7 @@ pnpm --filter web test test/game-journey.test.ts
 pnpm --filter web test 'app/game/[roomId]/page.test.tsx'
 pnpm --filter web test 'app/game/[roomId]/page.layout.test.tsx'
 pnpm --filter server exec jest --runInBand lobby-nicknames.spec.ts
+pnpm --filter server exec jest --runInBand casual-game.spec.ts
 pnpm --filter server exec tsc --noEmit
 pnpm check-types
 pnpm build
