@@ -263,6 +263,123 @@ async function box(locator: Locator) {
   return bounds!;
 }
 
+it.each([false, true])(
+  "desktop chat opening cancels unsubmitted targeting while retaining pending=%s collapse",
+  async (pending) => {
+    const page = await browser.newPage({
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      await mountChatPage(page);
+      await page.getByRole("button", { name: "Collapse chat" }).click();
+      const pile = page.getByRole("group", {
+        name: "Alice Discard pile 1",
+        exact: true,
+      });
+      await pile.getByRole("button", { name: "View all" }).click();
+      const source = page.getByRole("button", {
+        name: "Hand 5 of Clubs",
+        exact: true,
+      });
+      await source.click();
+      if (pending)
+        await page
+          .getByRole("button", { name: "Discard Hand to pile 1", exact: true })
+          .click();
+      await page.getByRole("button", { name: "Expand chat" }).click();
+      if (pending) {
+        expect(
+          await pile.getByRole("button", { name: "View all" }).isDisabled(),
+        ).toBe(true);
+        expect(await page.evaluate(() => window.chatTest.actions.length)).toBe(
+          1,
+        );
+      } else {
+        expect(await source.getAttribute("aria-pressed")).toBe("false");
+        expect(
+          await pile
+            .getByRole("button", { name: "Close", exact: true })
+            .isEnabled(),
+        ).toBe(true);
+        expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+        // The persistent desktop panel permits a fresh board interaction.
+        await source.click();
+        expect(await source.getAttribute("aria-pressed")).toBe("true");
+      }
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it.each(["mouse", "touch"])(
+  "rejects a %s release on a Discard rectangle clipped behind the mobile dock",
+  async (method) => {
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 600 },
+      hasTouch: true,
+    });
+    const input = await page.context().newCDPSession(page);
+    try {
+      await mountChatPage(page);
+      const source = page.getByRole("button", {
+        name: "Hand 5 of Clubs",
+        exact: true,
+      });
+      await source.scrollIntoViewIfNeeded();
+      const pickup = await box(source);
+      const x = pickup.x + 30;
+      const y = pickup.y + 40;
+      if (method === "mouse") {
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x + 10, y);
+      } else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchStart",
+          touchPoints: [{ x, y, id: 1 }],
+        });
+      await page.getByLabel("Moving 5 of Clubs").waitFor();
+      const target = page.getByRole("button", {
+        name: "Discard Hand to pile 1",
+        exact: true,
+      });
+      await target.evaluate((element) => {
+        const host = document.querySelector(".app-shell")!;
+        host.scrollTop += element.getBoundingClientRect().top - 510;
+      });
+      const bounds = await box(target);
+      expect(bounds.y).toBeCloseTo(510, 0);
+      const viewport = await box(page.locator(".app-shell"));
+      expect(viewport.y + viewport.height).toBeLessThan(550);
+      const releaseX = bounds.x + 30;
+      if (method === "mouse") await page.mouse.move(releaseX, 550);
+      else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: releaseX, y: 550, id: 1 }],
+        });
+      // The hidden rectangle contains the release point, but no visible destination does.
+      await expect
+        .poll(() => target.getAttribute("data-drop-hovered"))
+        .toBe("false");
+      if (method === "mouse") await page.mouse.up();
+      else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchEnd",
+          touchPoints: [],
+        });
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+      await expect
+        .poll(() => source.getAttribute("aria-pressed"))
+        .toBe("false");
+    } finally {
+      await input.detach();
+      await page.close();
+    }
+  },
+);
+
 async function mountInspectionPage(page: Page) {
   await mountChatPage(page);
   // Exercise restoration without Chromium's optional native anchoring, as on Safari.
@@ -619,6 +736,9 @@ it.each([0, 1])(
         await piles[0]!
           .getByLabel("Discard pile 1, 7 of Hearts", { exact: true })
           .waitFor();
+      await expect
+        .poll(() => piles[0]!.getByLabel(/^Covered Discard/).count())
+        .toBe(0);
       shorter.byId["player-1"]!.discards[0] = state.byId[
         "player-1"
       ]!.discards[0]!.slice(0, 2);
@@ -1178,6 +1298,51 @@ it("scrolls natively from a playable card before the hold without selecting or c
       await pile.getByRole("button", { name: "Close", exact: true }).count(),
     ).toBe(1);
     expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+  } finally {
+    await input.detach();
+    await page.close();
+  }
+});
+
+it("suppresses a synthesized click after seven pixels of pre-hold touch movement and still permits the next tap", async () => {
+  const page = await browser.newPage({
+    viewport: { width: 390, height: 900 },
+    hasTouch: true,
+  });
+  const input = await page.context().newCDPSession(page);
+  try {
+    await mountChatPage(page);
+    const pile = page.getByRole("group", {
+      name: "Alice Discard pile 1",
+      exact: true,
+    });
+    await pile.getByRole("button", { name: "View all" }).click();
+    const source = page.getByRole("button", {
+      name: "Hand 5 of Clubs",
+      exact: true,
+    });
+    await source.scrollIntoViewIfNeeded();
+    const pickup = await box(source);
+    await input.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [{ x: pickup.x + 30, y: pickup.y + 40, id: 1 }],
+    });
+    await input.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x: pickup.x + 30, y: pickup.y + 47, id: 1 }],
+    });
+    await input.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    expect(await source.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      await pile.getByRole("button", { name: "Close", exact: true }).count(),
+    ).toBe(1);
+    expect(await page.getByLabel("Moving 5 of Clubs").count()).toBe(0);
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+    await source.tap();
+    expect(await source.getAttribute("aria-pressed")).toBe("true");
   } finally {
     await input.detach();
     await page.close();

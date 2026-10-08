@@ -77,6 +77,7 @@ Implemented in [#105](https://github.com/maximobesteiro/montoncito/issues/105), 
 - A floating card starts at its captured pickup position and follows the pointer. Legal destination histories collapse at drag activation, without moving the preview when collapse reflows or scrolls the board. The source keeps its footprint and dims while dragging.
 - Legal destinations have a thick primary-color outline. The destination under the pointer adds an outer foreground ring and a light primary-color fill. Screen-reader status names the hovered destination and explains outside-drop cancellation.
 - Drops require pointer coordinates inside the entire collapsed stack or card-sized empty slot. Exposed covered Build and Discard layers accept legal drops. Labels, counts, inspection controls, and the space outside a stack do not. Card overlap alone never accepts a drop or snaps to a nearby pile.
+- Only the visible portion of a destination accepts a drop. Board viewport clipping and occluding controls, including the mobile chat dock, exclude hidden rectangles from hover and release targeting.
 - Destination measurements refresh after collapse and scrolling. Stack height changes have no animation. dnd-kit handles gesture tracking, collision detection, edge scrolling, and the click following a drag.
 - Legal release submits one existing Action through the Game room session. Outside release, including returning to the source, clears selection and restores inspection. Escape, pointer cancellation, lost capture, focus loss, chat opening, a new Authoritative state, and lost gameplay eligibility cancel an unsubmitted gesture and remove its preview and collapse override.
 - The overlay disappears on release or cancellation. Authoritative cards remain in their confirmed locations during a Pending Action, with existing pending feedback.
@@ -98,6 +99,7 @@ Implemented in [#107](https://github.com/maximobesteiro/montoncito/issues/107), 
 
 - A short tap selects or deselects a playable card. Selection collapses legal destination histories only after the tap completes. A stationary touch hold of about 200 ms activates the floating card. Mouse and pen retain the five-pixel movement threshold; keyboard play retains selection and destination activation.
 - Playable cards allow native panning before activation. Moving before the hold completes abandons the drag attempt and scrolls without selecting a card or collapsing destinations. Sources prevent text selection without disabling native touch scrolling.
+- Pre-hold movement beyond the five-pixel tolerance suppresses the gesture's synthesized click, even when the browser has not started native scrolling. The next tap and keyboard activation remain available.
 - The floating card starts at the source geometry captured before collapse and follows the finger. Finger coordinates inside the whole collapsed stack or card-sized empty slot determine the drop. Counts, inspection controls, labels and outside space never accept drops based on preview overlap.
 - Active edge scrolling uses the board's scroll container, whose mobile bottom edge stays above the chat dock and safe-area inset. Destination measurements refresh after collapse and scrolling. Submission, outside release, touch cancellation and chat interruption remove the preview and stop drag scrolling.
 - Touch uses its own cancellation events. Normal implicit pointer-capture release does not cancel a completed touch drop. Opening mobile chat on a primary press interrupts an active drag even while drag click suppression is in effect. Switching back to mouse or keyboard remains available after cancellation or server resolution.
@@ -114,6 +116,7 @@ Implemented in [#108](https://github.com/maximobesteiro/montoncito/issues/108), 
 
 ### 4. **Chat & Presence**
 - On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.
+- Expanding desktop chat cancels unsubmitted targeting and restores inspection. A Pending Action retains its destination collapse. The open desktop panel still allows fresh board interactions.
 - Below 1024px, chat starts closed. A safe-area-aware bottom entry has reserved space outside the scrollable board. It opens a bounded modal sheet with Close and backdrop dismissal. Opening the sheet clears selection and cancels drag without submitting a gameplay Action.
 - Recovered history does not raise unread; only live arrivals while closed do. Chat retains messages and drafts offline, disables Send until connected, and stays available during a Pending Action and after game over.
 - Shows connected players and presence indicators.

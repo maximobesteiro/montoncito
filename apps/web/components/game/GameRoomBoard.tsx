@@ -32,10 +32,11 @@ import { getValidMoves } from "@/lib/game-actions";
 import { formatCardName } from "@/lib/format-card-name";
 import { GameBoard } from "./GameBoard";
 import { Card, type CardSize } from "./Card";
+import type { PileDestinationIdentity } from "./Pile";
 import { InspectionViewport, getBoardScrollHost } from "./InspectionViewport";
 
 interface GameRoomBoardProps {
-  chat?: ReactNode;
+  chat?: (onOpen: () => void) => ReactNode;
   chatOpen?: boolean;
   seq: number | null;
   gameState: GameState;
@@ -50,6 +51,8 @@ type SelectedSource =
   | { kind: "hand"; cardId: string }
   | { kind: "stock" }
   | { kind: "discard"; pileIndex: number };
+
+const touchHoldTolerance = 5;
 
 // Touch needs touchmove prevention only after the hold. Pointer events cannot
 // prevent native panning once it starts, so reserve that sensor for mouse/pen.
@@ -139,6 +142,11 @@ export function GameRoomBoard({
   const board = useRef<HTMLElement | null>(null);
   const targetingActive = useRef(false);
   const submitted = useRef(false);
+  const touchAttempt = useRef<{
+    x: number;
+    y: number;
+    aborted: boolean;
+  } | null>(null);
   const myTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
@@ -189,12 +197,6 @@ export function GameRoomBoard({
   const visibleDiscardPiles = new Set(
     canInteract ? [...selectableDiscardPiles, ...discardTargets] : [],
   );
-  const overlappingDiscardTargets = new Set(
-    [...discardTargets].filter((index) => selectableDiscardPiles.has(index)),
-  );
-  const handDiscardOnlyTargets = new Set(
-    [...discardTargets].filter((index) => !selectableDiscardPiles.has(index)),
-  );
   const canEndTurn =
     canInteract && validateMove(gameState, { kind: "END_TURN" }) === null;
 
@@ -210,7 +212,7 @@ export function GameRoomBoard({
       },
     }),
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 200, tolerance: 5 },
+      activationConstraint: { delay: 200, tolerance: touchHoldTolerance },
       onActivation({ event }) {
         pickup.current =
           (event.target as Element)
@@ -293,11 +295,25 @@ export function GameRoomBoard({
             ? { kind: "discard", pileIndex: Number(id.slice(8)) }
             : null;
     if (!source) return;
+    touchAttempt.current = null;
     targetingActive.current = true;
     submitted.current = false;
     setCancelled(false);
     setSelectedSource(source);
     setMoving(active.data.current as { card: GameCard; size: CardSize });
+  }
+
+  function trackPreHoldMovement(
+    touch: { clientX: number; clientY: number } | undefined,
+  ) {
+    const attempt = touchAttempt.current;
+    if (
+      attempt &&
+      touch &&
+      Math.hypot(touch.clientX - attempt.x, touch.clientY - attempt.y) >
+        touchHoldTolerance
+    )
+      attempt.aborted = true;
   }
 
   return (
@@ -306,7 +322,37 @@ export function GameRoomBoard({
       autoScroll={{
         canScroll: (element) => element === getBoardScrollHost(board.current),
       }}
-      collisionDetection={pointerWithin}
+      collisionDetection={(args) => {
+        const point = args.pointerCoordinates;
+        const host = getBoardScrollHost(board.current);
+        if (!point || !host) return [];
+        const viewport =
+          host === document.scrollingElement ||
+          host === document.documentElement
+            ? {
+                left: 0,
+                top: 0,
+                right: window.innerWidth,
+                bottom: window.innerHeight,
+              }
+            : host.getBoundingClientRect();
+        if (
+          point.x < viewport.left ||
+          point.x > viewport.right ||
+          point.y < viewport.top ||
+          point.y > viewport.bottom
+        )
+          return [];
+        // Geometry alone includes clipped stacks and rectangles behind chat.
+        // Ignore the presentation-only overlay and require a visible board hit.
+        const hit = document.elementFromPoint(point.x, point.y);
+        return pointerWithin(args).filter(({ id }) => {
+          const node = args.droppableContainers.find(
+            (container) => container.id === id,
+          )?.node.current;
+          return !!hit && !!node?.contains(hit);
+        });
+      }}
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
       accessibility={{
         screenReaderInstructions: {
@@ -329,18 +375,19 @@ export function GameRoomBoard({
       }}
       onDragEnd={({ over }) => {
         const source = selected;
-        const target = over?.data.current;
+        const target: PileDestinationIdentity | undefined =
+          over?.data.current?.destination;
         setMoving(null);
         if (
           source &&
-          target?.buildId !== undefined &&
+          target?.kind === "build" &&
           buildTargets.has(target.buildId)
         ) {
           submit(playToBuild(source, target.buildId));
           setSelectedSource(null);
         } else if (
           source?.kind === "hand" &&
-          target?.discardIndex !== undefined &&
+          target?.kind === "discard" &&
           discardTargets.has(target.discardIndex)
         ) {
           submit(discardFromHand(source.cardId, target.discardIndex));
@@ -359,6 +406,31 @@ export function GameRoomBoard({
         <section
           ref={board}
           aria-label="Game board"
+          onPointerDownCapture={(event) => {
+            if (event.pointerType !== "touch") touchAttempt.current = null;
+          }}
+          onTouchStartCapture={(event) => {
+            const touch = event.touches[0];
+            touchAttempt.current =
+              touch && (event.target as Element).closest("[data-drag-source]")
+                ? { x: touch.clientX, y: touch.clientY, aborted: false }
+                : null;
+          }}
+          onTouchMoveCapture={(event) => {
+            trackPreHoldMovement(event.touches[0]);
+          }}
+          onTouchEndCapture={(event) => {
+            trackPreHoldMovement(event.changedTouches[0]);
+          }}
+          onClickCapture={(event) => {
+            // Chromium may still synthesize a click below its native pan threshold,
+            // even though the touch hold sensor has abandoned the gesture.
+            if (event.detail > 0 && touchAttempt.current?.aborted) {
+              event.preventDefault();
+              event.stopPropagation();
+              touchAttempt.current = null;
+            }
+          }}
           onLostPointerCapture={
             moving
               ? (event) => {
@@ -396,7 +468,7 @@ export function GameRoomBoard({
               pendingDiscardDestinations ?? discardTargets
             }
             pendingAction={pendingAction?.action}
-            chat={chat}
+            chat={chat?.(cancelSelection)}
             gameState={gameState}
             currentPlayerId={currentPlayerId}
             onHandCardClick={
@@ -444,24 +516,23 @@ export function GameRoomBoard({
             }
             playableBuildPiles={buildTargets}
             playableDiscardPiles={visibleDiscardPiles}
-            handDiscardTargets={overlappingDiscardTargets}
-            handDiscardOnlyTargets={handDiscardOnlyTargets}
-            onHandDiscardClick={
-              selected?.kind === "hand"
-                ? (pileIndex) => {
-                    if (discardTargets.has(pileIndex))
-                      submit(discardFromHand(selected.cardId, pileIndex));
-                  }
-                : undefined
-            }
+            handDiscardTargets={discardTargets}
           />
           {!pendingAction && gameState.phase === "turn" && (
             <p role="status" className="sr-only">
-              {selected
-                ? `${selected.kind === "hand" ? `Hand ${formatCardName(gameState.byId[currentPlayerId]!.hand.cards.find((card) => card.id === selected.cardId)!)}` : selected.kind === "stock" ? `Stock top ${formatCardName(peekTopCard(gameState.byId[currentPlayerId]!.stock.faceDown)!)}` : `Discard pile ${selected.pileIndex + 1}`} selected. ${buildTargets.size} legal Build destinations and ${discardTargets.size} legal Discard destinations. Activate a destination to play. Press Escape to cancel.`
-                : cancelled
-                  ? "Selection cancelled. Inspection restored."
-                  : "Select an available card to see legal destinations."}
+              {!canInteract
+                ? !canSubmit
+                  ? "Wait for the Game room connection before playing."
+                  : !myTurn
+                    ? "Wait for your Turn to play."
+                    : chatOpen
+                      ? "Close chat to select a card."
+                      : "Action pending. Wait for the server before playing."
+                : selected
+                  ? `${selected.kind === "hand" ? `Hand ${formatCardName(gameState.byId[currentPlayerId]!.hand.cards.find((card) => card.id === selected.cardId)!)}` : selected.kind === "stock" ? `Stock top ${formatCardName(peekTopCard(gameState.byId[currentPlayerId]!.stock.faceDown)!)}` : `Discard pile ${selected.pileIndex + 1}`} selected. ${buildTargets.size} legal Build destinations and ${discardTargets.size} legal Discard destinations. Activate a destination to play. Press Escape to cancel.`
+                  : cancelled
+                    ? "Selection cancelled. Inspection restored."
+                    : "Select an available card to see legal destinations."}
             </p>
           )}
           {canEndTurn && (
@@ -478,6 +549,7 @@ export function GameRoomBoard({
       {typeof document !== "undefined" &&
         createPortal(
           <DragOverlay
+            style={{ pointerEvents: "none" }}
             dropAnimation={null}
             modifiers={[
               ({ transform, activeNodeRect }) => ({

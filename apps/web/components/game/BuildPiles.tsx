@@ -52,7 +52,7 @@ export function BuildPiles({
                     ? {
                         label: `Build pile ${pile.id}, next ${pile.nextRank ?? "complete"}`,
                         legal: playablePiles.has(pile.id),
-                        buildId: pile.id,
+                        identity: { kind: "build", buildId: pile.id },
                         onActivate: () => onPileClick(pile.id),
                       }
                     : undefined
@@ -75,7 +75,7 @@ export function BuildPiles({
                 ? {
                     label: "New Build pile",
                     legal: playablePiles.has("new"),
-                    buildId: "new",
+                    identity: { kind: "build", buildId: "new" },
                     onActivate: () => onPileClick("new"),
                   }
                 : undefined

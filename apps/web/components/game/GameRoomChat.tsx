@@ -12,6 +12,7 @@ export function GameRoomChat({
   canSend,
   onSendMessage,
   onMobileOpenChange,
+  onOpen,
 }: {
   roomId: string;
   messages: ChatMessage[];
@@ -20,6 +21,7 @@ export function GameRoomChat({
   canSend: boolean;
   onSendMessage: (text: string) => boolean;
   onMobileOpenChange: (open: boolean) => void;
+  onOpen: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
   const [narrow, setNarrow] = useState<boolean | null>(null);
@@ -73,6 +75,7 @@ export function GameRoomChat({
   }, [liveChatCount, visible]);
 
   const changeMobileOpen = (open: boolean) => {
+    if (open) onOpen();
     onMobileOpenChange(open);
     setMobileOpen(open);
     if (open) setUnread(0);
@@ -81,6 +84,7 @@ export function GameRoomChat({
   const toggle = () => {
     const next = !expanded;
     setExpanded(next);
+    if (next) onOpen();
     if (next) setUnread(0);
     try {
       window.sessionStorage.setItem(
@@ -97,8 +101,6 @@ export function GameRoomChat({
       className="game-room-chat min-w-0"
       aria-label="Room conversation"
       onPointerDown={(event) => event.stopPropagation()}
-      onPointerMove={(event) => event.stopPropagation()}
-      onPointerUp={(event) => event.stopPropagation()}
     >
       <button
         type="button"
