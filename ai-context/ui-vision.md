@@ -67,7 +67,20 @@ Implemented in [#104](https://github.com/maximobesteiro/montoncito/issues/104), 
 - While a non-wild Hand card is selected, activating a legal Discard stack, including its playable top, submits that Hand discard and ends the Turn on server acceptance. Deselect the Hand card before selecting the Discard top as a source.
 - Enter and Space activate destination buttons. Screen-reader status reports the selected source, legal destination counts, and cancellation. Keyboard play uses selection and destination activation.
 - A pile reduced to zero or one card forgets its expansion preference, including during temporary collapse. Later growth stays collapsed. Entering a different Game room resets inspection.
-- Existing pointer drag submission remains available during this slice. Cards stay in their Authoritative locations until the server accepts an Action.
+- Cards stay in their Authoritative locations until the server accepts an Action.
+
+#### Visible desktop card movement
+
+Implemented in [#105](https://github.com/maximobesteiro/montoncito/issues/105), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- Eligible Hand cards, Stock tops, and Discard tops use dnd-kit dragging with a five-pixel movement threshold. Ordinary clicks still select or deselect. Keyboard play continues to use source selection and destination activation.
+- A floating card starts at its captured pickup position and follows the pointer. Legal destination histories collapse at drag activation, without moving the preview when collapse reflows or scrolls the board. The source keeps its footprint and dims while dragging.
+- Legal destinations have a thick primary-color outline. The destination under the pointer adds an outer foreground ring and a light primary-color fill. Screen-reader status names the hovered destination and explains outside-drop cancellation.
+- Drops require pointer coordinates inside the entire collapsed stack or card-sized empty slot. Exposed covered Build and Discard layers accept legal drops. Labels, counts, inspection controls, and the space outside a stack do not. Card overlap alone never accepts a drop or snaps to a nearby pile.
+- Destination measurements refresh after collapse and scrolling. Stack height changes have no animation. dnd-kit handles gesture tracking, collision detection, edge scrolling, and the click following a drag.
+- Legal release submits one existing Action through the Game room session. Outside release, including returning to the source, clears selection and restores inspection. Escape, pointer cancellation, lost capture, focus loss, chat opening, a new Authoritative state, and lost gameplay eligibility cancel an unsubmitted gesture and remove its preview and collapse override.
+- The overlay disappears on release or cancellation. Authoritative cards remain in their confirmed locations during a Pending Action, with existing pending feedback.
+- Touch dragging remains available with the movement threshold and the existing drag-enabled card touch policy. Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation. Touch hold-versus-scroll refinement, pending-collapse retention, and inspection-position recovery belong to the subsequent slices of #103.
 
 ### 4. **Chat & Presence**
 - On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.

@@ -1,19 +1,36 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
-  type PointerEvent,
   type ReactNode,
 } from "react";
-import type { BuildPileTarget, GameState, PlayerId } from "@mont/core-game";
-import { validateMove } from "@mont/core-game";
+import {
+  DndContext,
+  DragOverlay,
+  MeasuringStrategy,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  useDndContext,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { createPortal } from "react-dom";
+import type {
+  BuildPileTarget,
+  Card as GameCard,
+  GameState,
+  PlayerId,
+} from "@mont/core-game";
+import { peekTopCard, validateMove } from "@mont/core-game";
 import type { ActionSubmission, PlayerAction } from "@mont/game-room";
 import { getValidMoves } from "@/lib/game-actions";
-import { GameBoard } from "./GameBoard";
 import { formatCardName } from "@/lib/format-card-name";
-import { peekTopCard } from "@mont/core-game";
+import { GameBoard } from "./GameBoard";
+import { Card, type CardSize } from "./Card";
 
 interface GameRoomBoardProps {
   chat?: ReactNode;
@@ -30,15 +47,6 @@ type SelectedSource =
   | { kind: "hand"; cardId: string }
   | { kind: "stock" }
   | { kind: "discard"; pileIndex: number };
-
-type Drag = {
-  pointerId: number;
-  source: SelectedSource;
-  wasSelected: boolean;
-  startX: number;
-  startY: number;
-  moved: boolean;
-};
 
 function playToBuild(
   source: SelectedSource,
@@ -62,6 +70,31 @@ function discardFromHand(cardId: string, pileIndex: number): PlayerAction {
   return { kind: "DISCARD_FROM_HAND", cardId, pileIndex };
 }
 
+function cancelSensor() {
+  // The classic dnd-kit sensor exposes cancellation through keyboard input.
+  // Escape detaches its listeners and stops auto-scroll, even before activation.
+  document.dispatchEvent(
+    new KeyboardEvent("keydown", {
+      key: "Escape",
+      code: "Escape",
+      bubbles: true,
+    }),
+  );
+}
+
+function DestinationMeasurements() {
+  const { active, measureDroppableContainers } = useDndContext();
+  useEffect(() => {
+    if (!active) return;
+    // Capture includes nested board scrolling and document scrolling. The latter
+    // can change viewport bounds without resizing a pile or its scroll ancestors.
+    const refresh = () => measureDroppableContainers([]);
+    document.addEventListener("scroll", refresh, true);
+    return () => document.removeEventListener("scroll", refresh, true);
+  }, [active, measureDroppableContainers]);
+  return null;
+}
+
 export function GameRoomBoard({
   chat,
   chatOpen = false,
@@ -75,13 +108,14 @@ export function GameRoomBoard({
   const [selectedSource, setSelectedSource] = useState<SelectedSource | null>(
     null,
   );
-  const drag = useRef<Drag | null>(null);
-  const [targetingComplete, setTargetingComplete] = useState(true);
+  const [moving, setMoving] = useState<{
+    card: GameCard;
+    size: CardSize;
+  } | null>(null);
   const [cancelled, setCancelled] = useState(false);
-  const board = useRef<HTMLElement>(null);
-  const suppressPointerClick = useRef(false);
-  const scrollFrame = useRef<number | null>(null);
-  const scrollDirection = useRef(0);
+  const pickup = useRef<DOMRect | null>(null);
+  const targetingActive = useRef(false);
+  const submitted = useRef(false);
   const myTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
@@ -91,6 +125,9 @@ export function GameRoomBoard({
     ...moves.handToBuild.map((move) => move.cardId),
     ...moves.canDiscard.map((move) => move.cardId),
   ]);
+  const selectableDiscardPiles = new Set(
+    moves.discardToBuild.map((move) => move.pileIndex),
+  );
   const selected =
     canInteract &&
     selectedSource &&
@@ -98,9 +135,7 @@ export function GameRoomBoard({
       ? selectableCards.has(selectedSource.cardId)
       : selectedSource.kind === "stock"
         ? moves.stockToBuild.length > 0
-        : moves.discardToBuild.some(
-            (move) => move.pileIndex === selectedSource.pileIndex,
-          ))
+        : selectableDiscardPiles.has(selectedSource.pileIndex))
       ? selectedSource
       : null;
   const buildTargets = new Set<BuildPileTarget>(
@@ -123,44 +158,42 @@ export function GameRoomBoard({
           .map((move) => move.pileIndex)
       : [],
   );
-  const selectableDiscardPiles = new Set(
-    moves.discardToBuild.map((move) => move.pileIndex),
-  );
   const visibleDiscardPiles = new Set(
     canInteract ? [...selectableDiscardPiles, ...discardTargets] : [],
   );
   const overlappingDiscardTargets = new Set(
-    [...discardTargets].filter((pileIndex) =>
-      selectableDiscardPiles.has(pileIndex),
-    ),
+    [...discardTargets].filter((index) => selectableDiscardPiles.has(index)),
   );
   const handDiscardOnlyTargets = new Set(
-    [...discardTargets].filter(
-      (pileIndex) => !selectableDiscardPiles.has(pileIndex),
-    ),
+    [...discardTargets].filter((index) => !selectableDiscardPiles.has(index)),
   );
   const canEndTurn =
     canInteract && validateMove(gameState, { kind: "END_TURN" }) === null;
 
-  function stopScrolling() {
-    scrollDirection.current = 0;
-    if (scrollFrame.current !== null) {
-      window.cancelAnimationFrame(scrollFrame.current);
-      scrollFrame.current = null;
-    }
-  }
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+      onActivation({ event }) {
+        // Capture before selection collapses legal histories and reflows the board.
+        pickup.current =
+          (event.target as Element)
+            .closest<HTMLElement>("[data-drag-source]")
+            ?.getBoundingClientRect() ?? null;
+      },
+    }),
+  );
 
-  function cancelDrag() {
-    drag.current = null;
-    stopScrolling();
-  }
-
-  function cancelSelection() {
+  const clearSelection = useCallback(() => {
+    if (targetingActive.current) setCancelled(true);
+    targetingActive.current = false;
+    setMoving(null);
     setSelectedSource(null);
-    setCancelled(true);
-    setTargetingComplete(true);
-    cancelDrag();
-  }
+  }, []);
+
+  const cancelSelection = useCallback(() => {
+    cancelSensor();
+    clearSelection();
+  }, [clearSelection]);
 
   function selectSource(source: SelectedSource) {
     const same =
@@ -173,316 +206,238 @@ export function GameRoomBoard({
           : true);
     if (same) cancelSelection();
     else {
+      submitted.current = false;
+      targetingActive.current = true;
       setCancelled(false);
-      setTargetingComplete(true);
       setSelectedSource(source);
     }
   }
 
   useEffect(() => {
-    if (chatOpen) {
-      setSelectedSource(null);
-      cancelDrag();
-      suppressPointerClick.current = true;
-    }
-  }, [chatOpen]);
-
-  // New Authoritative state cancels gameplay gestures, but keeps inspection open.
+    cancelSelection();
+    submitted.current = false;
+  }, [seq, gameState, cancelSelection]);
   useEffect(() => {
-    setSelectedSource(null);
-    cancelDrag();
-    suppressPointerClick.current = false;
-  }, [seq, gameState]);
-
+    if (!canInteract) cancelSelection();
+  }, [canInteract, cancelSelection]);
   useEffect(() => {
-    if (!canInteract) {
-      setSelectedSource(null);
-      cancelDrag();
-    }
-  }, [canInteract]);
-
-  useEffect(() => {
-    window.addEventListener("blur", cancelDrag);
+    window.addEventListener("blur", cancelSelection);
     return () => {
-      window.removeEventListener("blur", cancelDrag);
-      cancelDrag();
+      window.removeEventListener("blur", cancelSelection);
+      cancelSensor();
     };
-  }, []);
-
-  function scrollTowardTargets() {
-    if (!drag.current || !scrollDirection.current) {
-      scrollFrame.current = null;
-      return;
-    }
-    const page = scrollablePage();
-    (page ?? window).scrollBy(0, scrollDirection.current * 12);
-    scrollFrame.current = window.requestAnimationFrame(scrollTowardTargets);
-  }
-
-  function scrollablePage() {
-    const page =
-      board.current?.closest<HTMLElement>(".app-shell") ??
-      board.current?.closest<HTMLElement>(".game-room-page");
-    return page &&
-      page.clientHeight > 0 &&
-      page.scrollHeight > page.clientHeight
-      ? page
-      : null;
-  }
+  }, [cancelSelection]);
 
   function submit(action: PlayerAction) {
-    if (!canInteract) return;
-    if (submitAction(action)) setSelectedSource(null);
+    if (!canInteract || submitted.current) return;
+    if (submitAction(action)) {
+      submitted.current = true;
+      targetingActive.current = false;
+      setSelectedSource(null);
+    }
   }
 
-  function startDrag(event: PointerEvent<HTMLElement>) {
-    suppressPointerClick.current = false;
-    if (
-      !canInteract ||
-      event.isPrimary === false ||
-      (event.pointerType === "mouse" && event.button !== 0)
-    )
-      return;
-    const element = (event.target as Element).closest<HTMLElement>(
-      "[data-drag-source]",
-    );
-    if (!element || !event.currentTarget.contains(element)) return;
-    const sourceName = element.dataset.dragSource;
+  function startDrag({ active }: DragStartEvent) {
+    if (!canInteract) return;
+    const id = String(active.id);
     const source: SelectedSource | null =
-      sourceName === "stock"
-        ? moves.stockToBuild.length
-          ? { kind: "stock" }
-          : null
-        : sourceName?.startsWith("hand:")
-          ? selectableCards.has(sourceName.slice(5))
-            ? { kind: "hand", cardId: sourceName.slice(5) }
-            : null
-          : sourceName?.startsWith("discard:")
-            ? selectableDiscardPiles.has(Number(sourceName.slice(8)))
-              ? { kind: "discard", pileIndex: Number(sourceName.slice(8)) }
-              : null
+      id === "stock" && moves.stockToBuild.length
+        ? { kind: "stock" }
+        : id.startsWith("hand:") && selectableCards.has(id.slice(5))
+          ? { kind: "hand", cardId: id.slice(5) }
+          : id.startsWith("discard:") &&
+              selectableDiscardPiles.has(Number(id.slice(8)))
+            ? { kind: "discard", pileIndex: Number(id.slice(8)) }
             : null;
     if (!source) return;
-    stopScrolling();
-    drag.current = {
-      pointerId: event.pointerId,
-      source,
-      wasSelected:
-        source.kind === "hand"
-          ? selected?.kind === "hand" && selected.cardId === source.cardId
-          : source.kind === "discard"
-            ? selected?.kind === "discard" &&
-              selected.pileIndex === source.pileIndex
-            : selected?.kind === "stock",
-      startX: event.clientX,
-      startY: event.clientY,
-      moved: false,
-    };
-    setTargetingComplete(false);
+    targetingActive.current = true;
+    submitted.current = false;
     setCancelled(false);
     setSelectedSource(source);
-    element.setPointerCapture?.(event.pointerId);
-  }
-
-  function moveDrag(event: PointerEvent<HTMLElement>) {
-    const gesture = drag.current;
-    if (!gesture || gesture.pointerId !== event.pointerId || !canInteract)
-      return;
-    if (
-      Math.hypot(
-        event.clientX - gesture.startX,
-        event.clientY - gesture.startY,
-      ) > 5
-    ) {
-      gesture.moved = true;
-    }
-    if (!gesture.moved) return;
-    const bottom =
-      scrollablePage()?.getBoundingClientRect().bottom ?? window.innerHeight;
-    scrollDirection.current =
-      event.clientY < 48 ? -1 : event.clientY > bottom - 48 ? 1 : 0;
-    if (!scrollDirection.current) stopScrolling();
-    else if (scrollFrame.current === null) {
-      scrollFrame.current = window.requestAnimationFrame(scrollTowardTargets);
-    }
-  }
-
-  function finishDrag(event: PointerEvent<HTMLElement>) {
-    const gesture = drag.current;
-    if (!gesture || event.pointerId !== gesture.pointerId) return;
-    drag.current = null;
-    setTargetingComplete(true);
-    stopScrolling();
-    suppressPointerClick.current = true;
-    if (!canInteract || event.type === "pointercancel") return;
-
-    // Pointer capture keeps the gesture on its source. Hit-test at release to find the destination.
-    const hit = document.elementFromPoint(event.clientX, event.clientY);
-    if (!hit || !event.currentTarget.contains(hit)) return;
-    const build =
-      hit.closest<HTMLElement>("[data-drop-build]")?.dataset.dropBuild;
-    const discard = hit.closest<HTMLElement>("[data-drop-discard]")?.dataset
-      .dropDiscard;
-    const { source } = gesture;
-    if (
-      build &&
-      (source.kind === "hand"
-        ? moves.handToBuild.some(
-            (move) => move.cardId === source.cardId && move.buildId === build,
-          )
-        : source.kind === "stock"
-          ? moves.stockToBuild.some((move) => move.buildId === build)
-          : moves.discardToBuild.some(
-              (move) =>
-                move.pileIndex === source.pileIndex && move.buildId === build,
-            ))
-    ) {
-      submit(playToBuild(source, build));
-    } else if (
-      source.kind === "hand" &&
-      discard !== undefined &&
-      moves.canDiscard.some(
-        (move) =>
-          move.cardId === source.cardId && move.pileIndex === Number(discard),
-      )
-    ) {
-      submit(discardFromHand(source.cardId, Number(discard)));
-    } else if (
-      gesture.wasSelected &&
-      !gesture.moved &&
-      Math.hypot(
-        event.clientX - gesture.startX,
-        event.clientY - gesture.startY,
-      ) <= 5 &&
-      hit.closest("[data-drag-source]") ===
-        (event.target as Element).closest("[data-drag-source]")
-    ) {
-      cancelSelection();
-    }
+    setMoving(active.data.current as { card: GameCard; size: CardSize });
   }
 
   return (
-    <section
-      ref={board}
-      aria-label="Game board"
-      onPointerDown={startDrag}
-      onPointerMove={moveDrag}
-      onPointerUp={finishDrag}
-      onPointerCancel={finishDrag}
-      onLostPointerCapture={(event) => {
-        if (drag.current?.pointerId === event.pointerId) {
-          cancelDrag();
-        }
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      accessibility={{
+        screenReaderInstructions: {
+          draggable:
+            "Select a card with Enter or Space, then activate a legal destination. Escape cancels selection.",
+        },
+        announcements: {
+          onDragStart: () => undefined,
+          onDragOver: ({ over }) =>
+            over
+              ? `Over ${over.data.current?.label}. Release to play.`
+              : "Outside legal destinations. Release to cancel.",
+          onDragEnd: () => undefined,
+          onDragCancel: () => undefined,
+        },
       }}
-      onClickCapture={(event) => {
-        if ((event.target as Element).closest(".game-room-chat")) return;
-        if (suppressPointerClick.current && event.detail > 0) {
-          event.stopPropagation();
-          event.preventDefault();
-          suppressPointerClick.current = false;
-        }
+      onDragStart={startDrag}
+      onDragCancel={() => {
+        clearSelection();
       }}
-      onClick={(event) => {
+      onDragEnd={({ over }) => {
+        const source = selected;
+        const target = over?.data.current;
+        setMoving(null);
         if (
-          !(event.target as Element).closest(
-            "button, a, input, textarea, [data-pile-inspection], .game-room-chat",
-          )
-        )
-          cancelSelection();
-        else if (event.target === event.currentTarget) cancelSelection();
-      }}
-      onKeyDown={(event) => {
-        if (
-          event.key === "Escape" &&
-          !(event.target as Element).closest(".game-room-chat")
+          source &&
+          target?.buildId !== undefined &&
+          buildTargets.has(target.buildId)
         ) {
-          event.preventDefault();
-          cancelSelection();
-        }
+          submit(playToBuild(source, target.buildId));
+          setSelectedSource(null);
+        } else if (
+          source?.kind === "hand" &&
+          target?.discardIndex !== undefined &&
+          discardTargets.has(target.discardIndex)
+        ) {
+          submit(discardFromHand(source.cardId, target.discardIndex));
+          setSelectedSource(null);
+        } else cancelSelection();
       }}
     >
-      {pendingAction && (
-        <p role="status" className="font-semibold">
-          Action pending. Waiting for the server before you can play again.
-        </p>
-      )}
-      <GameBoard
-        collapsedDiscardDestinations={
-          targetingComplete ? discardTargets : new Set()
-        }
-        pendingAction={pendingAction?.action}
-        chat={chat}
-        gameState={gameState}
-        currentPlayerId={currentPlayerId}
-        onHandCardClick={
-          canInteract
-            ? (cardId) => {
-                if (selectableCards.has(cardId))
-                  selectSource({ kind: "hand", cardId });
-              }
-            : undefined
-        }
-        onStockClick={
-          canInteract && moves.stockToBuild.length > 0
-            ? () => selectSource({ kind: "stock" })
-            : undefined
-        }
-        onDiscardClick={
-          canInteract
-            ? (pileIndex) => {
-                if (selected?.kind === "hand" && discardTargets.has(pileIndex))
-                  submit(discardFromHand(selected.cardId, pileIndex));
-                else if (selectableDiscardPiles.has(pileIndex))
-                  selectSource({ kind: "discard", pileIndex });
-              }
-            : undefined
-        }
-        onBuildPileClick={
-          selected
-            ? (target) => {
-                if (buildTargets.has(target))
-                  submit(playToBuild(selected, target));
-              }
-            : undefined
-        }
-        playableHandCards={canInteract ? selectableCards : new Set()}
-        selectedHandCard={selected?.kind === "hand" ? selected.cardId : null}
-        isStockPlayable={canInteract && moves.stockToBuild.length > 0}
-        isStockSelected={selected?.kind === "stock"}
-        selectedDiscardPile={
-          selected?.kind === "discard" ? selected.pileIndex : null
-        }
-        playableBuildPiles={buildTargets}
-        playableDiscardPiles={visibleDiscardPiles}
-        handDiscardTargets={overlappingDiscardTargets}
-        handDiscardOnlyTargets={handDiscardOnlyTargets}
-        onHandDiscardClick={
-          selected?.kind === "hand"
-            ? (pileIndex) => {
-                if (discardTargets.has(pileIndex))
-                  submit(discardFromHand(selected.cardId, pileIndex));
-              }
-            : undefined
-        }
-      />
-      {!pendingAction && gameState.phase === "turn" && (
-        <p role="status" className="sr-only">
-          {selected
-            ? `${selected.kind === "hand" ? `Hand ${formatCardName(gameState.byId[currentPlayerId]!.hand.cards.find((card) => card.id === selected.cardId)!)}` : selected.kind === "stock" ? `Stock top ${formatCardName(peekTopCard(gameState.byId[currentPlayerId]!.stock.faceDown)!)}` : `Discard pile ${selected.pileIndex + 1}`} selected. ${buildTargets.size} legal Build destinations and ${discardTargets.size} legal Discard destinations. Activate a destination to play. Press Escape to cancel.`
-            : cancelled
-              ? "Selection cancelled. Inspection restored."
-              : "Select an available card to see legal destinations."}
-        </p>
-      )}
-      {canEndTurn && (
-        <button
-          type="button"
-          className="brutal-button"
-          onClick={() => submit({ kind: "END_TURN" })}
-        >
-          End Turn
-        </button>
-      )}
-    </section>
+      <DestinationMeasurements />
+      <section
+        aria-label="Game board"
+        onLostPointerCapture={moving ? cancelSelection : undefined}
+        onClick={(event) => {
+          if (
+            !(event.target as Element).closest(
+              "button, a, input, textarea, [data-pile-inspection], .game-room-chat",
+            )
+          )
+            cancelSelection();
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key === "Escape" &&
+            !(event.target as Element).closest(".game-room-chat")
+          ) {
+            event.preventDefault();
+            cancelSelection();
+          }
+        }}
+      >
+        {pendingAction && (
+          <p role="status" className="font-semibold">
+            Action pending. Waiting for the server before you can play again.
+          </p>
+        )}
+        <GameBoard
+          collapsedDiscardDestinations={discardTargets}
+          pendingAction={pendingAction?.action}
+          chat={chat}
+          gameState={gameState}
+          currentPlayerId={currentPlayerId}
+          onHandCardClick={
+            canInteract
+              ? (cardId) => {
+                  if (selectableCards.has(cardId))
+                    selectSource({ kind: "hand", cardId });
+                }
+              : undefined
+          }
+          onStockClick={
+            canInteract && moves.stockToBuild.length > 0
+              ? () => selectSource({ kind: "stock" })
+              : undefined
+          }
+          onDiscardClick={
+            canInteract
+              ? (pileIndex) => {
+                  if (
+                    selected?.kind === "hand" &&
+                    discardTargets.has(pileIndex)
+                  )
+                    submit(discardFromHand(selected.cardId, pileIndex));
+                  else if (selectableDiscardPiles.has(pileIndex))
+                    selectSource({ kind: "discard", pileIndex });
+                }
+              : undefined
+          }
+          onBuildPileClick={
+            selected
+              ? (target) => {
+                  if (buildTargets.has(target))
+                    submit(playToBuild(selected, target));
+                }
+              : undefined
+          }
+          playableHandCards={canInteract ? selectableCards : new Set()}
+          selectedHandCard={selected?.kind === "hand" ? selected.cardId : null}
+          isStockPlayable={canInteract && moves.stockToBuild.length > 0}
+          isStockSelected={selected?.kind === "stock"}
+          selectedDiscardPile={
+            selected?.kind === "discard" ? selected.pileIndex : null
+          }
+          playableBuildPiles={buildTargets}
+          playableDiscardPiles={visibleDiscardPiles}
+          handDiscardTargets={overlappingDiscardTargets}
+          handDiscardOnlyTargets={handDiscardOnlyTargets}
+          onHandDiscardClick={
+            selected?.kind === "hand"
+              ? (pileIndex) => {
+                  if (discardTargets.has(pileIndex))
+                    submit(discardFromHand(selected.cardId, pileIndex));
+                }
+              : undefined
+          }
+        />
+        {!pendingAction && gameState.phase === "turn" && (
+          <p role="status" className="sr-only">
+            {selected
+              ? `${selected.kind === "hand" ? `Hand ${formatCardName(gameState.byId[currentPlayerId]!.hand.cards.find((card) => card.id === selected.cardId)!)}` : selected.kind === "stock" ? `Stock top ${formatCardName(peekTopCard(gameState.byId[currentPlayerId]!.stock.faceDown)!)}` : `Discard pile ${selected.pileIndex + 1}`} selected. ${buildTargets.size} legal Build destinations and ${discardTargets.size} legal Discard destinations. Activate a destination to play. Press Escape to cancel.`
+              : cancelled
+                ? "Selection cancelled. Inspection restored."
+                : "Select an available card to see legal destinations."}
+          </p>
+        )}
+        {canEndTurn && (
+          <button
+            type="button"
+            className="brutal-button"
+            onClick={() => submit({ kind: "END_TURN" })}
+          >
+            End Turn
+          </button>
+        )}
+      </section>
+      {typeof document !== "undefined" &&
+        createPortal(
+          <DragOverlay
+            dropAnimation={null}
+            modifiers={[
+              ({ transform, activeNodeRect }) => ({
+                ...transform,
+                x:
+                  transform.x +
+                  (pickup.current && activeNodeRect
+                    ? pickup.current.left - activeNodeRect.left
+                    : 0),
+                y:
+                  transform.y +
+                  (pickup.current && activeNodeRect
+                    ? pickup.current.top - activeNodeRect.top
+                    : 0),
+              }),
+            ]}
+          >
+            {moving && (
+              <Card
+                card={moving.card}
+                size={moving.size}
+                ariaLabel={`Moving ${formatCardName(moving.card)}`}
+              />
+            )}
+          </DragOverlay>,
+          document.body,
+        )}
+    </DndContext>
   );
 }

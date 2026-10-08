@@ -6,7 +6,7 @@ import {
   type BuildPileTarget,
 } from "@mont/core-game";
 import { cardDimensions, type CardSize } from "./Card";
-import { Pile } from "./Pile";
+import { Pile, PileFootprint } from "./Pile";
 import { formatCardName } from "@/lib/format-card-name";
 
 interface BuildPilesProps {
@@ -25,7 +25,6 @@ export function BuildPiles({
   pendingTarget,
 }: BuildPilesProps) {
   const dimensions = cardDimensions[size];
-  const NewSlot = onPileClick ? "button" : "div";
   return (
     <section aria-label="Build piles" className="min-w-0 flex flex-col gap-2">
       <h3 className="text-lg font-bold">Build piles</h3>
@@ -67,22 +66,23 @@ export function BuildPiles({
         })}
         <div className="flex flex-col items-center gap-1">
           <span className="text-xs font-bold">New Build pile</span>
-          <NewSlot
-            aria-label="New Build pile"
-            className={`brutal-border border-dashed bg-surface flex items-center justify-center ${playablePiles.has("new") ? "outline outline-4 outline-btn-primary outline-offset-2" : ""}`}
+          <PileFootprint
+            ariaLabel="New Build pile"
+            className="brutal-border border-dashed bg-surface flex items-center justify-center"
             style={{ width: dimensions.width, height: dimensions.height }}
-            {...(onPileClick
-              ? {
-                  type: "button" as const,
-                  disabled: !playablePiles.has("new"),
-                  "data-drop-build": "new",
-                  "data-legal-target": playablePiles.has("new"),
-                  onClick: () => onPileClick("new"),
-                }
-              : {})}
+            destination={
+              onPileClick
+                ? {
+                    label: "New Build pile",
+                    legal: playablePiles.has("new"),
+                    buildId: "new",
+                    onActivate: () => onPileClick("new"),
+                  }
+                : undefined
+            }
           >
             <span aria-hidden="true">+</span>
-          </NewSlot>
+          </PileFootprint>
           {pendingTarget === "new" && (
             <span className="text-xs font-bold">Pending</span>
           )}

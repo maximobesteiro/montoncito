@@ -1,6 +1,8 @@
 "use client";
 
 import type { Card as GameCard } from "@mont/core-game";
+import { useDraggable } from "@dnd-kit/core";
+import { useId } from "react";
 
 export type CardSize = "xs" | "sm" | "md";
 
@@ -69,6 +71,12 @@ export function Card({
   dragSource,
   isPending = false,
 }: CardProps) {
+  const fallbackId = useId();
+  const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
+    id: dragSource ?? fallbackId,
+    disabled: !dragSource,
+    data: { card, size },
+  });
   const displayValue = () => {
     if (card.kind === "joker") {
       return "J";
@@ -103,11 +111,11 @@ export function Card({
     bg-card
     text-foreground
     font-bold
-    ${onClick ? "cursor-pointer hover:scale-105" : ""}
+    ${onClick ? "cursor-pointer" : ""}
     ${dragSource ? "touch-none" : ""}
     ${isPlayable ? "ring-4 ring-btn-primary ring-offset-2" : ""}
     ${isPending ? "outline outline-4 outline-dashed outline-foreground" : ""}
-    transition-all
+    ${isDragging ? "opacity-40" : ""}
   `;
 
   const interactiveProps = onClick
@@ -122,6 +130,11 @@ export function Card({
   if (!faceUp) {
     return (
       <Element
+        ref={setNodeRef}
+        {...listeners}
+        aria-describedby={
+          dragSource ? attributes["aria-describedby"] : undefined
+        }
         className={`${baseStyles} bg-card-back text-text-on-dark ${className}`}
         {...interactiveProps}
         aria-label={ariaLabel}
@@ -135,6 +148,9 @@ export function Card({
 
   return (
     <Element
+      ref={setNodeRef}
+      {...listeners}
+      aria-describedby={dragSource ? attributes["aria-describedby"] : undefined}
       className={`${baseStyles} ${className}`}
       {...interactiveProps}
       aria-label={ariaLabel}

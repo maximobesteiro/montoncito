@@ -4,6 +4,7 @@ import type { Card as GameCard } from "@mont/core-game";
 import { peekTopCard, removeTopCard } from "@mont/core-game";
 import { useId, useState, type CSSProperties, type ReactNode } from "react";
 import { Card, cardDimensions, type CardSize } from "./Card";
+import { useDroppable } from "@dnd-kit/core";
 
 const pileSizeConfig: Record<
   CardSize,
@@ -133,23 +134,45 @@ export function Pile({
   );
 }
 
-function PileFootprint({
+export function PileFootprint({
   destination,
   children,
   style,
   id,
+  className = "",
+  ariaLabel,
 }: {
   destination?: PileDestination;
   children: ReactNode;
   style?: CSSProperties;
   id?: string;
+  className?: string;
+  ariaLabel?: string;
 }) {
+  const fallbackId = useId();
+  const { setNodeRef, isOver } = useDroppable({
+    id:
+      destination?.buildId !== undefined
+        ? `build:${destination.buildId}`
+        : destination?.discardIndex !== undefined
+          ? `discard:${destination.discardIndex}`
+          : fallbackId,
+    disabled: !destination?.legal,
+    data: {
+      buildId: destination?.buildId,
+      discardIndex: destination?.discardIndex,
+      label: destination?.label,
+    },
+  });
   const Element = destination ? "button" : "div";
   return (
     <Element
       id={id}
+      ref={setNodeRef}
+      {...(!destination ? { "aria-label": ariaLabel } : {})}
+      data-drop-hovered={destination?.legal && isOver}
       style={style}
-      className={`relative block shrink-0 p-0 ${destination?.legal ? "outline outline-4 outline-btn-primary outline-offset-2 cursor-pointer" : ""}`}
+      className={`relative block shrink-0 p-0 ${destination?.legal ? "outline outline-4 outline-btn-primary outline-offset-2 cursor-pointer" : ""} ${destination?.legal && isOver ? "ring-4 ring-foreground ring-offset-4 bg-btn-primary" : ""} ${className}`}
       {...(destination
         ? {
             type: "button" as const,
@@ -163,6 +186,12 @@ function PileFootprint({
         : {})}
     >
       {children}
+      {destination?.legal && isOver && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 bg-btn-primary/15"
+        />
+      )}
     </Element>
   );
 }
