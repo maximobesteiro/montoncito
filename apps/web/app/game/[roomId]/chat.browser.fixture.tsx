@@ -34,7 +34,17 @@ window.__roomView = {
   })),
   liveChatCount: 0,
   submitAction: (action: PlayerAction) => {
+    if (window.__roomView.pendingAction) return false;
     actions.push(action);
+    window.chatTest.update({
+      pendingAction: {
+        version: 1,
+        actionId: `browser-action-${actions.length}`,
+        baseSeq: window.__roomView.seq,
+        action,
+      },
+      lastActionResult: null,
+    });
     return true;
   },
   sendChat: () => true,

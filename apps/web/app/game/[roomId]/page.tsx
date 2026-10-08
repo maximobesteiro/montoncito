@@ -88,6 +88,15 @@ export default function GameRoomPage() {
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[2fr_1fr]">
         {currentPlayerId && (
           <div className="lg:col-span-2">
+            {lastActionResult && !("code" in lastActionResult) && (
+              <p
+                key={lastActionResult.actionId}
+                role="status"
+                className="sr-only"
+              >
+                Action accepted.
+              </p>
+            )}
             {lastActionResult && "code" in lastActionResult && (
               <section className="brutal-border mb-4 bg-card p-4">
                 <p
@@ -114,6 +123,7 @@ export default function GameRoomPage() {
               gameState={state}
               currentPlayerId={currentPlayerId}
               pendingAction={pendingAction}
+              actionResultId={lastActionResult?.actionId}
               canSubmit={connectionStatus === "connected"}
               submitAction={submitAction}
               chatOpen={mobileChatOpen}

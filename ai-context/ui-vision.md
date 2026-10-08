@@ -80,7 +80,17 @@ Implemented in [#105](https://github.com/maximobesteiro/montoncito/issues/105), 
 - Destination measurements refresh after collapse and scrolling. Stack height changes have no animation. dnd-kit handles gesture tracking, collision detection, edge scrolling, and the click following a drag.
 - Legal release submits one existing Action through the Game room session. Outside release, including returning to the source, clears selection and restores inspection. Escape, pointer cancellation, lost capture, focus loss, chat opening, a new Authoritative state, and lost gameplay eligibility cancel an unsubmitted gesture and remove its preview and collapse override.
 - The overlay disappears on release or cancellation. Authoritative cards remain in their confirmed locations during a Pending Action, with existing pending feedback.
-- Touch dragging remains available with the movement threshold and the existing drag-enabled card touch policy. Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation. Touch hold-versus-scroll refinement, pending-collapse retention, and inspection-position recovery belong to the subsequent slices of #103.
+- Touch dragging remains available with the movement threshold and the existing drag-enabled card touch policy. Active drags scroll the actual board container to reach off-screen destinations and stop scrolling on release or cancellation. Touch hold-versus-scroll refinement and inspection-position recovery belong to subsequent slices of #103.
+
+#### Pending Action collapse
+
+Implemented in [#106](https://github.com/maximobesteiro/montoncito/issues/106), part of [spec #103](https://github.com/maximobesteiro/montoncito/issues/103).
+
+- Successful submission freezes the source's legal Discard destination set separately from selection and gameplay eligibility. Selection and the floating card clear, but those destinations remain collapsed with expansion controls disabled until the Pending Action resolves. Unrelated inspection remains usable.
+- Chat opening, focus loss, changed snapshots, disconnection, and reconnect cancel unsubmitted targeting. They do not clear a submitted Action's collapse override. Cards remain in Authoritative locations with source and destination pending feedback, and gameplay cannot submit a second Action. Connected chat remains usable.
+- Acceptance or rejection restores remembered expansion. Rejection can resolve at the same Sequence number, so restoration follows the Action result or pending-state resolution rather than snapshot advancement. This restoration does not recover an old inspection reading position.
+- A pile reaching zero or one card still forgets its expansion preference during the override. Later growth stays collapsed after resolution. Entering another Game room resets retained presentation and inspection.
+- Acceptance has one screen-reader status announcement per Action result. Rejection uses the existing readable alert and Dismiss control. Replayed results and chat updates do not remount the same result announcement.
 
 ### 4. **Chat & Presence**
 - On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.
