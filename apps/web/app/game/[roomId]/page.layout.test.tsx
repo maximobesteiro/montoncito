@@ -307,7 +307,10 @@ it("moves a floating Hand card with the mouse and submits once on a covered Buil
         target: "build-1",
       },
     ]);
-    expect(await source.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      await page.getByLabel("Hand 3 of Clubs", { exact: true }).textContent(),
+    ).toContain("Pending");
+    expect(await source.count()).toBe(0);
   } finally {
     await page.close();
   }
@@ -450,7 +453,12 @@ it("keeps the pickup fixed through collapse-induced scrolling and measures the c
       { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 0 },
     ]);
     expect(await overlay.count()).toBe(0);
-    expect(await source.count()).toBe(1);
+    expect(
+      await page.getByLabel("Hand 5 of Clubs", { exact: true }).textContent(),
+    ).toContain("Pending");
+    expect(
+      await pile.getByRole("button", { name: "View all" }).isDisabled(),
+    ).toBe(true);
   } finally {
     await page.close();
   }
@@ -498,7 +506,13 @@ it.each([
     expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
       action,
     ]);
-    expect(await source.count()).toBe(1);
+    const group = page.getByRole("group", {
+      name: name.startsWith("Stock") ? "Your Stock" : "Alice Discard pile 1",
+      exact: true,
+    });
+    expect(await group.getByLabel(name, { exact: true }).count()).toBe(1);
+    expect(await group.getByText("Pending", { exact: true }).count()).toBe(1);
+    expect(await source.count()).toBe(0);
   } finally {
     await page.close();
   }
@@ -706,6 +720,22 @@ it.each(["Enter", "Space"])(
       expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
         { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 0 },
       ]);
+      expect(await open.isDisabled()).toBe(true);
+      await page.evaluate(() =>
+        window.chatTest.update({
+          pendingAction: null,
+          lastActionResult: {
+            version: 1,
+            actionId: "browser-action-1",
+            code: "ILLEGAL_ACTION",
+            seq: window.__roomView.seq,
+            state: window.__roomView.state,
+          },
+        }),
+      );
+      expect(await page.getByRole("alert").textContent()).toContain(
+        "Action rejected",
+      );
       expect(
         await pile
           .getByRole("button", { name: "Close", exact: true })
@@ -981,6 +1011,18 @@ it.each([320, 390, 768, 1024, 1440])(
               expect(
                 await page.evaluate(() => window.chatTest.actions.length),
               ).toBeGreaterThan(0);
+              await page.evaluate(() =>
+                window.chatTest.update({
+                  pendingAction: null,
+                  lastActionResult: {
+                    version: 1,
+                    actionId: `browser-action-${window.chatTest.actions.length}`,
+                    code: "ILLEGAL_ACTION",
+                    seq: window.__roomView.seq,
+                    state: window.__roomView.state,
+                  },
+                }),
+              );
               await page.getByRole("button", { name: "Hand Joker" }).click();
             } else {
               expect(

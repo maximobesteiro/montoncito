@@ -39,6 +39,7 @@ interface GameRoomBoardProps {
   gameState: GameState;
   currentPlayerId: PlayerId;
   pendingAction: ActionSubmission | null;
+  actionResultId?: string;
   canSubmit: boolean;
   submitAction: (action: PlayerAction) => boolean;
 }
@@ -102,6 +103,7 @@ export function GameRoomBoard({
   gameState,
   currentPlayerId,
   pendingAction,
+  actionResultId,
   canSubmit,
   submitAction,
 }: GameRoomBoardProps) {
@@ -113,13 +115,22 @@ export function GameRoomBoard({
     size: CardSize;
   } | null>(null);
   const [cancelled, setCancelled] = useState(false);
+  // Submission freezes presentation independently of selection and eligibility.
+  // An empty set still represents a submitted Action with no Discard targets.
+  const [pendingDiscardDestinations, setPendingDiscardDestinations] =
+    useState<Set<number> | null>(null);
   const pickup = useRef<DOMRect | null>(null);
   const targetingActive = useRef(false);
   const submitted = useRef(false);
   const myTurn =
     gameState.phase === "turn" &&
     gameState.turn.activePlayer === currentPlayerId;
-  const canInteract = myTurn && canSubmit && !pendingAction && !chatOpen;
+  const canInteract =
+    myTurn &&
+    canSubmit &&
+    !pendingAction &&
+    !pendingDiscardDestinations &&
+    !chatOpen;
   const moves = getValidMoves(gameState, currentPlayerId);
   const selectableCards = new Set([
     ...moves.handToBuild.map((move) => move.cardId),
@@ -215,8 +226,13 @@ export function GameRoomBoard({
 
   useEffect(() => {
     cancelSelection();
-    submitted.current = false;
   }, [seq, gameState, cancelSelection]);
+  useEffect(() => {
+    if (!pendingAction) {
+      setPendingDiscardDestinations(null);
+      submitted.current = false;
+    }
+  }, [pendingAction, actionResultId]);
   useEffect(() => {
     if (!canInteract) cancelSelection();
   }, [canInteract, cancelSelection]);
@@ -232,6 +248,7 @@ export function GameRoomBoard({
     if (!canInteract || submitted.current) return;
     if (submitAction(action)) {
       submitted.current = true;
+      setPendingDiscardDestinations(new Set(discardTargets));
       targetingActive.current = false;
       setSelectedSource(null);
     }
@@ -330,7 +347,9 @@ export function GameRoomBoard({
           </p>
         )}
         <GameBoard
-          collapsedDiscardDestinations={discardTargets}
+          collapsedDiscardDestinations={
+            pendingDiscardDestinations ?? discardTargets
+          }
           pendingAction={pendingAction?.action}
           chat={chat}
           gameState={gameState}
