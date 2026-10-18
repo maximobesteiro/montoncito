@@ -2,18 +2,6 @@
 
 Montoncito is an online, turn-based multiplayer card game inspired by _Spite & Malice_ (also known as _Cat and Mouse_). Play in your browser as a guest, join friends in a Lobby, and race to be the first to empty your Stock pile.
 
-## Project status
-
-The current implementation includes:
-
-- Guest identities with editable nicknames remembered in the browser.
-- Public and private Lobbies, invitations, configurable player limits (2–4) and Discard pile counts (1–4), readiness, and host-controlled match start.
-- **Casual Game** entry that finds a public Lobby or creates one when none is available. Players still ready up and wait for the host to start.
-- Live multiplayer gameplay, reconnect synchronization, and room chat.
-- A responsive board with click/tap, keyboard, and drag-and-drop controls.
-
-**Persistence is limited:** profiles, Lobbies, matches, and chat history live in one server process. Restarting it loses those resources. A retained browser nickname can be restored for the same Guest identity, but lost matches cannot be recovered. Accounts and durable game storage are not implemented.
-
 ## How to play
 
 1. Each player starts with a 20-card **Stock pile**, a five-card **Hand**, and their configured **Discard piles**.
