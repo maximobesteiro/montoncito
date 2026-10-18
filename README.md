@@ -1,135 +1,147 @@
-# Turborepo starter
+# Montoncito
 
-This Turborepo starter is maintained by the Turborepo core team.
+Montoncito is an online, turn-based multiplayer card game inspired by _Spite & Malice_ (also known as _Cat and Mouse_). Play in your browser as a guest, join friends in a Lobby, and race to be the first to empty your Stock pile.
 
-## Using this example
+## Project status
 
-Run the following command:
+The current implementation includes:
+
+- Guest identities with editable nicknames remembered in the browser.
+- Public and private Lobbies, invitations, configurable player limits (2–4) and Discard pile counts (1–4), readiness, and host-controlled match start.
+- **Casual Game** entry that finds a public Lobby or creates one when none is available. Players still ready up and wait for the host to start.
+- Live multiplayer gameplay, reconnect synchronization, and room chat.
+- A responsive board with click/tap, keyboard, and drag-and-drop controls.
+
+**Persistence is limited:** profiles, Lobbies, matches, and chat history live in one server process. Restarting it loses those resources. A retained browser nickname can be restored for the same Guest identity, but lost matches cannot be recovered. Accounts and durable game storage are not implemented.
+
+## How to play
+
+1. Each player starts with a 20-card **Stock pile**, a five-card **Hand**, and their configured **Discard piles**.
+2. On your Turn, play cards from your Hand, Stock top, or Discard tops onto shared **Build piles** in ascending order from 1 to 12.
+3. Aces start Build piles; Kings and Jokers are wild and can start or extend them. Completing 12 clears that Build pile into the Recycle pile.
+4. Emptying your Hand refills it and lets you keep playing. Discard one non-wild Hand card to end your Turn.
+5. Empty your Stock pile first to win.
+
+See the [complete rules](ai-context/game-rules.md) for setup, refills, exceptional Turn endings, and the no-moves winner calculation.
+
+## Run locally
+
+### Prerequisites
+
+- **Node.js 22.12 or newer**, using a supported LTS release. The root manifest's older `>=18` minimum is not sufficient for the current frontend toolchain.
+- **pnpm 9.0.0**, as pinned in the root `package.json`.
+
+No database or Redis service is required for the current implementation.
+
+### Install and configure
+
+From the repository root:
 
 ```sh
-npx create-turbo@latest
+pnpm install --frozen-lockfile
+pnpm --filter @mont/game-room... build
 ```
 
-## What's inside?
+The second command builds `core-game` and `game-room`, whose compiled exports are consumed by the apps. Run it before the first development session or tests.
 
-This Turborepo includes the following packages/apps:
+Create or update the ignored `apps/server/.env` file with:
 
-### Apps and Packages
-
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@mont/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@mont/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@mont/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build
-yarn dlx turbo build
-pnpm exec turbo build
+```dotenv
+PORT=3001
+WS_SECRET=replace-with-a-long-random-local-secret
 ```
 
-You can build a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+Choose your own secret; the server requires at least eight characters. Do not commit secrets. Setting `PORT=3001` is important: the backend otherwise defaults to port 3000, which the frontend already uses.
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo build --filter=docs
+The frontend defaults to `http://localhost:3001`. To use a different backend address, set `NEXT_PUBLIC_SERVER_URL` in `apps/web/.env.local` and restart the frontend. This is a public browser-facing URL, not a secret.
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo build --filter=docs
-yarn exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+### Start the game
+
+```sh
+pnpm dev
 ```
 
-### Develop
+This starts the apps and shared-library watchers:
 
-To develop all apps and packages, run the following command:
+| Service          | Local URL               |
+| ---------------- | ----------------------- |
+| Player interface | <http://localhost:3000> |
+| Backend          | <http://localhost:3001> |
+| Starter docs app | <http://localhost:3010> |
 
-```
-cd my-turborepo
+To try multiplayer on one machine, open the player interface in **two separate browser profiles**, create a Lobby in one, and open its invitation in the other. Ordinary tabs in the same browser profile share Guest identity and do not represent separate players. Mark players ready, then start as the host.
 
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev
+Use localhost for this setup: browser identity initialization relies on secure-context APIs, including Web Locks and `crypto.randomUUID()`. Accessing the game through a plain HTTP LAN address is not equivalent to localhost and may prevent entry.
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev
-yarn exec turbo dev
-pnpm exec turbo dev
-```
+## Development commands
 
-You can develop a specific package by using a [filter](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters):
+Run these from the repository root:
 
-```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo dev --filter=web
+| Command            | Purpose                                                                      |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `pnpm dev`         | Start development apps and shared-library watchers.                          |
+| `pnpm build`       | Build apps and packages through Turborepo.                                   |
+| `pnpm test`        | Run workspace test scripts. Browser-based tests require Playwright Chromium. |
+| `pnpm test:core`   | Run the deterministic game engine tests.                                     |
+| `pnpm lint`        | Run configured workspace lint scripts; the server script also applies fixes. |
+| `pnpm check-types` | Run type checks in workspaces that provide a `check-types` script.           |
+| `pnpm format`      | Format TypeScript, TSX, and Markdown files in place.                         |
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo dev --filter=web
-yarn exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-```
+Install the browser used by the frontend journey and layout tests with:
 
-### Remote Caching
-
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
-
-Turborepo can use a technique known as [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
-
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-```
-cd my-turborepo
-
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo login
-
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo login
-yarn exec turbo login
-pnpm exec turbo login
+```sh
+pnpm --filter web exec playwright install chromium
 ```
 
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
+See [Lobby-to-winner verification](docs/game-journey-verification.md) for focused test commands and coverage details.
 
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
+## Repository structure
 
+```text
+apps/
+  web/                Next.js and React player interface
+  server/             NestJS REST API and Socket.IO backend
+  docs/               Turborepo starter page, not the project documentation
+packages/
+  core-game/          Pure game rules and deterministic state transitions
+  game-room/          Shared protocol schemas and pure session transitions
+  ui/                 Shared React components
+  eslint-config/      Shared ESLint configuration
+  typescript-config/  Shared TypeScript configuration
+ai-context/           Detailed rules, architecture, and UI references
+docs/adr/             Architectural decision records
 ```
-# With [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation) installed (recommended)
-turbo link
 
-# Without [global `turbo`](https://turborepo.com/docs/getting-started/installation#global-installation), use your package manager
-npx turbo link
-yarn exec turbo link
-pnpm exec turbo link
+The monorepo uses TypeScript, pnpm workspaces, and Turborepo. The player interface uses Tailwind CSS and a bold, functional neo-brutalist visual style.
+
+## Architecture at a glance
+
+```text
+Browser (apps/web)
+  ├─ REST: guest profiles, Lobby entry, settings, readiness, and start
+  └─ Socket.IO: live Lobby updates, gameplay, synchronization, and chat
+        ↓
+Authoritative backend (apps/server)
+  ├─ core-game: validates Actions and computes immutable game state
+  └─ game-room: shared protocol contracts and session transitions
 ```
 
-## Useful Links
+- The **server owns live game state** and accepts or rejects every gameplay Action.
+- The core engine is **deterministic, immutable, and free of I/O**; randomness is explicit and retained in game state.
+- Clients wait for server confirmation rather than optimistically moving cards. Reconnecting clients synchronize before retrying a Pending Action.
+- Current state is in-memory and single-process; durable recovery and multi-process deployment are future work.
 
-Learn more about the power of Turborepo:
+See the [system architecture](ai-context/system-architecture.md) and [architectural decisions](docs/adr/) for the detailed contracts and boundaries.
 
-- [Tasks](https://turborepo.com/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.com/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.com/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.com/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.com/docs/reference/configuration)
-- [CLI Usage](https://turborepo.com/docs/reference/command-line-reference)
+## Documentation and contributing
+
+- [Game rules](ai-context/game-rules.md) — full gameplay reference.
+- [Glossary](GLOSSARY.md) — canonical game and technical vocabulary.
+- [System architecture](ai-context/system-architecture.md) — application boundaries, transport, and state.
+- [UI vision](ai-context/ui-vision.md) — visual direction and interaction intent; includes future ideas, not just shipped features.
+- [Context map](ai-context/README.md) — guide to the detailed references.
+- [Architectural decisions](docs/adr/) — the reasoning behind major design choices.
+- [GitHub Issues](https://github.com/maximobesteiro/montoncito/issues) — bugs, feature requests, and specs.
+- [Agent guide](AGENTS.md) — repository instructions for coding agents.
+
+Before contributing, read the relevant rules and architecture references, preserve the glossary's vocabulary, and verify your change with the applicable tests. Keep gameplay authority on the server and side effects out of `core-game`. If a change contradicts an architectural decision, update its ADR and the corresponding context document in the same change.
