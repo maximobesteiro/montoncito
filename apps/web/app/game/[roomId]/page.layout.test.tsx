@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
@@ -56,7 +57,9 @@ beforeAll(async () => {
     build: {
       write: false,
       lib: {
-        entry: new URL("./chat.browser.fixture.tsx", import.meta.url).pathname,
+        entry: fileURLToPath(
+          new URL("./chat.browser.fixture.tsx", import.meta.url),
+        ),
         formats: ["iife"],
         name: "ChatFixture",
       },
