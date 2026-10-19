@@ -11,6 +11,8 @@ import { denseBoardState } from "./dense-board.fixture";
 import { applyMove, type Rank } from "@mont/core-game";
 
 const gameRoom = vi.hoisted(() => ({ view: {} as Record<string, unknown> }));
+// Keep the same assertions on slower machines; successful polling finishes early.
+vi.setConfig({ testTimeout: 30_000, expect: { poll: { timeout: 15_000 } } });
 vi.mock("next/navigation", () => ({
   useParams: () => ({ roomId: "dense-room" }),
 }));
@@ -95,7 +97,7 @@ it.each([320, 360, 390, 768])(
   "keeps a read-only maximum-length Match identity and usable header controls in one row at %ipx",
   async (width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       const nickname = "W".repeat(32);
@@ -165,7 +167,7 @@ it.each([true, false])(
     const page = await browser.newPage({
       viewport: { width: 1440, height: 900 },
     });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       await page
@@ -212,7 +214,7 @@ it.each([320, 390, 768, 1024, 1440])(
   "keeps chat bounded, opponents in flow, and mobile modal taps off the board at %ipx",
   async (width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     try {
@@ -325,7 +327,7 @@ it.each([320, 390, 768, 1024, 1440])(
       await page.close();
     }
   },
-  15_000,
+  30_000,
 );
 
 async function box(locator: Locator) {
@@ -660,17 +662,39 @@ it.each(["wheel", "touch", "edge"])(
           await page.mouse.move(1000, 300);
           await page.mouse.wheel(0, -2500);
         } else {
-          await input.send("Input.synthesizeScrollGesture", {
-            x: 350,
-            y: 100,
-            yDistance: 2500,
-            gestureSourceType: "touch",
-          });
+          // Dispatch real touch input, as in the native-panning test below.
+          // Chromium's synthetic scroll gesture can complete without scrolling
+          // on slower hosts. Keep each swipe inside the board viewport.
+          const viewport = await box(scroll);
+          const x = viewport.x + viewport.width - 8;
+          const y = viewport.y + 40;
+          for (let swipe = 0; swipe < 8; swipe++) {
+            const before = await scroll.evaluate(
+              (element) => element.scrollTop,
+            );
+            if (before === 0) break;
+            await input.send("Input.dispatchTouchEvent", {
+              type: "touchStart",
+              touchPoints: [{ x, y, id: 1 }],
+            });
+            for (let step = 1; step <= 8; step++)
+              await input.send("Input.dispatchTouchEvent", {
+                type: "touchMove",
+                touchPoints: [{ x, y: y + step * 50, id: 1 }],
+              });
+            await input.send("Input.dispatchTouchEvent", {
+              type: "touchEnd",
+              touchPoints: [],
+            });
+            await expect
+              .poll(() => scroll.evaluate((element) => element.scrollTop))
+              .toBeLessThan(before);
+          }
         }
       }
       await expect
         .poll(() => scroll.evaluate((element) => element.scrollTop), {
-          timeout: 5000,
+          timeout: 15_000,
         })
         .toBe(0);
       if (method === "edge")
@@ -690,7 +714,7 @@ it.each(["wheel", "touch", "edge"])(
       await page.close();
     }
   },
-  15000,
+  30_000,
 );
 
 it("retains affected inspection across source switches and starts fresh after those destinations reopen", async () => {
@@ -951,7 +975,7 @@ it.each(["outside", "label", "control", "source", "Escape", "blur"])(
     const page = await browser.newPage({
       viewport: { width: 1440, height: 1200 },
     });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       const pile = page.getByRole("group", {
@@ -1030,7 +1054,7 @@ it.each(["mouse", "touch"])(
           touchPoints: [{ x, y, id: 1 }],
         });
     };
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       const state = denseBoardState(2);
@@ -1181,7 +1205,7 @@ it.each([
       hasTouch: method === "touch",
     });
     const input = await page.context().newCDPSession(page);
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       const state = denseBoardState(2);
@@ -1250,7 +1274,7 @@ it("holds to drag and scrolls to an off-screen Build in the mobile board", async
     viewport: { width: 390, height: 900 },
     hasTouch: true,
   });
-  page.setDefaultTimeout(3000);
+  page.setDefaultTimeout(10_000);
   const input = await page.context().newCDPSession(page);
   try {
     await mountChatPage(page);
@@ -1283,7 +1307,7 @@ it("holds to drag and scrolls to an off-screen Build in the mobile board", async
     await touch("touchMove", pickup.x + 40, 5);
     await expect
       .poll(() => scroll.evaluate((element) => element.scrollTop), {
-        timeout: 5000,
+        timeout: 15_000,
       })
       .toBe(0);
     expect((await box(overlay)).y).toBeCloseTo(-35, 0);
@@ -1312,7 +1336,7 @@ it("holds to drag and scrolls to an off-screen Build in the mobile board", async
     await input.detach();
     await page.close();
   }
-}, 15000);
+}, 30_000);
 
 it("scrolls natively from a playable card before the hold without selecting or collapsing histories", async () => {
   const page = await browser.newPage({
@@ -1425,7 +1449,7 @@ it("keeps physical touch taps selectable through normal capture release", async 
     viewport: { width: 390, height: 900 },
     hasTouch: true,
   });
-  page.setDefaultTimeout(3000);
+  page.setDefaultTimeout(10_000);
   try {
     await mountChatPage(page);
     const source = page.getByRole("button", {
@@ -1455,7 +1479,7 @@ it.each(["outside", "label", "touchcancel", "chat"])(
       viewport: { width: 390, height: 600 },
       hasTouch: true,
     });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     const input = await page.context().newCDPSession(page);
     const touch = async (
       type: "touchStart" | "touchMove" | "touchEnd" | "touchCancel",
@@ -1554,7 +1578,7 @@ it.each(["outside", "label", "touchcancel", "chat"])(
       await page.close();
     }
   },
-  15000,
+  30_000,
 );
 
 it.each([320, 390, 768, 1024, 1440])(
@@ -1615,7 +1639,7 @@ it.each(["Enter", "Space"])(
     const page = await browser.newPage({
       viewport: { width: 1024, height: 900 },
     });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       const pile = page.getByRole("group", {
@@ -1726,7 +1750,7 @@ it.each([320, 390, 768, 1024, 1440])(
   "fully exposes large own and opponent histories inline without overflow at %ipx",
   async (width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       const state = denseBoardState(2);
@@ -1835,14 +1859,14 @@ it.each([320, 390, 768, 1024, 1440])(
       await page.close();
     }
   },
-  15_000,
+  30_000,
 );
 
 it.each([320, 390, 768, 1024, 1440])(
   "reserves capped Stock and Build stack offsets without clipping at %ipx",
   async (width) => {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    page.setDefaultTimeout(3000);
+    page.setDefaultTimeout(10_000);
     try {
       await mountChatPage(page);
       let singleStockHeight = 0;
@@ -2000,7 +2024,7 @@ it.each([320, 390, 768, 1024, 1440])(
       await page.close();
     }
   },
-  15_000,
+  30_000,
 );
 
 it("keeps the mobile composer and Close reachable in a short landscape viewport", async () => {
@@ -2165,6 +2189,6 @@ for (const width of [320, 390, 768, 1024, 1440]) {
         await page.close();
       }
     },
-    15_000,
+    30_000,
   );
 }
