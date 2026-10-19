@@ -282,3 +282,7 @@ body {
   color: var(--color-foreground);
   background: var(--color-background);
 }
+/* Native modal top layer contains focus and makes the application inert. */
+.app-modal::backdrop {
+  background: var(--color-overlay, rgb(0 0 0 / 50%));
+}
