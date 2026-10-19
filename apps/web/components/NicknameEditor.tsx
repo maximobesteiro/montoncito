@@ -7,13 +7,16 @@ import {
   type GuestProfile,
 } from "@/lib/guest-profile";
 
-type NicknameEditorProps = {
+export type NicknameEditorProps = {
   nickname: string;
   suggestions: readonly string[];
   onSave: (draft: string, base?: GuestProfile) => Promise<void>;
   baseProfile?: GuestProfile;
   onCancel: () => void;
   loadSuggestions?: () => Promise<readonly string[]>;
+  onSavingChange?: (saving: boolean) => void;
+  handleEscape?: boolean;
+  autoFocus?: boolean;
 };
 
 export function NicknameEditor({
@@ -23,6 +26,9 @@ export function NicknameEditor({
   onCancel,
   loadSuggestions,
   baseProfile,
+  onSavingChange,
+  handleEscape = true,
+  autoFocus = true,
 }: NicknameEditorProps) {
   const id = useId();
   const [draft, setDraft] = useState(nickname);
@@ -49,6 +55,7 @@ export function NicknameEditor({
     }
     submitting.current = true;
     setSaving(true);
+    onSavingChange?.(true);
     setError(null);
     try {
       await onSave(draft, base.current);
@@ -63,7 +70,10 @@ export function NicknameEditor({
       );
     } finally {
       submitting.current = false;
-      if (mounted.current) setSaving(false);
+      if (mounted.current) {
+        setSaving(false);
+        onSavingChange?.(false);
+      }
     }
   };
 
@@ -76,7 +86,7 @@ export function NicknameEditor({
         void save();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape" && !submitting.current) {
+        if (handleEscape && event.key === "Escape" && !submitting.current) {
           event.preventDefault();
           onCancel();
         }
@@ -87,7 +97,7 @@ export function NicknameEditor({
       </label>
       <input
         id={id}
-        autoFocus
+        autoFocus={autoFocus}
         value={draft}
         disabled={saving || shuffling}
         onChange={(event) => {

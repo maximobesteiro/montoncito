@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MenuButton } from "../components/MenuButton";
 import { Modal } from "../components/Modal";
@@ -8,12 +8,9 @@ import { HowToPlayModal } from "../components/HowToPlayModal";
 import { apiFetch, getOrCreateClientId } from "@/lib/api";
 import {
   initializeGuestProfile,
-  saveGuestNickname,
-  subscribeGuestProfile,
   withGuestProfileRecovery,
-  type GuestProfile,
 } from "@/lib/guest-profile";
-import { NicknameEditor } from "@/components/NicknameEditor";
+import { GuestHeaderIdentity } from "@/components/header/GuestHeaderIdentity";
 import {
   enterCasualGame,
   completeCasualEntry,
@@ -26,31 +23,12 @@ export default function Home() {
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
   const [gameId, setGameId] = useState("");
-  const [profile, setProfile] = useState<GuestProfile | null>(null);
-  const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [entering, setEntering] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [finding, setFinding] = useState(false);
   const casualPending = useRef(false);
   const [casualUnavailable, setCasualUnavailable] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const unsubscribe = subscribeGuestProfile(setProfile);
-    void initializeGuestProfile()
-      .then((value) => {
-        if (!cancelled) setProfile(value);
-      })
-      .catch(() => {
-        if (!cancelled)
-          setError("Couldn't load your nickname. Try entering a game again.");
-      });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
 
   const handleJoinGame = async () => {
     const slug = gameId.trim();
@@ -123,48 +101,9 @@ export default function Home() {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center bg-background p-4 sm:p-8 font-sans">
+      <GuestHeaderIdentity />
       <main className="w-full max-w-md flex flex-col gap-4">
-        <section
-          className="brutal-border bg-card p-4 flex flex-col gap-3"
-          aria-label="Guest nickname"
-        >
-          {profile ? (
-            <>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="min-w-0 break-words">
-                  Playing as{" "}
-                  <span className="font-bold">{profile.displayName}</span>
-                </p>
-                {!editing && (
-                  <button
-                    type="button"
-                    className="brutal-button px-3 py-2"
-                    aria-label="Edit nickname"
-                    onClick={() => setEditing(true)}
-                  >
-                    Edit
-                  </button>
-                )}
-              </div>
-              {editing && (
-                <NicknameEditor
-                  nickname={profile.displayName}
-                  baseProfile={profile}
-                  suggestions={profile.suggestions}
-                  onCancel={() => setEditing(false)}
-                  onSave={async (draft, base) => {
-                    const saved = await saveGuestNickname(draft, base);
-                    setProfile(saved);
-                    setEditing(false);
-                  }}
-                />
-              )}
-            </>
-          ) : (
-            <p role="status">Loading nickname...</p>
-          )}
-          {error && <p role="alert">{error}</p>}
-        </section>
+        {error && <p role="alert">{error}</p>}
         <MenuButton
           title={finding ? "Finding a game..." : "Casual Game"}
           disabled={entering || casualUnavailable}

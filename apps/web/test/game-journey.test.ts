@@ -693,12 +693,12 @@ it("Casual Game admits a conflicting nickname immediately, persists its canonica
     await host.page.getByRole("button", { name: /Casual Game/ }).click();
     await host.page.waitForURL("**/room/**");
     const home = await guest.openPage();
-    await home.getByText("Playing as Alex", { exact: true }).waitFor();
+    await home.getByText("Alex", { exact: true }).waitFor();
     const response = guest.page.waitForResponse(`${server.url}/rooms/casual`);
     await guest.page.getByRole("button", { name: /Casual Game/ }).click();
     const canonical = (await (await response).json()).profile;
     await guest.page.waitForURL(host.page.url());
-    await home.getByText("Playing as Alex_2", { exact: true }).waitFor();
+    await home.getByText("Alex_2", { exact: true }).waitFor();
     release();
     await guest.page.getByText("Alex_2 (you)", { exact: true }).waitFor();
     expect(
@@ -707,7 +707,7 @@ it("Casual Game admits a conflicting nickname immediately, persists its canonica
         .count(),
     ).toBe(0);
     await host.page.getByText("Alex_2", { exact: true }).waitFor();
-    await home.getByText("Playing as Alex_2", { exact: true }).waitFor();
+    await home.getByText("Alex_2", { exact: true }).waitFor();
     expect(
       await guest.page.evaluate(
         (id) => JSON.parse(localStorage.getItem(`montoncito:profile:${id}`)!),
@@ -728,12 +728,10 @@ it("Casual Game admits a conflicting nickname immediately, persists its canonica
     await input.fill("  After entry  ");
     await input.press("Enter");
     await host.page.getByText("After entry", { exact: true }).waitFor();
-    await home.getByText("Playing as After entry", { exact: true }).waitFor();
+    await home.getByText("After entry", { exact: true }).waitFor();
     await home.close();
     const reopened = await guest.openPage();
-    await reopened
-      .getByText("Playing as After entry", { exact: true })
-      .waitFor();
+    await reopened.getByText("After entry", { exact: true }).waitFor();
     expect(host.errors).toEqual([]);
     expect(guest.errors).toEqual([]);
   } finally {
@@ -776,9 +774,7 @@ it.each(["revision", "generation"] as const)(
       });
       expect(save.ok()).toBe(true);
       const home = await guest.openPage();
-      await home
-        .getByText("Playing as Newer confirmation", { exact: true })
-        .waitFor();
+      await home.getByText("Newer confirmation", { exact: true }).waitFor();
       const latest = await guest.page.evaluate(
         (id) => JSON.parse(localStorage.getItem(`montoncito:profile:${id}`)!),
         guest.id,
@@ -801,9 +797,7 @@ it.each(["revision", "generation"] as const)(
         ),
       ).toEqual(latest);
       expect(
-        await home
-          .getByText("Playing as Newer confirmation", { exact: true })
-          .isVisible(),
+        await home.getByText("Newer confirmation", { exact: true }).isVisible(),
       ).toBe(true);
     } finally {
       release();
@@ -967,9 +961,7 @@ it.each(["deleted", "departed", "restarted"])(
       expect((await (await fetch(`${server.url}/rooms`)).json()).total).toBe(
         failure === "departed" ? 1 : 0,
       );
-      await guest.page
-        .getByText("Playing as Remembered guest", { exact: true })
-        .waitFor();
+      await guest.page.getByText("Remembered guest", { exact: true }).waitFor();
       let freshId!: string;
       await guest.page.route(`${server.url}/rooms/casual`, async (route) => {
         freshId = route.request().postDataJSON().operationId;
@@ -1193,9 +1185,9 @@ it("rejects stale nickname writes and preserves a newer profile during restorati
 it("synchronizes confirmed names across tabs without saving another tab's draft", async () => {
   const guest = await client(1440);
   try {
-    await guest.page.getByText(/^Playing as /).waitFor();
+    await guest.page.getByRole("button", { name: /^Edit nickname:/ }).waitFor();
     const other = await guest.openPage();
-    await other.getByText(/^Playing as /).waitFor();
+    await other.getByRole("button", { name: /^Edit nickname:/ }).waitFor();
     await other.getByRole("button", { name: "Edit nickname" }).click();
     const draft = other.getByRole("textbox", { name: "Nickname", exact: true });
     await draft.fill("Unsaved in second tab");
@@ -1204,9 +1196,7 @@ it("synchronizes confirmed names across tabs without saving another tab's draft"
       .getByRole("textbox", { name: "Nickname", exact: true })
       .fill("Latest across tabs");
     await guest.page.getByRole("button", { name: "Save", exact: true }).click();
-    await other
-      .getByText("Playing as Latest across tabs", { exact: true })
-      .waitFor();
+    await other.getByText("Latest across tabs", { exact: true }).waitFor();
     expect(await draft.inputValue()).toBe("Unsaved in second tab");
     await draft.press("Enter");
     await other
@@ -1224,9 +1214,7 @@ it("synchronizes confirmed names across tabs without saving another tab's draft"
     await guest.page.close();
     await other.close();
     const reopened = await guest.openPage();
-    await reopened
-      .getByText("Playing as Latest across tabs", { exact: true })
-      .waitFor();
+    await reopened.getByText("Latest across tabs", { exact: true }).waitFor();
   } finally {
     await guest.close();
   }
@@ -1235,14 +1223,14 @@ it("synchronizes confirmed names across tabs without saving another tab's draft"
 it("restores the latest preference after server restart before simultaneous tab entry", async () => {
   const guest = await client(1440);
   try {
-    await guest.page.getByText(/^Playing as /).waitFor();
+    await guest.page.getByRole("button", { name: /^Edit nickname:/ }).waitFor();
     await guest.page.getByRole("button", { name: "Edit nickname" }).click();
     await guest.page
       .getByRole("textbox", { name: "Nickname", exact: true })
       .fill("Remember after restart");
     await guest.page.getByRole("button", { name: "Save", exact: true }).click();
     await guest.page
-      .getByText("Playing as Remember after restart", { exact: true })
+      .getByText("Remember after restart", { exact: true })
       .waitFor();
     const before = await (
       await guest.page.request.get(`${server.url}/profile`, {
@@ -1256,9 +1244,7 @@ it("restores the latest preference after server restart before simultaneous tab 
       guest.openPage(),
     ]);
     for (const page of [first, second])
-      await page
-        .getByText("Playing as Remember after restart", { exact: true })
-        .waitFor();
+      await page.getByText("Remember after restart", { exact: true }).waitFor();
     const after = await (
       await first.request.get(`${server.url}/profile`, {
         headers: { "x-client-id": guest.id },
@@ -1302,7 +1288,7 @@ it("keeps the remembered nickname recoverable when restoration fails after resta
   const guest = await client(1440, "Retained on failure");
   try {
     await guest.page
-      .getByText("Playing as Retained on failure", { exact: true })
+      .getByText("Retained on failure", { exact: true })
       .waitFor();
     await guest.page.close();
     await server.restart();
@@ -1310,11 +1296,15 @@ it("keeps the remembered nickname recoverable when restoration fails after resta
       .context()
       .route(`${server.url}/profile`, (route) => route.abort("failed"));
     const reopened = await guest.openPage();
-    await reopened
-      .getByRole("alert")
-      .getByText(/Couldn't load your nickname/)
-      .waitFor();
+    await reopened.getByRole("button", { name: "Retry nickname" }).waitFor();
     await guest.page.context().unroute(`${server.url}/profile`);
+    await reopened.getByRole("button", { name: "Retry nickname" }).click();
+    await reopened
+      .getByRole("button", {
+        name: "Edit nickname: Retained on failure",
+        exact: true,
+      })
+      .waitFor();
     await reopened.getByRole("button", { name: /Create a Game/ }).click();
     await reopened
       .getByText("Retained on failure (you)", { exact: true })
@@ -1334,23 +1324,19 @@ it("keeps the remembered nickname recoverable when restoration fails after resta
 it("keeps a new-generation confirmation when a reopened tab cannot update old stored data", async () => {
   const guest = await client(1440, "Old stored name");
   try {
-    await guest.page
-      .getByText("Playing as Old stored name", { exact: true })
-      .waitFor();
+    await guest.page.getByText("Old stored name", { exact: true }).waitFor();
     await guest.page.close();
     await server.restart();
     await guest.page.context().addInitScript(blockNicknameStorageWrites);
     const reopened = await guest.openPage();
-    await reopened
-      .getByText("Playing as Old stored name", { exact: true })
-      .waitFor();
+    await reopened.getByText("Old stored name", { exact: true }).waitFor();
     await reopened.getByRole("button", { name: "Edit nickname" }).click();
     await reopened
       .getByRole("textbox", { name: "Nickname", exact: true })
       .fill("Newest without storage");
     await reopened.getByRole("button", { name: "Save", exact: true }).click();
     await reopened
-      .getByText("Playing as Newest without storage", { exact: true })
+      .getByText("Newest without storage", { exact: true })
       .waitFor();
     expect(
       await (
@@ -1368,7 +1354,7 @@ it("queues a save behind a delayed initialization without restoring its older re
   const guest = await client(1440);
   let release = () => {};
   try {
-    await guest.page.getByText(/^Playing as /).waitFor();
+    await guest.page.getByRole("button", { name: /^Edit nickname:/ }).waitFor();
     const delay = await delayProfileResponse(guest.page.context(), "POST");
     release = delay.release;
     const opening = guest.openPage();
@@ -1383,19 +1369,13 @@ it("queues a save behind a delayed initialization without restoring its older re
       .waitFor();
     release();
     const other = await opening;
-    await other
-      .getByText("Playing as After delayed read", { exact: true })
-      .waitFor();
-    await guest.page
-      .getByText("Playing as After delayed read", { exact: true })
-      .waitFor();
+    await other.getByText("After delayed read", { exact: true }).waitFor();
+    await guest.page.getByText("After delayed read", { exact: true }).waitFor();
     await guest.page.context().unroute(`${server.url}/profile`);
     await other.close();
     await guest.page.close();
     const reopened = await guest.openPage();
-    await reopened
-      .getByText("Playing as After delayed read", { exact: true })
-      .waitFor();
+    await reopened.getByText("After delayed read", { exact: true }).waitFor();
   } finally {
     release();
     await guest.close();
@@ -1406,9 +1386,9 @@ it("ignores an older save response after a stale tab reviews and confirms a newe
   const guest = await client(1440);
   let release = () => {};
   try {
-    await guest.page.getByText(/^Playing as /).waitFor();
+    await guest.page.getByRole("button", { name: /^Edit nickname:/ }).waitFor();
     const other = await guest.openPage();
-    await other.getByText(/^Playing as /).waitFor();
+    await other.getByRole("button", { name: /^Edit nickname:/ }).waitFor();
     for (const page of [guest.page, other])
       await page.getByRole("button", { name: "Edit nickname" }).click();
     const delay = await delayProfileResponse(guest.page, "PATCH");
@@ -1425,25 +1405,19 @@ it("ignores an older save response after a stale tab reviews and confirms a newe
       .getByRole("alert")
       .getByText(/nickname changed/)
       .waitFor();
-    await other
-      .getByText("Playing as Delayed accepted name", { exact: true })
-      .waitFor();
+    await other.getByText("Delayed accepted name", { exact: true }).waitFor();
     expect(await input.inputValue()).toBe("Newer reviewed name");
     await input.press("Enter");
-    await other
-      .getByText("Playing as Newer reviewed name", { exact: true })
-      .waitFor();
+    await other.getByText("Newer reviewed name", { exact: true }).waitFor();
     release();
     await guest.page.getByRole("button", { name: "Edit nickname" }).waitFor();
     await guest.page
-      .getByText("Playing as Newer reviewed name", { exact: true })
+      .getByText("Newer reviewed name", { exact: true })
       .waitFor();
     await guest.page.close();
     await other.close();
     const reopened = await guest.openPage();
-    await reopened
-      .getByText("Playing as Newer reviewed name", { exact: true })
-      .waitFor();
+    await reopened.getByText("Newer reviewed name", { exact: true }).waitFor();
   } finally {
     release();
     await guest.close();
@@ -1454,9 +1428,7 @@ it("ignores a delayed save from a previous server generation", async () => {
   const guest = await client(1440, "Before restart");
   let release = () => {};
   try {
-    await guest.page
-      .getByText("Playing as Before restart", { exact: true })
-      .waitFor();
+    await guest.page.getByText("Before restart", { exact: true }).waitFor();
     const delay = await delayProfileResponse(guest.page, "PATCH");
     release = delay.release;
     await guest.page.getByRole("button", { name: "Edit nickname" }).click();
@@ -1467,27 +1439,23 @@ it("ignores a delayed save from a previous server generation", async () => {
     await delay.intercepted;
     await server.restart();
     const other = await guest.openPage();
-    await other
-      .getByText("Playing as Before restart", { exact: true })
-      .waitFor();
+    await other.getByText("Before restart", { exact: true }).waitFor();
     await other.getByRole("button", { name: "Edit nickname" }).click();
     await other
       .getByRole("textbox", { name: "Nickname", exact: true })
       .fill("Confirmed on new server");
     await other.getByRole("button", { name: "Save", exact: true }).click();
-    await other
-      .getByText("Playing as Confirmed on new server", { exact: true })
-      .waitFor();
+    await other.getByText("Confirmed on new server", { exact: true }).waitFor();
     release();
     await guest.page.getByRole("button", { name: "Edit nickname" }).waitFor();
     await guest.page
-      .getByText("Playing as Confirmed on new server", { exact: true })
+      .getByText("Confirmed on new server", { exact: true })
       .waitFor();
     await guest.page.close();
     await other.close();
     const reopened = await guest.openPage();
     await reopened
-      .getByText("Playing as Confirmed on new server", { exact: true })
+      .getByText("Confirmed on new server", { exact: true })
       .waitFor();
   } finally {
     release();
@@ -1500,7 +1468,7 @@ it("restores an invite nickname when initialization delivery spans a server rest
   let release = () => {};
   try {
     await guest.page
-      .getByText("Playing as Restore before invite", { exact: true })
+      .getByText("Restore before invite", { exact: true })
       .waitFor();
     await guest.page.close();
     const delay = await delayProfileResponse(guest.page.context(), "POST");
@@ -1531,7 +1499,7 @@ it("restores the confirmed nickname when Lobby Shuffle runs after a server resta
   let release = () => {};
   try {
     await guest.page
-      .getByText("Playing as Remember through Shuffle", { exact: true })
+      .getByText("Remember through Shuffle", { exact: true })
       .waitFor();
     await guest.page.getByRole("button", { name: /Create a Game/ }).click();
     await guest.page
@@ -1562,9 +1530,7 @@ it("restores the confirmed nickname when Lobby Shuffle runs after a server resta
       .getByRole("button", { name: "Shuffle", exact: true })
       .waitFor();
     const home = await guest.openPage();
-    await home
-      .getByText("Playing as Remember through Shuffle", { exact: true })
-      .waitFor();
+    await home.getByText("Remember through Shuffle", { exact: true }).waitFor();
     expect(
       await (
         await home.request.get(`${server.url}/profile`, {
@@ -1584,32 +1550,30 @@ it.each([1440, 390])(
     const guest = await client(width);
     const page = guest.page;
     try {
-      const playing = page.getByText(/^Playing as /);
+      const playing = page
+        .getByRole("banner")
+        .getByRole("button", { name: /^Edit nickname:/ });
       await playing.waitFor();
-      const original = await playing.textContent();
-      expect(original).toMatch(/^Playing as [A-Za-z]{3,8}$/);
+      const original = await playing.getAttribute("title");
+      expect(original).toMatch(/^[A-Za-z]{3,8}$/);
       const storedNickname = () =>
         page.evaluate(
           (id) => localStorage.getItem(`montoncito:nickname:${id}`),
           guest.id,
         );
-      expect(await storedNickname()).toBe(original!.replace("Playing as ", ""));
+      expect(await storedNickname()).toBe(original);
       await page.getByRole("button", { name: "Edit nickname" }).click();
       const input = page.getByRole("textbox", {
         name: "Nickname",
         exact: true,
       });
-      expect(await input.inputValue()).toBe(
-        original!.replace("Playing as ", ""),
-      );
+      expect(await input.inputValue()).toBe(original);
       await page.getByRole("button", { name: "Shuffle" }).click();
-      expect(await input.inputValue()).not.toBe(
-        original!.replace("Playing as ", ""),
-      );
-      expect(await playing.textContent()).toBe(original);
+      expect(await input.inputValue()).not.toBe(original);
+      expect(await playing.getAttribute("title")).toBe(original);
       await input.press("Escape");
-      expect(await playing.textContent()).toBe(original);
-      expect(await storedNickname()).toBe(original!.replace("Playing as ", ""));
+      expect(await playing.getAttribute("title")).toBe(original);
+      expect(await storedNickname()).toBe(original);
       await page.getByRole("button", { name: "Edit nickname" }).click();
       await input.fill("   ");
       await input.press("Enter");
@@ -1622,7 +1586,7 @@ it.each([1440, 390])(
         .waitFor();
       await input.fill("  小 Moki!  ");
       await input.press("Enter");
-      await page.getByText("Playing as 小 Moki!", { exact: true }).waitFor();
+      await page.getByText("小 Moki!", { exact: true }).waitFor();
       expect(await storedNickname()).toBe("小 Moki!");
       expect(
         await (
@@ -1640,7 +1604,7 @@ it.each([1440, 390])(
       await next.addStyleTag({ content: css });
       await next.addScriptTag({ content: script });
       await next
-        .getByText("Playing as 小 Moki!", { exact: true })
+        .getByText("小 Moki!", { exact: true })
         .waitFor()
         .catch(async (error) => {
           throw new Error(
@@ -1661,7 +1625,7 @@ it("retains the draft and confirmed nickname on failure and prevents duplicate s
   const guest = await client(390, "Moki");
   const page = guest.page;
   try {
-    await page.getByText("Playing as Moki", { exact: true }).waitFor();
+    await page.getByText("Moki", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Edit nickname" }).click();
     const input = page.getByRole("textbox", { name: "Nickname", exact: true });
     await input.fill("Zibble");
@@ -1702,9 +1666,9 @@ it("retains the draft and confirmed nickname on failure and prevents duplicate s
         guest.id,
       ),
     ).toBe("Moki");
-    expect(
-      await page.getByText("Playing as Moki", { exact: true }).isVisible(),
-    ).toBe(true);
+    expect(await page.getByText("Moki", { exact: true }).isVisible()).toBe(
+      true,
+    );
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.unroute(`${server.url}/profile`);
     await page.getByRole("button", { name: "Edit nickname" }).click();
@@ -1712,7 +1676,7 @@ it("retains the draft and confirmed nickname on failure and prevents duplicate s
     await page.getByRole("button", { name: "Shuffle" }).click();
     const suggestion = await input.inputValue();
     await page.getByRole("button", { name: "Save", exact: true }).click();
-    await page.getByText(`Playing as ${suggestion}`, { exact: true }).waitFor();
+    await page.getByText(suggestion, { exact: true }).waitFor();
   } finally {
     await guest.close();
   }
@@ -1989,19 +1953,19 @@ it.each([false, true])(
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await page.getByText("Zibble (you)", { exact: true }).waitFor();
       await page.getByTitle("Exit room").click();
-      await page.getByText("Playing as Zibble", { exact: true }).waitFor();
+      await page.getByText("Zibble", { exact: true }).waitFor();
       if (failStorageWrites) await page.evaluate(blockNicknameStorageWrites);
       await page.getByRole("button", { name: "Edit nickname" }).click();
       await page
         .getByRole("textbox", { name: "Nickname", exact: true })
         .fill("Fizzi");
       await page.getByRole("button", { name: "Save", exact: true }).click();
-      await page.getByText("Playing as Fizzi", { exact: true }).waitFor();
+      await page.getByText("Fizzi", { exact: true }).waitFor();
       release();
       await page.waitForTimeout(100);
-      expect(
-        await page.getByText("Playing as Fizzi", { exact: true }).isVisible(),
-      ).toBe(true);
+      expect(await page.getByText("Fizzi", { exact: true }).isVisible()).toBe(
+        true,
+      );
       expect(
         await page
           .getByRole("textbox", { name: "Nickname", exact: true })
@@ -2100,7 +2064,7 @@ it.each(["before", "after"] as const)(
       await home.goto("http://localhost:4173/");
       await home.addStyleTag({ content: css });
       await home.addScriptTag({ content: script });
-      await home.getByText("Playing as Zibble", { exact: true }).waitFor();
+      await home.getByText("Zibble", { exact: true }).waitFor();
     } finally {
       release();
       await host.close();
@@ -2301,7 +2265,7 @@ it("shows pending join initialization and a recoverable error inside the join di
   const guest = await client(390, "Moki");
   const page = guest.page;
   try {
-    await page.getByText("Playing as Moki", { exact: true }).waitFor();
+    await page.getByText("Moki", { exact: true }).waitFor();
     let release!: () => void;
     const delivery = new Promise<void>((resolve) => {
       release = resolve;
