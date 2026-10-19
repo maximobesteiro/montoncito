@@ -680,6 +680,7 @@ export default function WaitingRoomPage() {
   const leaveRoom = async () => {
     if (!clientId || !room) return;
     endNicknameEditing();
+    const session = nicknameSession.current;
     try {
       await apiFetch(`/rooms/${room.id}/leave`, {
         method: "POST",
@@ -688,6 +689,7 @@ export default function WaitingRoomPage() {
       if (casualEntry) forgetCasualEntry(casualEntry.id);
       router.push("/");
     } catch (e) {
+      if (nicknameSession.current === session) setNicknameUnavailable(false);
       showToast(
         e instanceof Error ? e.message : "Failed to leave room",
         "error",

@@ -378,6 +378,34 @@ it("retries failed profile initialization from the header", async () => {
   ).toHaveLength(2);
 });
 
+it("allows a fresh editor after departure fails without reopening the discarded session", async () => {
+  mountLobby();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Edit nickname: Alice" }),
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Nickname" }), {
+    target: { value: "Discarded" },
+  });
+  const api = harness.apiFetch.getMockImplementation()!;
+  harness.apiFetch.mockImplementation((url, options) =>
+    url.endsWith("/leave")
+      ? Promise.reject(new Error("Offline"))
+      : api(url, options),
+  );
+  fireEvent.click(screen.getByTitle("Exit room"));
+  await waitFor(() =>
+    expect(harness.showToast).toHaveBeenCalledWith("Offline", "error"),
+  );
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Edit nickname: Alice" }),
+  );
+  expect(
+    (screen.getByRole("textbox", { name: "Nickname" }) as HTMLInputElement)
+      .value,
+  ).toBe("Alice");
+});
+
 it("preserves the admission-conflict step without a competing header or row editor", async () => {
   const api = harness.apiFetch.getMockImplementation()!;
   harness.apiFetch.mockImplementation((url, options) => {
