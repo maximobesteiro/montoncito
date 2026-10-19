@@ -50,6 +50,7 @@ vi.mock("@/components/ToastProvider", () => ({
 }));
 
 import WaitingRoomPage from "./page";
+import Home from "../../page";
 import { ApiHttpError } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
 import { ThemeProvider } from "@/components/ThemeProvider";
@@ -74,6 +75,7 @@ let lobby: {
 };
 
 beforeEach(() => {
+  vi.stubGlobal("PointerEvent", MouseEvent);
   vi.stubGlobal(
     "navigator",
     Object.assign(Object.create(navigator), {
@@ -245,10 +247,12 @@ it("shows authoritative roster renames even before a delayed profile save respon
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 it("keeps a cross-tab draft, shows the latest confirmation and requires explicit stale-save retry", async () => {
@@ -447,9 +451,7 @@ it("preserves the admission-conflict step without a competing header or row edit
     return api(url, options);
   });
   mountLobby();
-  await screen.findByRole("region", {
-    name: "Choose a nickname before joining",
-  });
+  await screen.findByRole("dialog", { name: "Edit nickname" });
   expect(screen.queryByRole("button", { name: /^Edit nickname/ })).toBeNull();
   expect(within(screen.getByRole("banner")).getByText("Alice")).toBeTruthy();
   expect(screen.getByText(/You have not joined/)).toBeTruthy();
@@ -457,7 +459,389 @@ it("preserves the admission-conflict step without a competing header or row edit
     (screen.getByRole("textbox", { name: "Nickname" }) as HTMLInputElement)
       .value,
   ).toBe("Luna");
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+});
+
+// Control only the external admission API; profile persistence, shell, page and
+// modal remain real so these cases exercise the same boundary as an invite.
+function admissionConflict(suggestions = ["Luna"]) {
+  lobby.ownerId = "player-2";
+  lobby.players = [
+    { id: "player-2", displayName: "Alice", isOwner: true, isReady: false },
+  ];
+  const api = harness.apiFetch.getMockImplementation()!;
+  harness.apiFetch.mockImplementation((url, options) => {
+    if (url.endsWith("/join"))
+      return Promise.reject(
+        new ApiHttpError(409, "Conflict", "NICKNAME_CONFLICT"),
+      );
+    if (url.endsWith("/nickname-suggestions"))
+      return Promise.resolve({ suggestions });
+    return api(url, options);
+  });
+}
+
+function admissionCalls() {
+  return harness.apiFetch.mock.calls.filter(([url]) => url.endsWith("/join"));
+}
+
+it.each(["invite", "Join a Game"])(
+  "confirms a canonical replacement and admission together from %s",
+  async (entry) => {
+    admissionConflict();
+    if (entry === "Join a Game") {
+      const home = render(
+        <ThemeProvider>
+          <AppShell>
+            <Home />
+          </AppShell>
+        </ThemeProvider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /Join a Game/ }));
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "sample-room" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+      await waitFor(() =>
+        expect(harness.router.push).toHaveBeenCalledWith("/room/sample-room"),
+      );
+      home.unmount();
+    }
+    mountLobby();
+    await screen.findByRole("dialog", { name: "Edit nickname" });
+    expect(admissionCalls()).toHaveLength(1);
+    expect(JSON.parse(admissionCalls()[0]![1].body)).toEqual({});
+    expect(harness.connect).not.toHaveBeenCalled();
+    expect(localStorage.getItem("montoncito:nickname:player-1")).toBe("Alice");
+    const api = harness.apiFetch.getMockImplementation()!;
+    harness.apiFetch.mockImplementation((url, options) => {
+      if (!url.endsWith("/join")) return api(url, options);
+      profile = { ...profile, displayName: "Sol", revision: 1 };
+      lobby.players.push({
+        id: "player-1",
+        displayName: "Sol",
+        isOwner: false,
+        isReady: false,
+      });
+      return Promise.resolve({
+        ...lobby,
+        wsJoinToken: "accepted-token",
+        profile,
+      });
+    });
+    fireEvent.change(screen.getByRole("textbox", { name: "Nickname" }), {
+      target: { value: "  Sol  " },
+    });
+    fireEvent.submit(screen.getByRole("textbox").closest("form")!);
+    await screen.findByRole("button", { name: "Edit nickname: Sol" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("Sol (you)")).toBeTruthy();
+    expect(JSON.parse(admissionCalls()[1]![1].body)).toEqual({
+      displayName: "  Sol  ",
+      base: { generation: profile.generation, revision: 0 },
+    });
+    expect(harness.connect).toHaveBeenCalledWith(
+      "accepted-token",
+      expect.any(Function),
+      expect.any(Function),
+    );
+    expect(localStorage.getItem("montoncito:nickname:player-1")).toBe("Sol");
+    expect(
+      harness.apiFetch.mock.calls.filter(
+        ([, options]) => options?.method === "PATCH",
+      ),
+    ).toHaveLength(0);
+  },
+);
+
+it("keeps admission suggestions draft-only, validates custom names and preserves rejected drafts", async () => {
+  admissionConflict([]);
+  mountLobby();
+  await screen.findByRole("dialog");
+  expect(screen.getByText(/No generated nicknames are available/)).toBeTruthy();
+  const input = screen.getByRole("textbox", { name: "Nickname" });
+  fireEvent.change(input, { target: { value: " " } });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findByRole("alert");
+  expect(admissionCalls()).toHaveLength(1);
+  const api = harness.apiFetch.getMockImplementation()!;
+  harness.apiFetch.mockImplementation((url, options) =>
+    url.endsWith("/nickname-suggestions")
+      ? Promise.resolve({ suggestions: ["Sol"] })
+      : api(url, options),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Shuffle" }));
+  await waitFor(() => expect((input as HTMLInputElement).value).toBe("Sol"));
+  expect(localStorage.getItem("montoncito:nickname:player-1")).toBe("Alice");
+  expect(admissionCalls()).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByRole("alert")).toHaveProperty(
+    "textContent",
+    expect.stringContaining("another Lobby"),
+  );
+  expect((input as HTMLInputElement).value).toBe("Sol");
+  expect(within(screen.getByRole("banner")).getByText("Alice")).toBeTruthy();
+  expect(harness.connect).not.toHaveBeenCalled();
+});
+
+it.each(["Cancel", "Escape", "backdrop"])(
+  "returns Home on admission %s without confirming or joining",
+  async (dismissal) => {
+    admissionConflict();
+    mountLobby();
+    const dialog = await screen.findByRole("dialog");
+    if (dismissal === "Cancel")
+      fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    else if (dismissal === "Escape")
+      fireEvent(dialog, new Event("cancel", { cancelable: true }));
+    else {
+      fireEvent.pointerDown(dialog, { clientX: -1, clientY: -1 });
+      fireEvent.click(dialog, { clientX: -1, clientY: -1 });
+    }
+    expect(harness.router.push).toHaveBeenCalledWith("/");
+    expect(admissionCalls()).toHaveLength(1);
+    expect(localStorage.getItem("montoncito:nickname:player-1")).toBe("Alice");
+    expect(harness.connect).not.toHaveBeenCalled();
+  },
+);
+
+it("blocks admission duplicates and dismissal while saving, but keeps the draft on rejection", async () => {
+  admissionConflict();
+  mountLobby();
+  const dialog = await screen.findByRole("dialog");
+  const pending = deferred<never>();
+  const api = harness.apiFetch.getMockImplementation()!;
+  harness.apiFetch.mockImplementation((url, options) =>
+    url.endsWith("/join") ? pending.promise : api(url, options),
+  );
+  const input = screen.getByRole("textbox");
+  fireEvent.submit(input.closest("form")!);
+  fireEvent.submit(input.closest("form")!);
+  fireEvent(dialog, new Event("cancel", { cancelable: true }));
+  fireEvent.pointerDown(dialog, { clientX: -1, clientY: -1 });
+  fireEvent.click(dialog, { clientX: -1, clientY: -1 });
+  expect(admissionCalls()).toHaveLength(2);
+  expect(harness.router.push).not.toHaveBeenCalled();
+  expect(
+    (screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  await act(async () =>
+    pending.reject(new ApiHttpError(409, "Conflict", "NICKNAME_CONFLICT")),
+  );
+  await screen.findByRole("alert");
+  expect((input as HTMLInputElement).value).toBe("Luna");
+});
+
+it.each(["Lobby is full", "Lobby already started"])(
+  "keeps %s errors out of nickname setup",
+  async (message) => {
+    const api = harness.apiFetch.getMockImplementation()!;
+    harness.apiFetch.mockImplementation((url, options) =>
+      url.endsWith("/join")
+        ? Promise.reject(new ApiHttpError(409, message))
+        : api(url, options),
+    );
+    mountLobby();
+    await screen.findByText(new RegExp(message));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Retry admission" }),
+    ).toBeTruthy();
+    expect(harness.connect).not.toHaveBeenCalled();
+  },
+);
+
+it("enters immediately without a modal or replacement when the confirmed nickname is available", async () => {
+  mountLobby();
+  await screen.findByRole("button", { name: "Edit nickname: Alice" });
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(JSON.parse(admissionCalls()[0]![1].body)).toEqual({});
+  expect(harness.connect).toHaveBeenCalledTimes(1);
+});
+
+it.each(["open", "in_progress"])(
+  "recovers a lost replacement response through confirmed profile and %s membership without another admission",
+  async (status) => {
+    admissionConflict();
+    mountLobby();
+    await screen.findByRole("dialog");
+    const api = harness.apiFetch.getMockImplementation()!;
+    harness.apiFetch.mockImplementation((url, options) => {
+      if (!url.endsWith("/join")) return api(url, options);
+      profile = { ...profile, displayName: "Luna", revision: 1 };
+      lobby.status = status;
+      lobby.players.push({
+        id: "player-1",
+        displayName: "Luna",
+        isOwner: false,
+        isReady: false,
+      });
+      return Promise.reject(new Error("Response lost"));
+    });
+    // Existing reconciliation reads room metadata, then obtains a member-only token.
+    const recover = harness.apiFetch.getMockImplementation()!;
+    harness.apiFetch.mockImplementation((url, options) =>
+      url.endsWith("/socket-token")
+        ? Promise.resolve({ wsJoinToken: "recovered-token" })
+        : Promise.resolve(recover(url, options)).then((value) =>
+            url === "/rooms/room-1" && status === "in_progress"
+              ? { ...value, gameId: "game-1" }
+              : value,
+          ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(admissionCalls()).toHaveLength(2);
+    expect(localStorage.getItem("montoncito:nickname:player-1")).toBe("Luna");
+    expect(harness.connect).toHaveBeenCalledWith(
+      "recovered-token",
+      expect.any(Function),
+      expect.any(Function),
+    );
+    if (status === "in_progress")
+      expect(harness.router.push).toHaveBeenCalledWith("/game/room-1");
+    else expect(screen.getByText("Luna (you)")).toBeTruthy();
+  },
+);
+
+it("explains unavailable admission recovery without falsely claiming non-membership and retries the check first", async () => {
+  admissionConflict();
+  mountLobby();
+  await screen.findByRole("dialog");
+  const api = harness.apiFetch.getMockImplementation()!;
+  let checksAvailable = false;
+  harness.apiFetch.mockImplementation((url, options) => {
+    if (url.endsWith("/join"))
+      return Promise.reject(new Error("Response lost"));
+    if (url === "/rooms/room-1" && !checksAvailable)
+      return Promise.reject(new Error("Offline"));
+    if (url.endsWith("/socket-token"))
+      return Promise.resolve({ wsJoinToken: "recovered-token" });
+    return api(url, options);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(await screen.findByRole("alert")).toHaveProperty(
+    "textContent",
+    expect.stringContaining("Couldn't confirm whether you joined"),
+  );
+  expect(screen.queryByText(/You have not joined/)).toBeNull();
+  expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("Luna");
+  expect(screen.queryByRole("button", { name: /^Edit nickname/ })).toBeNull();
+  checksAvailable = true;
+  profile = { ...profile, displayName: "Luna", revision: 1 };
+  lobby.players.push({
+    id: "player-1",
+    displayName: "Luna",
+    isOwner: false,
+    isReady: false,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  await screen.findByRole("button", { name: "Edit nickname: Luna" });
+  expect(admissionCalls()).toHaveLength(2);
+});
+
+it.each([
+  "STALE_PROFILE",
+  "STALE_PROFILE_GENERATION",
+  "Lobby is full",
+  "Lobby already started",
+])(
+  "retains the admission draft and confirms no replacement on %s",
+  async (failure) => {
+    admissionConflict();
+    mountLobby();
+    await screen.findByRole("dialog");
+    const api = harness.apiFetch.getMockImplementation()!;
+    harness.apiFetch.mockImplementation((url, options) =>
+      url.endsWith("/join")
+        ? Promise.reject(new ApiHttpError(409, failure, failure))
+        : api(url, options),
+    );
+    if (failure.startsWith("STALE_PROFILE"))
+      profile = { ...profile, displayName: "New confirmation", revision: 1 };
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Keep my draft" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const alert = await screen.findByRole("alert");
+    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(
+      "Keep my draft",
+    );
+    expect(harness.connect).not.toHaveBeenCalled();
+    if (failure.startsWith("STALE_PROFILE")) {
+      expect(
+        screen.getByText("Confirmed nickname: New confirmation"),
+      ).toBeTruthy();
+      expect(alert.textContent).toContain(
+        failure === "STALE_PROFILE" ? "retry your draft" : "server restarted",
+      );
+      expect(admissionCalls()).toHaveLength(2);
+      if (failure === "STALE_PROFILE") {
+        fireEvent.click(screen.getByRole("button", { name: "Save" }));
+        await waitFor(() => expect(admissionCalls()).toHaveLength(3));
+        expect(JSON.parse(admissionCalls()[2]![1].body).base.revision).toBe(1);
+      }
+    } else {
+      expect(alert.textContent).toContain(
+        "Your nickname replacement was not confirmed",
+      );
+      expect(screen.getByText("Confirmed nickname: Alice")).toBeTruthy();
+    }
+  },
+);
+
+it("does not navigate or replace newer confirmation when an admission response arrives after page departure", async () => {
+  admissionConflict();
+  const mounted = mountLobby();
+  await screen.findByRole("dialog");
+  const pending = deferred<unknown>();
+  const api = harness.apiFetch.getMockImplementation()!;
+  harness.apiFetch.mockImplementation((url, options) =>
+    url.endsWith("/join") ? pending.promise : api(url, options),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  mounted.unmount();
+  const newer = { ...profile, displayName: "Newer", revision: 2 };
+  localStorage.setItem("montoncito:profile:player-1", JSON.stringify(newer));
+  localStorage.setItem("montoncito:nickname:player-1", "Newer");
+  await act(async () =>
+    pending.resolve({
+      ...lobby,
+      wsJoinToken: "late-token",
+      profile: { ...profile, displayName: "Luna", revision: 1 },
+    }),
+  );
+  expect(localStorage.getItem("montoncito:nickname:player-1")).toBe("Newer");
+  expect(harness.connect).not.toHaveBeenCalled();
+  expect(harness.router.push).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("updates the confirmed admission name across tabs without replacing the draft or enabling another editor", async () => {
+  admissionConflict();
+  mountLobby();
+  await screen.findByRole("dialog");
+  const input = screen.getByRole("textbox", { name: "Nickname" });
+  fireEvent.change(input, { target: { value: "My unsaved admission" } });
+  profile = { ...profile, displayName: "New confirmation", revision: 1 };
+  act(() => {
+    localStorage.setItem(
+      "montoncito:profile:player-1",
+      JSON.stringify(profile),
+    );
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "montoncito:profile:player-1" }),
+    );
+  });
+  expect(
+    within(screen.getByRole("banner")).getByText("New confirmation"),
+  ).toBeTruthy();
+  expect(screen.getByText("Confirmed nickname: New confirmation")).toBeTruthy();
+  expect((input as HTMLInputElement).value).toBe("My unsaved admission");
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: /^Edit nickname/ })).toBeNull();
+  expect(admissionCalls()).toHaveLength(1);
 });
 
 it.each([
