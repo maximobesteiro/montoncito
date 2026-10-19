@@ -80,7 +80,25 @@ export default function WaitingRoomPage() {
     null,
   );
   const [admissionDraft, setAdmissionDraft] = useState("");
-  useEffect(() => subscribeGuestProfile(setAdmissionProfile), []);
+  useEffect(
+    () =>
+      subscribeGuestProfile((profile) => {
+        setAdmissionProfile(profile);
+        setRoom((current) =>
+          current?.status === "open"
+            ? {
+                ...current,
+                players: current.players.map((player) =>
+                  player.id === profile.clientId
+                    ? { ...player, displayName: profile.displayName }
+                    : player,
+                ),
+              }
+            : current,
+        );
+      }),
+    [],
+  );
   const [needsNickname, setNeedsNickname] = useState(false);
   const [admitted, setAdmitted] = useState(false);
   const unresolvedAdmission = useRef<string | null>(null);
@@ -886,9 +904,7 @@ export default function WaitingRoomPage() {
                         )}
                         <div className="min-w-0">
                           <p className="font-bold truncate">
-                            {p.id === clientId && admissionProfile
-                              ? admissionProfile.displayName
-                              : p.displayName}
+                            {p.displayName}
                             {p.id === clientId ? " (you)" : ""}
                           </p>
                         </div>

@@ -253,7 +253,9 @@ it("Casual Game creates a public default Lobby, joins it live, recovers a ready 
     expect(
       await home.getByRole("checkbox", { name: "I'm Ready" }).isChecked(),
     ).toBe(true);
-    await home.getByRole("button", { name: "Edit nickname" }).click();
+    await home
+      .getByRole("button", { name: "Edit nickname", exact: true })
+      .click();
     const input = home.getByRole("textbox", { name: "Nickname", exact: true });
     await input.fill("Casual renamed");
     await input.press("Enter");
@@ -720,7 +722,9 @@ it("Casual Game admits a conflicting nickname immediately, persists its canonica
         guest.id,
       ),
     ).toBe("Alex_2");
-    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page
+      .getByRole("button", { name: "Edit nickname", exact: true })
+      .click();
     const input = guest.page.getByRole("textbox", {
       name: "Nickname",
       exact: true,
@@ -1505,7 +1509,9 @@ it("restores the confirmed nickname when Lobby Shuffle runs after a server resta
     await guest.page
       .getByText("Remember through Shuffle (you)", { exact: true })
       .waitFor();
-    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page
+      .getByRole("button", { name: "Edit nickname", exact: true })
+      .click();
     let started = () => {};
     const renewing = new Promise<void>((resolve) => {
       started = resolve;
@@ -1697,7 +1703,7 @@ it("edits only your Lobby row, delivers live renames, preserves readiness and re
     for (const player of [host, guest]) {
       expect(
         await player.page
-          .getByRole("button", { name: "Edit nickname" })
+          .getByRole("button", { name: "Edit nickname", exact: true })
           .count(),
       ).toBe(1);
       expect(
@@ -1707,7 +1713,9 @@ it("edits only your Lobby row, delivers live renames, preserves readiness and re
     const ready = guest.page.getByRole("checkbox", { name: "I'm Ready" });
     await ready.click();
     await host.page.locator('[title="Ready"]').waitFor();
-    await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+    await guest.page
+      .getByRole("button", { name: "Edit nickname", exact: true })
+      .click();
     const input = guest.page.getByRole("textbox", {
       name: "Nickname",
       exact: true,
@@ -1737,14 +1745,18 @@ it("edits only your Lobby row, delivers live renames, preserves readiness and re
     await host.page.getByText("小 Zibble!", { exact: true }).waitFor();
     await guest.page.getByText("小 Zibble! (you)", { exact: true }).waitFor();
     expect(await ready.isChecked()).toBe(true);
-    await host.page.getByRole("button", { name: "Edit nickname" }).click();
+    await host.page
+      .getByRole("button", { name: "Edit nickname", exact: true })
+      .click();
     const hostInput = host.page.getByRole("textbox", {
       name: "Nickname",
       exact: true,
     });
     await hostInput.fill("Host draft");
     await hostInput.press("Escape");
-    await host.page.getByRole("button", { name: "Edit nickname" }).click();
+    await host.page
+      .getByRole("button", { name: "Edit nickname", exact: true })
+      .click();
     expect(await hostInput.inputValue()).toBe("Boppo");
     await hostInput.fill("Fizzi");
     await hostInput.press("Enter");
@@ -1800,7 +1812,9 @@ it.each(["ready", "settings"])(
           ),
         );
       }
-      await target.page.getByRole("button", { name: "Edit nickname" }).click();
+      await target.page
+        .getByRole("button", { name: "Edit nickname", exact: true })
+        .click();
       await target.page
         .getByRole("textbox", { name: "Nickname", exact: true })
         .fill("Zibble");
@@ -1867,7 +1881,9 @@ it("handles exhausted generated names across joined Lobbies and explains a confl
       );
       expect(joined.status()).toBe(201);
     }
-    await page.getByRole("button", { name: "Edit nickname" }).click();
+    await page
+      .getByRole("button", { name: "Edit nickname", exact: true })
+      .click();
     const input = page.getByRole("textbox", { name: "Nickname", exact: true });
     await input.fill("Moki");
     await page.getByRole("button", { name: "Shuffle" }).click();
@@ -1937,7 +1953,9 @@ it.each([false, true])(
     try {
       await page.getByRole("button", { name: /Create a Game/ }).click();
       await page.waitForURL("**/room/**");
-      await page.getByRole("button", { name: "Edit nickname" }).click();
+      await page
+        .getByRole("button", { name: "Edit nickname", exact: true })
+        .click();
       let firstSave = true;
       await page.route(`${server.url}/profile`, async (route) => {
         if (route.request().method() !== "PATCH" || !firstSave)
@@ -1952,7 +1970,12 @@ it.each([false, true])(
         .fill("Zibble");
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await page.getByText("Zibble (you)", { exact: true }).waitFor();
-      await page.getByTitle("Exit room").click();
+      // A pending modal intentionally blocks background Exit. Route departure
+      // (e.g. browser navigation) must still invalidate the editing session.
+      await page.evaluate(() => {
+        history.pushState({}, "", "/");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      });
       await page.getByText("Zibble", { exact: true }).waitFor();
       if (failStorageWrites) await page.evaluate(blockNicknameStorageWrites);
       await page.getByRole("button", { name: "Edit nickname" }).click();
@@ -2008,7 +2031,9 @@ it.each(["before", "after"] as const)(
       await guest.page.getByText("Moki (you)", { exact: true }).waitFor();
       await guest.page.getByRole("checkbox", { name: "I'm Ready" }).click();
       await host.page.locator('[title="Ready"]').waitFor();
-      await guest.page.getByRole("button", { name: "Edit nickname" }).click();
+      await guest.page
+        .getByRole("button", { name: "Edit nickname", exact: true })
+        .click();
       await guest.page.route(`${server.url}/profile`, async (route) => {
         if (route.request().method() !== "PATCH") return route.continue();
         if (ordering === "before") {
@@ -2763,7 +2788,9 @@ it.each([1440, 390])(
       await nextBob.getByPlaceholder("Enter game ID").fill(nextSlug);
       await nextBob.getByRole("button", { name: "Confirm" }).click();
       await nextBob.getByText("Alice", { exact: true }).waitFor();
-      await nextAlice.getByRole("button", { name: "Edit nickname" }).click();
+      await nextAlice
+        .getByRole("button", { name: "Edit nickname", exact: true })
+        .click();
       await nextAlice
         .getByRole("textbox", { name: "Nickname", exact: true })
         .fill("Future Alice");

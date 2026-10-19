@@ -214,6 +214,35 @@ it("saves canonical names for an already-ready guest in header and row without c
   expect(localStorage.getItem("montoncito:nickname:player-1")).toBe("Sol");
 });
 
+it("shows authoritative roster renames even before a delayed profile save response", async () => {
+  mountLobby();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Edit nickname: Alice" }),
+  );
+  const pending = deferred<GuestProfile>();
+  harness.apiFetch.mockReturnValue(pending.promise);
+  fireEvent.change(screen.getByRole("textbox", { name: "Nickname" }), {
+    target: { value: "Sol" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save" }));
+  act(() =>
+    harness.handler?.({
+      type: "ROOM_UPDATED",
+      room: {
+        ...lobby,
+        players: lobby.players.map((player) => ({
+          ...player,
+          displayName: "Sol",
+        })),
+      },
+    }),
+  );
+  expect(screen.getByText("Sol (you)")).toBeTruthy();
+  await act(async () =>
+    pending.resolve({ ...profile, displayName: "Sol", revision: 1 }),
+  );
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
