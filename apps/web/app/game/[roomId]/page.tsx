@@ -3,9 +3,13 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState } from "react";
-import { useGameRoom } from "@/lib/use-game-room";
+import { useGameRoom, type GameRoomView } from "@/lib/use-game-room";
 import { GameRoomBoard } from "@/components/game/GameRoomBoard";
 import { GameRoomChat } from "@/components/game/GameRoomChat";
+import {
+  HeaderIdentity,
+  HeaderNickname,
+} from "@/components/header/HeaderIdentity";
 import type { ActionRejected } from "@mont/game-room";
 
 const rejectionReasons: Record<ActionRejected["code"], string> = {
@@ -21,6 +25,62 @@ const rejectionReasons: Record<ActionRejected["code"], string> = {
 
 export default function GameRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
+  return <GameRoomSession key={roomId} roomId={roomId} />;
+}
+
+// A different room gets a fresh session on its first render, not after an effect
+// has already exposed the previous room's snapshot or retained Match identity.
+function GameRoomSession({ roomId }: { roomId: string }) {
+  const view = useGameRoom(roomId);
+  return (
+    <>
+      <GameMatchIdentity view={view} />
+      <GameRoomContent roomId={roomId} view={view} />
+    </>
+  );
+}
+
+function GameMatchIdentity({ view }: { view: GameRoomView }) {
+  const { state, currentPlayerId, connectionStatus, problem } = view;
+  const nickname = currentPlayerId
+    ? state?.byId[currentPlayerId]?.name
+    : undefined;
+  const [identified, setIdentified] = useState<{
+    playerId: string;
+    nickname: string;
+  } | null>(null);
+  if (
+    nickname &&
+    currentPlayerId &&
+    (identified?.nickname !== nickname ||
+      identified.playerId !== currentPlayerId)
+  ) {
+    setIdentified({ playerId: currentPlayerId, nickname });
+  }
+  const reconnecting =
+    !state &&
+    !problem &&
+    (connectionStatus === "connecting" || connectionStatus === "synchronizing");
+  const retained =
+    reconnecting &&
+    (!currentPlayerId || currentPlayerId === identified?.playerId)
+      ? identified?.nickname
+      : undefined;
+  const visibleName = nickname || retained;
+  return (
+    <HeaderIdentity>
+      {visibleName && <HeaderNickname nickname={visibleName} />}
+    </HeaderIdentity>
+  );
+}
+
+function GameRoomContent({
+  roomId,
+  view,
+}: {
+  roomId: string;
+  view: GameRoomView;
+}) {
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const {
     state,
@@ -36,7 +96,7 @@ export default function GameRoomPage() {
     chatMessages,
     liveChatCount,
     sendChat,
-  } = useGameRoom(roomId);
+  } = view;
 
   if (problem) {
     return (
