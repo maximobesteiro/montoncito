@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type Page, type Route } from "playwright";
 import postcss from "postcss";
 import tailwind from "@tailwindcss/postcss";
 import { build } from "vite";
@@ -40,7 +40,7 @@ beforeAll(async () => {
         },
         load(id) {
           if (id === "\0test-navigation")
-            return 'const router = {push() {}, replace() {}}; export const useRouter = () => router; export const useParams = () => ({slug: "sample-room"});';
+            return 'const navigate = (path) => {history.pushState({}, "", path); window.dispatchEvent(new PopStateEvent("popstate"));}; const router = {push: navigate, replace: navigate}; export const useRouter = () => router; export const useParams = () => ({slug: "sample-room"});';
           if (id === "\0test-link")
             return 'import {createElement} from "react"; export default function Link({children,...props}) {return createElement("a",props,children);}';
           if (id === "\0test-socket")
@@ -73,12 +73,21 @@ afterAll(async () => {
   await browser?.close();
 });
 
-async function mountLobby(page: Page) {
+async function mountLobby(
+  page: Page,
+  options: {
+    admission?: boolean;
+    onReplacement?: (route: Route) => Promise<void>;
+  } = {},
+) {
+  const joins: unknown[] = [];
+  const profileWrites: string[] = [];
   await page.route("https://lobby.test/**", async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const clientId = request.headers()["x-client-id"];
-    if (path === "/profile")
+    if (path === "/profile") {
+      if (request.method() === "PATCH") profileWrites.push(request.postData()!);
       return route.fulfill({
         json: {
           clientId,
@@ -89,18 +98,31 @@ async function mountLobby(page: Page) {
           updatedAt: "2026-10-19",
         },
       });
+    }
+    if (options.admission && path.endsWith("/nickname-suggestions"))
+      return route.fulfill({ json: { suggestions: ["Luna"] } });
+    if (options.admission && path.endsWith("/join")) {
+      const body = request.postDataJSON();
+      joins.push(body);
+      if (body.displayName && options.onReplacement)
+        return options.onReplacement(route);
+      return route.fulfill({
+        status: 409,
+        json: { code: "NICKNAME_CONFLICT" },
+      });
+    }
     if (path.startsWith("/rooms/"))
       return route.fulfill({
         json: {
           id: "room-1",
           slug: "sample-room",
-          ownerId: clientId,
+          ownerId: options.admission ? "host" : clientId,
           status: "open",
           visibility: "public",
           maxPlayers: 4,
           players: [
             {
-              id: clientId,
+              id: options.admission ? "host" : clientId,
               displayName: nickname,
               isOwner: true,
               isReady: false,
@@ -116,12 +138,16 @@ async function mountLobby(page: Page) {
       body: '<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><div id="root"></div>',
     });
   });
-  await page.goto("https://lobby.test/");
+  await page.goto("https://lobby.test/room/sample-room");
   await page.addStyleTag({ content: css });
   await page.addScriptTag({ content: clientScript });
-  await page
-    .getByRole("button", { name: `Edit nickname: ${nickname}` })
-    .waitFor();
+  if (options.admission)
+    await page.getByRole("dialog", { name: "Edit nickname" }).waitFor();
+  else
+    await page
+      .getByRole("button", { name: `Edit nickname: ${nickname}` })
+      .waitFor();
+  return { joins, profileWrites };
 }
 
 it.each([320, 360, 390, 768])(
@@ -226,3 +252,119 @@ it.each(["header", "row"])(
     }
   },
 );
+
+it.each(["Escape", "Cancel", "backdrop"])(
+  "contains admission focus and returns Home on %s without confirming the draft",
+  async (dismissal) => {
+    const page = await browser.newPage({
+      viewport: { width: 320, height: 640 },
+    });
+    page.setDefaultTimeout(3000);
+    try {
+      const calls = await mountLobby(page, { admission: true });
+      const dialog = page.getByRole("dialog", { name: "Edit nickname" });
+      const input = dialog.getByRole("textbox", { name: "Nickname" });
+      expect(await dialog.innerText()).toContain("You have not joined");
+      expect(await input.inputValue()).toBe("Luna");
+      expect(
+        await input.evaluate((element) => element === document.activeElement),
+      ).toBe(true);
+      expect(
+        await dialog.evaluate((element) => element.matches(":modal")),
+      ).toBe(true);
+      await input.press("Shift+Tab");
+      expect(
+        await dialog
+          .getByRole("button", { name: "Cancel" })
+          .evaluate((element) => element === document.activeElement),
+      ).toBe(true);
+      await page.keyboard.press("Tab");
+      expect(
+        await input.evaluate((element) => element === document.activeElement),
+      ).toBe(true);
+      // Native modal inertness prevents even programmatic focus on the header.
+      await page
+        .getByRole("button", { name: "Toggle theme" })
+        .evaluate((element: HTMLElement) => element.focus());
+      expect(
+        await input.evaluate((element) => element === document.activeElement),
+      ).toBe(true);
+      expect(
+        await page.getByRole("button", { name: /^Edit nickname/ }).count(),
+      ).toBe(0);
+      await input.fill(nickname);
+      const box = await dialog.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+      expect(
+        await dialog.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      ).toBe(true);
+      if (dismissal === "backdrop") await page.mouse.click(2, 2);
+      else if (dismissal === "Cancel")
+        await dialog.getByRole("button", { name: "Cancel" }).click();
+      else await input.press("Escape");
+      await page.getByRole("button", { name: /Casual Game/ }).waitFor();
+      expect(new URL(page.url()).pathname).toBe("/");
+      expect(await dialog.count()).toBe(0);
+      expect(calls.joins).toEqual([{}]);
+      expect(calls.profileWrites).toEqual([]);
+      await page
+        .getByRole("button", { name: `Edit nickname: ${nickname}` })
+        .waitFor();
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it("submits admission with Enter once and blocks Escape, backdrop and controls until rejection", async () => {
+  const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+  page.setDefaultTimeout(3000);
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  try {
+    const calls = await mountLobby(page, {
+      admission: true,
+      onReplacement: async (route) => {
+        await pending;
+        await route.fulfill({
+          status: 409,
+          json: { code: "NICKNAME_CONFLICT" },
+        });
+      },
+    });
+    const dialog = page.getByRole("dialog", { name: "Edit nickname" });
+    const input = dialog.getByRole("textbox", { name: "Nickname" });
+    await input.fill("My draft");
+    await input.press("Enter");
+    await dialog.getByRole("button", { name: "Saving..." }).waitFor();
+    await page.keyboard.press("Enter");
+    await page.keyboard.press("Escape");
+    await page.mouse.click(2, 2);
+    expect(await dialog.count()).toBe(1);
+    expect(await input.isDisabled()).toBe(true);
+    expect(
+      await dialog.getByRole("button", { name: "Cancel" }).isDisabled(),
+    ).toBe(true);
+    expect(
+      await dialog.getByRole("button", { name: "Shuffle" }).isDisabled(),
+    ).toBe(true);
+    release();
+    await dialog.getByRole("alert").waitFor();
+    expect(calls.joins).toHaveLength(2);
+    expect(await input.inputValue()).toBe("My draft");
+    expect(await dialog.innerText()).toContain(
+      `Confirmed nickname: ${nickname}`,
+    );
+    expect(calls.profileWrites).toEqual([]);
+    await input.press("Escape");
+    await page.getByRole("button", { name: /Casual Game/ }).waitFor();
+  } finally {
+    release();
+    await page.close();
+  }
+});
