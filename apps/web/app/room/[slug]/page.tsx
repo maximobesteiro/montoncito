@@ -18,6 +18,11 @@ import {
   type GuestProfile,
 } from "@/lib/guest-profile";
 import { NicknameEditor } from "@/components/NicknameEditor";
+import { NicknameModal } from "@/components/NicknameModal";
+import {
+  HeaderIdentity,
+  HeaderNickname,
+} from "@/components/header/HeaderIdentity";
 import {
   getCasualEntry,
   forgetCasualEntry,
@@ -69,12 +74,31 @@ export default function WaitingRoomPage() {
   const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [editingNickname, setEditingNickname] = useState(false);
+  const [nicknameUnavailable, setNicknameUnavailable] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [admissionProfile, setAdmissionProfile] = useState<GuestProfile | null>(
     null,
   );
   const [admissionDraft, setAdmissionDraft] = useState("");
-  useEffect(() => subscribeGuestProfile(setAdmissionProfile), []);
+  useEffect(
+    () =>
+      subscribeGuestProfile((profile) => {
+        setAdmissionProfile(profile);
+        setRoom((current) =>
+          current?.status === "open"
+            ? {
+                ...current,
+                players: current.players.map((player) =>
+                  player.id === profile.clientId
+                    ? { ...player, displayName: profile.displayName }
+                    : player,
+                ),
+              }
+            : current,
+        );
+      }),
+    [],
+  );
   const [needsNickname, setNeedsNickname] = useState(false);
   const [admitted, setAdmitted] = useState(false);
   const unresolvedAdmission = useRef<string | null>(null);
@@ -87,6 +111,10 @@ export default function WaitingRoomPage() {
     nicknameSession.current++;
     setEditingNickname(false);
   }, []);
+  const endNicknameEditing = useCallback(() => {
+    invalidateNicknameEditor();
+    setNicknameUnavailable(true);
+  }, [invalidateNicknameEditor]);
 
   const { showToast } = useToast();
   const isHost = Boolean(room && clientId && room.ownerId === clientId);
@@ -111,6 +139,19 @@ export default function WaitingRoomPage() {
   );
 
   const roomTitle = `Room #${(room?.slug ?? sanitizedSlug).slice(-4)}`;
+  const canEditNickname = Boolean(
+    admitted &&
+      !loading &&
+      !nicknameUnavailable &&
+      room?.status === "open" &&
+      room.players.some((player) => player.id === clientId) &&
+      admissionProfile,
+  );
+  const openNicknameEditor = () => {
+    if (!canEditNickname || editingNickname) return;
+    nicknameSession.current++;
+    setEditingNickname(true);
+  };
 
   // Canonicalize overlong slugs: truncate to accepted length.
   useEffect(() => {
@@ -142,6 +183,8 @@ export default function WaitingRoomPage() {
       setEntryLookupFailed(false);
       setAdmitted(false);
       setNeedsNickname(false);
+      setEditingNickname(false);
+      setNicknameUnavailable(false);
       setRoom(null);
 
       try {
@@ -233,19 +276,19 @@ export default function WaitingRoomPage() {
                 updated.status !== "open" ||
                 !updated.players.some((player) => player.id === clientId)
               )
-                invalidateNicknameEditor();
+                endNicknameEditing();
               // Update room state (including player list) in real-time
               setRoom(ev.room as RoomView);
             }
             if (ev.type === "GAME_STARTED") {
               liveRoomRevision.current++;
-              invalidateNicknameEditor();
+              endNicknameEditing();
               router.push(`/game/${ev.roomId}`);
             }
             if (ev.type === "KICKED") {
               if (casualEntry) forgetCasualEntry(casualEntry.id);
               liveRoomRevision.current++;
-              invalidateNicknameEditor();
+              endNicknameEditing();
               sock.disconnect();
               showToast("You have been kicked from the room", "warning");
               router.push("/");
@@ -308,7 +351,10 @@ export default function WaitingRoomPage() {
                   (error.status === 403 || error.status === 404)
                 ) {
                   sock.disconnect();
-                  if (!cancelled) router.push("/");
+                  if (!cancelled) {
+                    endNicknameEditing();
+                    router.push("/");
+                  }
                 }
                 throw error;
               }
@@ -510,7 +556,10 @@ export default function WaitingRoomPage() {
     return () => {
       cancelled = true;
       retryAdmission.current = null;
+      // These are lifetime counters, not DOM refs: invalidate their latest values.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       liveRoomRevision.current++;
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       nicknameSession.current++;
       unsub?.();
       // Disconnect so server can treat this as leaving (refresh/navigation/tab close).
@@ -521,6 +570,7 @@ export default function WaitingRoomPage() {
     sanitizedSlug,
     showToast,
     invalidateNicknameEditor,
+    endNicknameEditing,
     admissionAttempt,
   ]);
 
@@ -531,10 +581,10 @@ export default function WaitingRoomPage() {
       room.gameId &&
       room.players.some((player) => player.id === clientId)
     ) {
-      invalidateNicknameEditor();
+      endNicknameEditing();
       router.push(`/game/${room.id}`);
     }
-  }, [room, router, invalidateNicknameEditor, clientId, admitted]);
+  }, [room, router, endNicknameEditing, clientId, admitted]);
 
   const patchRoom = async (
     patch: Partial<Pick<RoomView, "visibility" | "maxPlayers">> & {
@@ -647,7 +697,8 @@ export default function WaitingRoomPage() {
 
   const leaveRoom = async () => {
     if (!clientId || !room) return;
-    invalidateNicknameEditor();
+    endNicknameEditing();
+    const session = nicknameSession.current;
     try {
       await apiFetch(`/rooms/${room.id}/leave`, {
         method: "POST",
@@ -656,6 +707,7 @@ export default function WaitingRoomPage() {
       if (casualEntry) forgetCasualEntry(casualEntry.id);
       router.push("/");
     } catch (e) {
+      if (nicknameSession.current === session) setNicknameUnavailable(false);
       showToast(
         e instanceof Error ? e.message : "Failed to leave room",
         "error",
@@ -686,6 +738,51 @@ export default function WaitingRoomPage() {
 
   return (
     <div className="min-h-screen p-4 sm:p-8 bg-muted">
+      <HeaderIdentity>
+        {loading ? (
+          <span role="status" className="truncate text-sm text-text-muted">
+            Loading nickname...
+          </span>
+        ) : admissionProfile ? (
+          <HeaderNickname
+            nickname={admissionProfile.displayName}
+            onEdit={canEditNickname ? openNicknameEditor : undefined}
+          />
+        ) : (
+          <button
+            type="button"
+            className="min-w-0 text-sm underline"
+            onClick={() => setAdmissionAttempt((attempt) => attempt + 1)}
+          >
+            Retry nickname
+          </button>
+        )}
+      </HeaderIdentity>
+      {editingNickname && canEditNickname && admissionProfile && (
+        <NicknameModal
+          nickname={admissionProfile.displayName}
+          baseProfile={admissionProfile}
+          suggestions={suggestions}
+          loadSuggestions={async () =>
+            (await initializeGuestProfile(clientId ?? undefined)).suggestions
+          }
+          onCancel={invalidateNicknameEditor}
+          onSave={async (draft, base) => {
+            const session = nicknameSession.current;
+            try {
+              await saveGuestNickname(draft, base);
+              if (nicknameSession.current === session)
+                invalidateNicknameEditor();
+            } catch (error) {
+              if (nicknameSession.current === session) throw error;
+            }
+          }}
+        >
+          <p className="mb-3 break-words">
+            Confirmed nickname: {admissionProfile.displayName}
+          </p>
+        </NicknameModal>
+      )}
       <div className="max-w-6xl mx-auto space-y-4">
         <div className="brutal-border p-6 bg-card brutal-shadow relative">
           <button
@@ -813,20 +910,15 @@ export default function WaitingRoomPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
-                        {p.id === clientId &&
-                          room.status === "open" &&
-                          !editingNickname && (
-                            <button
-                              aria-label="Edit nickname"
-                              className="brutal-button px-3 py-2 bg-card"
-                              onClick={() => {
-                                nicknameSession.current++;
-                                setEditingNickname(true);
-                              }}
-                            >
-                              Edit
-                            </button>
-                          )}
+                        {p.id === clientId && canEditNickname && (
+                          <button
+                            aria-label="Edit nickname"
+                            className="brutal-button px-3 py-2 bg-card"
+                            onClick={openNicknameEditor}
+                          >
+                            Edit
+                          </button>
+                        )}
                         {p.isOwner && (
                           <span className="brutal-border px-2 py-1 bg-warning-bg font-bold text-sm">
                             Host
@@ -842,34 +934,6 @@ export default function WaitingRoomPage() {
                           </button>
                         )}
                       </div>
-                      {p.id === clientId &&
-                        room.status === "open" &&
-                        editingNickname && (
-                          <div className="w-full min-w-0">
-                            <NicknameEditor
-                              nickname={p.displayName}
-                              baseProfile={admissionProfile ?? undefined}
-                              suggestions={suggestions}
-                              loadSuggestions={async () => {
-                                const profile =
-                                  await initializeGuestProfile(clientId);
-                                return profile.suggestions;
-                              }}
-                              onCancel={invalidateNicknameEditor}
-                              onSave={async (draft, base) => {
-                                const session = nicknameSession.current;
-                                const isCurrent = () =>
-                                  nicknameSession.current === session;
-                                try {
-                                  await saveGuestNickname(draft, base);
-                                  if (isCurrent()) invalidateNicknameEditor();
-                                } catch (error) {
-                                  if (isCurrent()) throw error;
-                                }
-                              }}
-                            />
-                          </div>
-                        )}
                     </div>
                   ))}
                 </div>
