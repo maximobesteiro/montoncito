@@ -91,6 +91,74 @@ async function mountChatPage(page: Page) {
   await page.addScriptTag({ content: clientScript });
 }
 
+it.each([320, 360, 390, 768])(
+  "keeps a read-only maximum-length Match identity and usable header controls in one row at %ipx",
+  async (width) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    page.setDefaultTimeout(3000);
+    try {
+      await mountChatPage(page);
+      const nickname = "W".repeat(32);
+      const state = denseBoardState(4);
+      state.byId["player-1"]!.name = nickname;
+      await page.evaluate((state) => window.chatTest.update({ state }), state);
+      const brand = page.getByRole("link", { name: "Montoncito" });
+      const header = page.locator("header").filter({ has: brand });
+      const identity = header.getByText(nickname, { exact: true });
+      await identity.waitFor();
+      const theme = header.getByRole("button", { name: "Toggle theme" });
+      const [b, n, t] = await Promise.all([
+        box(brand),
+        box(identity),
+        box(theme),
+      ]);
+      expect(b.x + b.width).toBeLessThanOrEqual(n.x);
+      expect(n.x + n.width).toBeLessThanOrEqual(t.x);
+      expect(Math.abs(b.y + b.height / 2 - n.y - n.height / 2)).toBeLessThan(2);
+      expect(Math.abs(n.y + n.height / 2 - t.y - t.height / 2)).toBeLessThan(2);
+      expect(n.width).toBeGreaterThan(30);
+      expect(t.width).toBeGreaterThanOrEqual(40);
+      expect(t.x + t.width).toBeLessThanOrEqual(width);
+      expect(await identity.getAttribute("title")).toBe(nickname);
+      expect(
+        await identity.evaluate(
+          (element) => getComputedStyle(element).textOverflow,
+        ),
+      ).toBe("ellipsis");
+      if (width < 640) {
+        expect(
+          await identity.evaluate(
+            (element) => element.scrollWidth > element.clientWidth,
+          ),
+        ).toBe(true);
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+      expect(await header.getByRole("button").count()).toBe(1);
+      await identity.click();
+      expect(
+        await page.getByRole("dialog", { name: "Edit nickname" }).count(),
+      ).toBe(0);
+      await theme.click();
+      await page.getByRole("option", { name: "Dark" }).click();
+      expect(await page.locator("html").getAttribute("class")).toContain(
+        "dark",
+      );
+      await brand.focus();
+      await page.keyboard.press("Tab");
+      expect(
+        await theme.evaluate((element) => element === document.activeElement),
+      ).toBe(true);
+      expect(await brand.getAttribute("href")).toBe("/");
+      await brand.click();
+      await page.waitForURL("http://chat.test/");
+    } finally {
+      await page.close();
+    }
+  },
+);
+
 it.each([true, false])(
   "retains desktop expanded=%s and the draft across viewport changes without leaving the board inert",
   async (expanded) => {
