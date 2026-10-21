@@ -74,11 +74,7 @@ export function GuestHeaderIdentity() {
               setEditing(false);
             }
           }}
-        >
-          <p className="mb-3 break-words">
-            Confirmed nickname: {profile.displayName}
-          </p>
-        </NicknameModal>
+        />
       )}
     </>
   );

@@ -242,7 +242,12 @@ it("blocks duplicate saves and dismissal while pending, retaining the useful dra
   expect((editor.getByRole("textbox") as HTMLInputElement).value).toBe(
     "My useful draft",
   );
-  expect(editor.getByText("Confirmed nickname: Nico")).toBeTruthy();
+  expect(editor.queryByText(/Confirmed nickname:/)).toBeNull();
+  expect(
+    within(screen.getByRole("banner")).getByRole("button", {
+      name: "Edit nickname: Nico",
+    }),
+  ).toBeTruthy();
   fireEvent.click(editor.getByRole("button", { name: "Save" }));
   expect(
     await screen.findByRole("button", {
@@ -267,7 +272,11 @@ it("preserves Lobby-conflict explanations without replacing the confirmed name o
   expect((editor.getByRole("textbox") as HTMLInputElement).value).toBe(
     "Taken elsewhere",
   );
-  expect(editor.getByText("Confirmed nickname: Nico")).toBeTruthy();
+  expect(
+    within(screen.getByRole("banner")).getByRole("button", {
+      name: "Edit nickname: Nico",
+    }),
+  ).toBeTruthy();
 });
 
 it("updates cross-tab confirmation without replacing the draft and requires explicit stale-save retry", async () => {
@@ -301,7 +310,11 @@ it("updates cross-tab confirmation without replacing the draft and requires expl
   expect((await editor.findByRole("alert")).textContent).toContain(
     "retry your draft",
   );
-  expect(editor.getByText("Confirmed nickname: Luna")).toBeTruthy();
+  expect(
+    within(screen.getByRole("banner")).getByRole("button", {
+      name: "Edit nickname: Luna",
+    }),
+  ).toBeTruthy();
   expect(patches()).toHaveLength(1);
   expect(JSON.parse(patches()[0]![1].body).base.revision).toBe(0);
   fireEvent.click(editor.getByRole("button", { name: "Save" }));

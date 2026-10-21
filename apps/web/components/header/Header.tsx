@@ -12,7 +12,7 @@ export function Header({ identityRef }: { identityRef?: Ref<HTMLDivElement> }) {
         >
           Montoncito
         </Link>
-        <div className="flex min-w-0 items-center justify-end gap-2">
+        <div className="flex min-w-0 items-center justify-end gap-4">
           <div ref={identityRef} className="flex min-w-0 items-center" />
           <div className="shrink-0">
             <ThemeToggle />
