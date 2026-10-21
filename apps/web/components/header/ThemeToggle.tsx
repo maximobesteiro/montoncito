@@ -60,7 +60,7 @@ export function ThemeToggle() {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 bg-card brutal-border brutal-shadow-sm font-bold text-sm transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-hover active:translate-x-0.5 active:translate-y-0.5 active:shadow-brutal-active"
+        className="flex cursor-pointer items-center gap-2 px-3 py-2 bg-card brutal-border brutal-shadow-sm font-bold text-sm transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-hover active:translate-x-0.5 active:translate-y-0.5 active:shadow-brutal-active"
         aria-label="Toggle theme"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
@@ -85,7 +85,7 @@ export function ThemeToggle() {
                   setTheme(option.value);
                   setIsOpen(false);
                 }}
-                className={`w-full flex items-center gap-2 px-4 py-2 text-left font-medium text-sm transition-colors hover:bg-surface ${
+                className={`w-full flex cursor-pointer items-center gap-2 px-4 py-2 text-left font-medium text-sm transition-colors hover:bg-surface ${
                   theme === option.value
                     ? "bg-highlight-bg text-foreground"
                     : "text-text-muted"

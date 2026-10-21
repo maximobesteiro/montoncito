@@ -26,7 +26,7 @@ export function HeaderNickname({
       onClick={onEdit}
       title={nickname}
       aria-label={`Edit nickname: ${nickname}`}
-      className="flex min-w-0 items-center gap-1 rounded px-1 py-2 text-sm hover:bg-surface focus-visible:outline-2"
+      className="flex min-w-0 cursor-pointer items-center gap-1 rounded px-1 py-2 text-sm hover:bg-surface focus-visible:outline-2"
     >
       {name}
       <span aria-hidden="true" className="shrink-0">

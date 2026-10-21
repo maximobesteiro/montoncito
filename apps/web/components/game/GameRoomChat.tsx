@@ -104,21 +104,8 @@ export function GameRoomChat({
     >
       <button
         type="button"
-        onClick={toggle}
-        aria-expanded={expanded}
-        aria-controls="game-room-chat"
-        hidden={narrow === true}
-        className="chat-desktop-toggle brutal-border brutal-shadow flex w-full items-center justify-between bg-card p-3 font-bold"
-      >
-        <span>{expanded ? "Collapse chat" : "Expand chat"}</span>
-        {!expanded && unread > 0 && (
-          <span aria-live="polite">{unread} unread</span>
-        )}
-      </button>
-      <button
-        type="button"
         hidden={narrow === false || mobileOpen}
-        className="chat-mobile-entry brutal-border bg-card p-3 font-bold"
+        className="chat-mobile-entry brutal-border cursor-pointer bg-card p-3 font-bold"
         aria-expanded={mobileOpen}
         aria-controls="game-room-chat"
         onPointerDown={(event) => {
@@ -162,24 +149,40 @@ export function GameRoomChat({
           backdropPress.current = false;
         }}
       >
-        <div className="chat-content" hidden={!visible}>
-          <button
-            type="button"
-            hidden={!narrow}
-            className="brutal-button mb-3 self-end bg-card"
-            onClick={() => changeMobileOpen(false)}
-          >
-            Close chat
-          </button>
-          <RoomChat
-            className="game-chat-composer"
-            isVisible={visible}
-            messages={messages}
-            currentPlayerId={currentPlayerId}
-            canSend={canSend}
-            onSendMessage={onSendMessage}
-          />
-        </div>
+        <RoomChat
+          className="game-chat-composer"
+          isVisible={visible}
+          unreadCount={unread}
+          headerAction={
+            !narrow ? (
+              <button
+                type="button"
+                onClick={toggle}
+                aria-label={expanded ? "Collapse chat" : "Expand chat"}
+                title={expanded ? "Collapse chat" : "Expand chat"}
+                aria-expanded={expanded}
+                aria-controls="game-room-chat"
+                className="flex size-11 shrink-0 cursor-pointer items-center justify-center hover:bg-surface"
+              >
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 24 24"
+                  className="size-6"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d={expanded ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} />
+                </svg>
+              </button>
+            ) : undefined
+          }
+          onClose={narrow ? () => changeMobileOpen(false) : undefined}
+          messages={messages}
+          currentPlayerId={currentPlayerId}
+          canSend={canSend}
+          onSendMessage={onSendMessage}
+        />
       </dialog>
     </section>
   );

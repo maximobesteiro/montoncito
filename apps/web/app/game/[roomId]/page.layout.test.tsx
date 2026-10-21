@@ -173,8 +173,33 @@ it.each([true, false])(
       await page
         .getByRole("textbox", { name: "Chat message" })
         .fill("Keep across resizing");
-      if (!expanded)
+      if (!expanded) {
+        const expandedBounds = await box(page.locator(".game-chat-composer"));
         await page.getByRole("button", { name: "Collapse chat" }).click();
+        const heading = page.getByRole("heading", {
+          name: "Chat",
+          exact: true,
+        });
+        const expand = page.getByRole("button", { name: "Expand chat" });
+        const headingBounds = await box(heading);
+        const toggleBounds = await box(expand);
+        const collapsedBounds = await box(page.locator(".game-chat-composer"));
+        expect(collapsedBounds.height).toBeLessThan(expandedBounds.height);
+        expect(toggleBounds.x).toBeGreaterThan(
+          headingBounds.x + headingBounds.width,
+        );
+        expect(
+          Math.abs(
+            toggleBounds.y +
+              toggleBounds.height / 2 -
+              (headingBounds.y + headingBounds.height / 2),
+          ),
+        ).toBeLessThan(2);
+        expect(await expand.textContent()).toBe("");
+        expect(
+          await page.getByRole("textbox", { name: "Chat message" }).isVisible(),
+        ).toBe(false);
+      }
       await page.setViewportSize({ width: 390, height: 900 });
       await page.getByRole("button", { name: "Open chat" }).click();
       expect(

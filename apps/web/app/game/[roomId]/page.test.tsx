@@ -2938,6 +2938,11 @@ it("counts mobile live arrivals without counting history and keeps its draft/mes
   gameRoom.view = { ...gameRoom.view, liveChatCount: 6 };
   rerender(<GameRoomPage />);
   fireEvent.click(screen.getByRole("button", { name: /Open chat.*2 unread/ }));
+  const closeChat = screen.getByRole("button", { name: "Close chat" });
+  expect(closeChat.textContent).toBe("×");
+  expect(
+    within(closeChat.parentElement!).getByRole("heading", { name: "Chat" }),
+  ).toBeTruthy();
   expect(screen.getByText("From the Lobby")).toBeTruthy();
   const draft = screen.getByRole("textbox", {
     name: "Chat message",
@@ -3015,6 +3020,15 @@ it("counts only live arrivals while collapsed and clears unread when expanded", 
   showGameRoom(3); // Recovered before the page became visible.
   const { rerender } = render(<GameRoomPage />);
   fireEvent.click(screen.getByRole("button", { name: /collapse chat/i }));
+  const expand = screen.getByRole("button", { name: "Expand chat" });
+  expect(expand.textContent).toBe("");
+  expect(expand.getAttribute("aria-expanded")).toBe("false");
+  expect(
+    within(expand.parentElement!).getByRole("heading", {
+      name: "Chat",
+    }),
+  ).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "Chat message" })).toBeNull();
   gameRoom.view = {
     ...gameRoom.view,
     chatMessages: [
@@ -3029,14 +3043,14 @@ it("counts only live arrivals while collapsed and clears unread when expanded", 
   };
   rerender(<GameRoomPage />);
   expect(
-    screen.getByRole("button", { name: /expand chat/i }).textContent,
+    screen.getByRole("heading", { name: /^Chat/ }).textContent,
   ).not.toContain("unread");
 
   gameRoom.view = { ...gameRoom.view, liveChatCount: 5 };
   rerender(<GameRoomPage />);
-  expect(
-    screen.getByRole("button", { name: /expand chat/i }).textContent,
-  ).toContain("2 unread");
+  expect(screen.getByRole("heading", { name: /^Chat/ }).textContent).toBe(
+    "Chat (2 unread)",
+  );
   gameRoom.view = {
     ...gameRoom.view,
     chatMessages: [
@@ -3050,17 +3064,17 @@ it("counts only live arrivals while collapsed and clears unread when expanded", 
     ],
   };
   rerender(<GameRoomPage />);
-  expect(
-    screen.getByRole("button", { name: /expand chat/i }).textContent,
-  ).toContain("2 unread");
+  expect(screen.getByRole("heading", { name: /^Chat/ }).textContent).toBe(
+    "Chat (2 unread)",
+  );
   fireEvent.click(screen.getByRole("button", { name: /expand chat/i }));
   expect(
-    screen.getByRole("button", { name: /collapse chat/i }).textContent,
+    screen.getByRole("heading", { name: /^Chat/ }).textContent,
   ).not.toContain("unread");
   gameRoom.view = { ...gameRoom.view, liveChatCount: 6 };
   rerender(<GameRoomPage />);
   expect(
-    screen.getByRole("button", { name: /collapse chat/i }).textContent,
+    screen.getByRole("heading", { name: /^Chat/ }).textContent,
   ).not.toContain("unread");
 });
 

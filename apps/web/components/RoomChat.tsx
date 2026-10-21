@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import type { ChatMessage } from "@/lib/socket-client";
 
 interface RoomChatProps {
@@ -10,6 +10,9 @@ interface RoomChatProps {
   canSend?: boolean;
   className?: string;
   isVisible?: boolean;
+  onClose?: () => void;
+  headerAction?: ReactNode;
+  unreadCount?: number;
 }
 
 export function RoomChat({
@@ -19,6 +22,9 @@ export function RoomChat({
   canSend = true,
   className = "",
   isVisible = true,
+  onClose,
+  headerAction,
+  unreadCount = 0,
 }: RoomChatProps) {
   const [input, setInput] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -51,15 +57,43 @@ export function RoomChat({
 
   return (
     <div
+      hidden={!isVisible && !headerAction}
+      data-collapsed={!isVisible}
       className={`brutal-border p-6 bg-card brutal-shadow flex flex-col h-full min-w-0 min-h-[300px] ${className}`}
     >
-      <h2 className="text-2xl font-bold mb-3">Chat</h2>
+      <div
+        className={`flex items-center justify-between gap-3 ${isVisible ? "mb-3" : ""}`}
+      >
+        <h2 className="flex items-center text-2xl font-bold">
+          Chat
+          {!isVisible && unreadCount > 0 && (
+            <span
+              aria-live="polite"
+              className="pl-1 text-base font-medium text-text-muted"
+            >
+              {" "}({unreadCount} unread)
+            </span>
+          )}
+        </h2>
+        {headerAction}
+        {onClose && (
+          <button
+            type="button"
+            aria-label="Close chat"
+            className="flex size-11 shrink-0 cursor-pointer items-center justify-center text-2xl font-bold hover:bg-surface"
+            onClick={onClose}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        )}
+      </div>
 
       <div
         ref={messagesContainerRef}
+        hidden={!isVisible}
         role="log"
         aria-label="Chat messages"
-        className="flex-1 overflow-y-auto brutal-border bg-muted p-3 space-y-2 min-h-0"
+        className={`${isVisible ? "" : "hidden"} flex-1 overflow-y-auto brutal-border bg-muted p-3 space-y-2 min-h-0`}
       >
         {messages.length === 0 ? (
           <p className="text-text-muted font-semibold text-sm">
@@ -84,7 +118,10 @@ export function RoomChat({
         )}
       </div>
 
-      <div className="mt-3 flex gap-2">
+      <div
+        hidden={!isVisible}
+        className={isVisible ? "mt-3 flex gap-2" : "hidden"}
+      >
         <input
           type="text"
           aria-label="Chat message"

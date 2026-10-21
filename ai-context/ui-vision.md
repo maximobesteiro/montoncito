@@ -125,9 +125,9 @@ Implemented in [#108](https://github.com/maximobesteiro/montoncito/issues/108), 
 - Multiple histories restore together. Shorter histories constrain recovery to the available geometry. Zero/one-card histories still forget expansion before later growth, and a different Game room starts with fresh inspection and scroll context.
 
 ### 4. **Chat & Presence**
-- On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. Its collapse preference lasts for the browser session.
+- On wide screens, a collapsible chat panel sits above opponents with bounded message scrolling. An accessible chevron button at the right of the Chat title row collapses or expands the panel; there is no separate toggle bar. Collapsing keeps only that row visible and shows live unread arrivals beside the title, e.g. `Chat (5 unread)`, omitting the count when zero. Expanding clears unread. Its collapse preference lasts for the browser session.
 - Expanding desktop chat cancels unsubmitted targeting and restores inspection. A Pending Action retains its destination collapse. The open desktop panel still allows fresh board interactions.
-- Below 1024px, chat starts closed. A safe-area-aware bottom entry has reserved space outside the scrollable board. It opens a bounded modal sheet with Close and backdrop dismissal. Opening the sheet clears selection and cancels drag without submitting a gameplay Action.
+- Below 1024px, chat starts closed. A safe-area-aware bottom entry has reserved space outside the scrollable board. It opens a bounded modal sheet with an accessible × close button in the Chat title row and backdrop dismissal. Opening the sheet clears selection and cancels drag without submitting a gameplay Action.
 - Recovered history does not raise unread; only live arrivals while closed do. Chat retains messages and drafts offline, disables Send until connected, and stays available during a Pending Action and after game over.
 - Shows connected players and presence indicators.
 - WebSocket-driven updates.
