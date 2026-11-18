@@ -2,7 +2,8 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { GameLayoutPrototype } from "./layout.prototype";
 import { useGameRoom, type GameRoomView } from "@/lib/use-game-room";
 import { GameRoomBoard } from "@/components/game/GameRoomBoard";
 import { GameRoomChat } from "@/components/game/GameRoomChat";
@@ -25,6 +26,23 @@ const rejectionReasons: Record<ActionRejected["code"], string> = {
 
 export default function GameRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
+  if (process.env.NODE_ENV !== "development") {
+    return <GameRoomSession key={roomId} roomId={roomId} />;
+  }
+  return <GameRoomRoute roomId={roomId} />;
+}
+
+function GameRoomRoute({ roomId }: { roomId: string }) {
+  const [prototype, setPrototype] = useState<boolean | null>(null);
+  useEffect(() => {
+    setPrototype(
+      new URLSearchParams(window.location.search).get("prototype") === "layout",
+    );
+  }, []);
+  if (prototype === null) return null;
+  if (prototype) {
+    return <GameLayoutPrototype />;
+  }
   return <GameRoomSession key={roomId} roomId={roomId} />;
 }
 

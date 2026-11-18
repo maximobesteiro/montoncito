@@ -2,6 +2,7 @@
   "name": "montoncito",
   "private": true,
   "scripts": {
+    "prototype:game": "pnpm --filter web dev",
     "build": "turbo run build",
     "dev": "turbo run dev",
     "lint": "turbo run lint",

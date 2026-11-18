@@ -1,0 +1,309 @@
+/* THROWAWAY. Scoped overrides deliberately expose what chrome removal alone fixes. */
+.layout-prototype-base .layout-prototype-board > div > :first-child {
+  display: none;
+}
+.layout-prototype-status {
+  margin-bottom: 0.75rem;
+  min-height: 2.5rem;
+}
+.layout-prototype-messages {
+  height: 300px;
+}
+.layout-prototype-switcher {
+  position: fixed;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: max-content;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.5rem 0.75rem;
+  border: 2px solid #fff;
+  border-radius: 0.75rem;
+  background: #171717;
+  color: #fff;
+  box-shadow: 0 3px 15px #0005;
+  font:
+    12px/1.5 system-ui,
+    sans-serif;
+  max-height: min(60dvh, 360px);
+  overflow-y: auto;
+}
+.prototype-scenario-label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.prototype-scenario-label select {
+  min-width: 0;
+  max-width: 100%;
+  flex: 1;
+  padding: 6px;
+  border: 1px solid #aaa;
+  color: #171717;
+  background: #fff;
+}
+.layout-prototype-switcher button {
+  min-width: 44px;
+  min-height: 36px;
+  cursor: pointer;
+}
+.layout-prototype-switcher summary {
+  cursor: pointer;
+  text-align: center;
+}
+.layout-prototype-mobile-chat {
+  display: none;
+}
+.layout-prototype-chat-dialog {
+  position: fixed;
+  inset: auto 1rem 6rem;
+  margin: 0;
+  width: auto;
+  z-index: 40;
+}
+.prototype-rivals-dock {
+  display: none;
+}
+
+/* C/D keep the same zone order; neither gets its own Turn or player-title row. */
+.layout-prototype-exploration {
+  padding-top: 12px;
+}
+.exploration-board {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 24px;
+  font-size: 14px;
+}
+.exploration-play,
+.exploration-right {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.exploration-table-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+}
+.exploration-board h1,
+.exploration-board h2 {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+}
+.exploration-turn {
+  padding: 1px 6px;
+  border: 1px solid var(--color-brutal-border);
+  background: var(--color-inactive-bg);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+.exploration-my-turn {
+  background: var(--color-active-bg);
+}
+.exploration-deck-counts {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.exploration-offline {
+  padding: 4px 8px;
+  margin-bottom: 8px;
+  border: 2px solid var(--color-brutal-border);
+  background: var(--color-warning-bg);
+}
+.exploration-builds > section > h3 {
+  display: none;
+}
+.exploration-builds > section > div {
+  gap: 8px;
+}
+.exploration-own {
+  border-top: 2px solid var(--color-brutal-border);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.exploration-stock-hand {
+  display: grid;
+  grid-template-columns: var(--prototype-card-width) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.exploration-hand,
+.exploration-discards {
+  min-width: 0;
+}
+.exploration-hand h2,
+.exploration-discards h2 {
+  margin-bottom: 8px;
+}
+.exploration-hand-cards,
+.exploration-pile-row {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.exploration-hand-cards > button:focus-visible {
+  outline: 3px solid var(--color-btn-primary);
+  outline-offset: 2px;
+  z-index: 10;
+}
+.exploration-hand-cards .exploration-selected {
+  z-index: 9;
+  transform: translateY(-6px);
+  outline: 3px solid var(--color-btn-primary);
+}
+.exploration-empty-hand {
+  min-height: var(--prototype-card-height);
+  display: flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.exploration-board
+  [data-pile-inspection]
+  > div:first-child:not([data-pile-footprint]) {
+  font-size: 12px;
+}
+.exploration-board [data-pile-inspection] > .brutal-border {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+.exploration-opponents {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.exploration-opponent {
+  border: 2px solid var(--color-brutal-border);
+  box-shadow: 3px 3px 0 var(--color-brutal-shadow);
+  background: var(--color-surface);
+  padding: 12px;
+}
+.exploration-opponent-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.exploration-opponent-heading > span:last-child {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.exploration-board [data-pile-inspection] button[aria-expanded] {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 var(--color-brutal-shadow);
+  font-size: 11px;
+}
+.exploration-board [data-pile-inspection] > div:first-child {
+  white-space: nowrap;
+}
+.exploration-board .layout-prototype-chat {
+  border-width: 2px;
+  box-shadow: 3px 3px 0 var(--color-brutal-shadow);
+  padding: 12px;
+}
+.exploration-board .layout-prototype-chat h3 {
+  font-size: 14px;
+}
+.exploration-board .layout-prototype-messages {
+  height: 220px;
+}
+.exploration-compact {
+  gap: 28px;
+}
+.exploration-compact .exploration-hand-cards > button > div:last-child {
+  font-size: 20px;
+}
+
+/* E/F only change horizontal distribution; D remains the untouched reference. */
+.exploration-alignment-center .exploration-builds > section > div,
+.exploration-alignment-right .exploration-builds > section > div {
+  justify-content: center;
+}
+.exploration-alignment-center .exploration-stock-hand,
+.exploration-alignment-right .exploration-stock-hand {
+  column-gap: clamp(24px, 4vw, 48px);
+}
+.exploration-alignment-center .exploration-hand,
+.exploration-alignment-right .exploration-hand {
+  width: min(100%, var(--prototype-hand-natural-width));
+}
+.exploration-alignment-center .exploration-hand {
+  justify-self: center;
+}
+.exploration-alignment-right .exploration-hand {
+  justify-self: end;
+}
+@media (max-width: 1023px) {
+  /* E only: keep evaluation controls in flow, not over the board. */
+  .prototype-centered-trial {
+    display: flex;
+    flex-direction: column;
+  }
+  .prototype-centered-trial .layout-prototype-switcher {
+    position: static;
+    transform: none;
+    order: -1;
+    width: auto;
+    max-width: none;
+    margin: 8px 16px 0;
+    flex-shrink: 0;
+  }
+  .layout-prototype-board .layout-prototype-chat,
+  .exploration-board .layout-prototype-chat {
+    display: none;
+  }
+  .layout-prototype-mobile-chat {
+    display: block;
+    position: fixed;
+    right: 1rem;
+    bottom: 5.5rem;
+    z-index: 30;
+  }
+  .layout-prototype {
+    padding-bottom: 9rem;
+  }
+  .exploration-board {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+  .exploration-stock-hand {
+    gap: 16px;
+  }
+  .exploration-hand-cards {
+    display: grid;
+    grid-template-columns: var(--prototype-hand-columns);
+    gap: 0;
+    padding-top: 6px;
+  }
+  .exploration-hand-cards > button {
+    grid-row: 1;
+  }
+  .exploration-hand-cards
+    > button:not(:last-child):not(.exploration-selected):not(:focus-visible)
+    > div:last-child {
+    visibility: hidden;
+  }
+  .exploration-hand-cards > button > div:first-child {
+    font-size: 14px;
+  }
+  .exploration-deck-counts {
+    margin-left: 0;
+  }
+}
