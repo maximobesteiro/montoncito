@@ -2755,9 +2755,21 @@ async function synced(
   seq: number,
 ) {
   await Promise.all([
-    alice.page.getByText(`Sequence ${seq}`, { exact: true }).waitFor(),
-    bob.page.getByText(`Sequence ${seq}`, { exact: true }).waitFor(),
+    expect.poll(() => alice.snapshot()?.seq).toBe(seq),
+    expect.poll(() => bob.snapshot()?.seq).toBe(seq),
   ]);
+  // Sequence numbers are no longer administrative chrome. Observe the public
+  // room frames and wait for the page to finish its pending presentation.
+  await Promise.all(
+    [alice, bob].map(({ page }) =>
+      page
+        .getByText(
+          "Action pending. Waiting for the server before you can play again.",
+          { exact: true },
+        )
+        .waitFor({ state: "hidden" }),
+    ),
+  );
   expect(alice.snapshot()).toEqual(bob.snapshot());
 }
 
@@ -3026,8 +3038,8 @@ it.each([1440, 390])(
       const buildTop = (await builds
         .getByLabel("Build top Jack of Clubs", { exact: true })
         .boundingBox())!;
-      expect(buildTop.x - coveredBuild.x).toBe(8);
-      expect(buildTop.y - coveredBuild.y).toBe(8);
+      expect(buildTop.x - coveredBuild.x).toBe(6);
+      expect(buildTop.y - coveredBuild.y).toBe(6);
       const ownHistory = alice.page.getByRole("group", {
         name: "Alice Discard pile 1",
       });
@@ -3058,10 +3070,13 @@ it.each([1440, 390])(
       const queen = alice.page.getByRole("button", {
         name: "Hand Queen of Clubs",
       });
-      await queen.scrollIntoViewIfNeeded();
+      await queen.evaluate((element) =>
+        element.scrollIntoView({ block: "center" }),
+      );
       const start = (await queen.boundingBox())!;
-      const x = start.x + start.width / 2;
-      const y = start.y + start.height / 2;
+      // Use the always-exposed corner, not a center that can be overlapped.
+      const x = start.x + 9;
+      const y = start.y + 10;
       if (width < 1024) {
         const cdp = await alice.page.context().newCDPSession(alice.page);
         await cdp.send("Input.dispatchTouchEvent", {
@@ -3163,7 +3178,7 @@ it.each([1440, 390])(
         }),
       );
       await synced(alice, bob, 4);
-      await alice.page.getByText("Active: Bob", { exact: true }).waitFor();
+      await alice.page.getByText("Turn: Bob", { exact: true }).waitFor();
       expect(await alice.page.locator("[data-drag-source]").count()).toBe(0);
       await tap(
         bob.page,

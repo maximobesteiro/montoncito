@@ -55,16 +55,25 @@ export function GameBoard({
 
   return (
     <div className="flex flex-col gap-4 p-2 sm:p-4 bg-muted">
-      <TurnIndicator gameState={gameState} currentPlayerId={currentPlayerId} />
-
-      <div className="flex flex-wrap justify-center gap-4 text-sm font-semibold">
-        <span>Draw pile: {gameState.deck.drawPile.length} cards</span>
-        <span>Recycle pile: {gameState.deck.recyclePile.length} cards</span>
-      </div>
-
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-4 items-start">
         <div className="min-w-0 flex flex-col gap-4">
           <BuildPiles
+            size="sm"
+            heading={
+              <>
+                <TurnIndicator
+                  gameState={gameState}
+                  currentPlayerId={currentPlayerId}
+                />
+                <span className="text-xs text-text-muted">
+                  <span>Draw pile: {gameState.deck.drawPile.length} cards</span>
+                  {" · "}
+                  <span>
+                    Recycle pile: {gameState.deck.recyclePile.length} cards
+                  </span>
+                </span>
+              </>
+            }
             buildPiles={gameState.center.buildPiles}
             onPileClick={onBuildPileClick}
             playablePiles={playableBuildPiles}

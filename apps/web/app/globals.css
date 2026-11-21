@@ -116,15 +116,50 @@
 
 .player-stock-hand {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 24px;
   align-items: start;
 }
 
-@container (min-width: 34rem) {
-  .player-stock-hand {
-    grid-template-columns: 6rem minmax(0, 1fr);
-  }
+.player-hand {
+  justify-self: center;
+  min-width: 0;
+  max-width: 100%;
+  width: max-content;
+}
+
+.own-hand-cards {
+  display: grid;
+  /* Shrink only the exposed tracks; the final card keeps its whole footprint. */
+  grid-template-columns:
+    repeat(calc(var(--hand-count) - 1), minmax(0, 56px))
+    56px;
+  width: max-content;
+  max-width: 100%;
+  column-gap: 8px;
+  min-height: 80px;
+  padding-bottom: 4px;
+}
+
+.own-hand-cards:has(> :only-child) {
+  grid-template-columns: 56px;
+}
+
+.own-hand-cards > [aria-pressed="true"],
+.own-hand-cards > :focus-visible {
+  /* Raising z-index would hide the next card's exposed selectable corner. */
+  outline: 3px solid var(--color-foreground);
+  outline-offset: 2px;
+}
+
+.empty-hand {
+  width: 56px;
+}
+
+.own-inspection-control {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.25rem;
 }
 
 /* Enable class-based dark mode with .dark class on root element */

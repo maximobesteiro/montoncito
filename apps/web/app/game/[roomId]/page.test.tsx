@@ -1710,7 +1710,7 @@ it("shows three compact own cards, only the opponent top, and history controls o
     const pile = screen.getByRole("group", { name: `${name} Discard pile 2` });
     if (name === "Alice")
       expect(within(pile).queryByText("Discard 2")).toBeNull();
-    else expect(within(pile).getByText("(1)")).toBeTruthy();
+    else expect(within(pile).getByText("(1)", { exact: true })).toBeTruthy();
     expect(within(pile).queryByRole("button", { name: "View all" })).toBeNull();
   }
 });
@@ -2390,7 +2390,7 @@ it("plays a legal Hand card to Build on server update", () => {
   const { rerender } = render(<GameRoomPage />);
 
   expect(screen.queryByText("Available moves")).toBeNull();
-  expect(screen.getByText("Active: Alice (Your Turn)")).toBeTruthy();
+  expect(screen.getByText("Your Turn", { exact: true })).toBeTruthy();
   expect(screen.getAllByText("Stock (20)")).toHaveLength(2);
   expect(screen.getAllByRole("group", { name: /Discard pile 2/ })).toHaveLength(
     2,
@@ -2498,7 +2498,7 @@ it("discards a non-wild Hand card and follows the next Turn", () => {
   accepted.turn.number = 2;
   gameRoom.view = { ...gameRoom.view, state: accepted, seq: 1 };
   rerender(<GameRoomPage />);
-  expect(screen.getByText("Active: Bob")).toBeTruthy();
+  expect(screen.getByText("Turn: Bob", { exact: true })).toBeTruthy();
   expect(screen.queryByLabelText("Hand 9 of Spades")).toBeNull();
   expect(screen.queryByRole("button", { name: /Hand / })).toBeNull();
   expect(screen.queryByRole("button", { name: /Discard pile/ })).toBeNull();
@@ -2819,7 +2819,7 @@ it("offers End Turn only with empty Hand, no refill, and no legal placement", ()
   gameRoom.view = { ...gameRoom.view, state: advanced, seq: 5 };
   rerender(<GameRoomPage />);
   expect(screen.queryByRole("button", { name: "End Turn" })).toBeNull();
-  expect(screen.getByText("Active: Bob")).toBeTruthy();
+  expect(screen.getByText("Turn: Bob", { exact: true })).toBeTruthy();
 });
 
 it("locks a Pending Action across broadcasts until the server refills Hand", () => {
