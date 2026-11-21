@@ -952,12 +952,12 @@ it.each(["mouse", "touch"])(
   },
 );
 
-async function mountInspectionPage(page: Page) {
+async function mountInspectionPage(page: Page, trailingOpponents = false) {
   await mountChatPage(page);
   // Exercise restoration without Chromium's optional native anchoring, as on Safari.
   await page.addStyleTag({ content: "* { overflow-anchor: none; }" });
   const state = denseBoardState(2);
-  state.players = ["player-1", "player-2"];
+  if (!trailingOpponents) state.players = ["player-1", "player-2"];
   state.byId["player-2"]!.discards = [[], []];
   state.center.buildPiles = state.center.buildPiles.slice(0, 1);
   state.byId["player-1"]!.discards = [0, 1].map((pile) =>
@@ -1065,7 +1065,10 @@ it.each([
       viewport: { width: 390, height: 600 },
     });
     try {
-      const { piles, before, scroll, state } = await mountInspectionPage(page);
+      const { piles, before, scroll, state } = await mountInspectionPage(
+        page,
+        true,
+      );
       if (nativeAnchoring)
         await page.addStyleTag({ content: "* { overflow-anchor: auto; }" });
       await page.keyboard.press("Enter");
@@ -1233,7 +1236,7 @@ it("retains affected inspection across source switches and starts fresh after th
     await page.keyboard.press("Enter");
   };
   try {
-    const { scroll, before, piles } = await mountInspectionPage(page);
+    const { scroll, before, piles } = await mountInspectionPage(page, true);
     await page.keyboard.press("Enter");
     await select("Hand 3 of Clubs");
     await page.keyboard.press("Escape");
@@ -1317,7 +1320,7 @@ it.each([0, 1])(
       viewport: { width: 390, height: 600 },
     });
     try {
-      const { piles, state } = await mountInspectionPage(page);
+      const { piles, state } = await mountInspectionPage(page, true);
       await page.keyboard.press("Enter");
       await page
         .getByRole("button", { name: "Discard Hand to pile 1", exact: true })

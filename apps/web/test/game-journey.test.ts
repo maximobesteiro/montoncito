@@ -3070,10 +3070,13 @@ it.each([1440, 390])(
       const queen = alice.page.getByRole("button", {
         name: "Hand Queen of Clubs",
       });
-      await queen.scrollIntoViewIfNeeded();
+      await queen.evaluate((element) =>
+        element.scrollIntoView({ block: "center" }),
+      );
       const start = (await queen.boundingBox())!;
-      const x = start.x + start.width / 2;
-      const y = start.y + start.height / 2;
+      // Use the always-exposed corner, not a center that can be overlapped.
+      const x = start.x + 9;
+      const y = start.y + 10;
       if (width < 1024) {
         const cdp = await alice.page.context().newCDPSession(alice.page);
         await cdp.send("Input.dispatchTouchEvent", {
