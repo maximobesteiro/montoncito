@@ -1708,7 +1708,9 @@ it("shows three compact own cards, only the opponent top, and history controls o
   expect(screen.getAllByRole("button", { name: "View all" })).toHaveLength(2);
   for (const name of ["Alice", "Bob"]) {
     const pile = screen.getByRole("group", { name: `${name} Discard pile 2` });
-    expect(within(pile).queryByText("Discard 2")).toBeNull();
+    if (name === "Alice")
+      expect(within(pile).queryByText("Discard 2")).toBeNull();
+    else expect(within(pile).getByText("(1)")).toBeTruthy();
     expect(within(pile).queryByRole("button", { name: "View all" })).toBeNull();
   }
 });
