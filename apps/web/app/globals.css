@@ -30,6 +30,20 @@
   display: none;
 }
 
+.opponent-area {
+  border-width: 2px;
+  box-shadow: 3px 3px 0 var(--color-brutal-shadow);
+}
+
+.opponent-area [data-pile-inspection] button[aria-expanded] {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 var(--color-brutal-shadow);
+  font-size: 11px;
+}
+
 @media (max-width: 1023px) {
   /* Reserve a full-width dock, so scrolling cards never pass behind the entry. */
   .game-room-page {
