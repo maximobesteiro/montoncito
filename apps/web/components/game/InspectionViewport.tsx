@@ -59,7 +59,8 @@ export class InspectionViewport extends Component<
       // happens to be exposed above it after scrolling to the bottom.
       .filter(
         (element) =>
-          !element.closest('[data-pile-temporarily-collapsed="true"]'),
+          !element.closest('[data-pile-temporarily-collapsed="true"]') &&
+          !element.querySelector('[data-pile-temporarily-collapsed="true"]'),
       )
       .map((element) => ({ element, top: element.getBoundingClientRect().top }))
       .filter(
