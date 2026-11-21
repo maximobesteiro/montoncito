@@ -54,6 +54,13 @@ export class InspectionViewport extends Component<
         : host.clientHeight);
     const anchors = Array.from(root.querySelectorAll("[aria-label]"))
       .filter((element) => !element.closest(".game-room-chat"))
+      // Destination histories change their internal geometry when they reopen.
+      // Anchor unaffected content (including opponents), not a covered card that
+      // happens to be exposed above it after scrolling to the bottom.
+      .filter(
+        (element) =>
+          !element.closest('[data-pile-temporarily-collapsed="true"]'),
+      )
       .map((element) => ({ element, top: element.getBoundingClientRect().top }))
       .filter(
         ({ element, top }) =>
