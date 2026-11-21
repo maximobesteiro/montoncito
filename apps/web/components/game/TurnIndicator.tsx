@@ -19,7 +19,7 @@ export function TurnIndicator({
     return (
       <div
         role="status"
-        className="p-4 brutal-border brutal-shadow bg-active-bg text-center break-words"
+        className="min-w-0 max-w-full p-4 brutal-border brutal-shadow bg-active-bg text-center break-words"
       >
         <p className="text-base font-semibold">Game Over</p>
         <h2 className="mt-1 text-3xl sm:text-4xl font-bold">

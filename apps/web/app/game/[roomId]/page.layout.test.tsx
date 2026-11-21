@@ -483,6 +483,45 @@ it.each(["mouse", "touch"])(
   },
 );
 
+it("keeps a long-name game-over notice readable in the compact Build heading", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 740 } });
+  try {
+    await mountChatPage(page);
+    const state = denseBoardState(1);
+    state.phase = "gameover";
+    state.winner = "player-1";
+    state.byId["player-1"]!.name = "W".repeat(32);
+    state.center.buildPiles = [];
+    await page.evaluate((state) => window.chatTest.update({ state }), state);
+    await page
+      .getByRole("heading", {
+        name: `${"W".repeat(32)} wins! (You)`,
+        exact: true,
+      })
+      .waitFor();
+    const builds = page.getByRole("region", {
+      name: "Build piles",
+      exact: true,
+    });
+    expect(
+      await builds.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await builds
+        .getByText(
+          "Final board is read-only. You can still chat while connected.",
+          { exact: true },
+        )
+        .isVisible(),
+    ).toBe(true);
+    expect(await page.locator("[data-drag-source]").count()).toBe(0);
+  } finally {
+    await page.close();
+  }
+});
+
 it.each([false, true])(
   "desktop chat opening cancels unsubmitted targeting while retaining pending=%s collapse",
   async (pending) => {
@@ -817,8 +856,14 @@ it.each([
         );
       else if (ending === "chat")
         await page.getByRole("button", { name: "Open chat" }).click();
-      else if (ending === "unused") await page.mouse.click(25, 300);
-      else
+      else if (ending === "unused") {
+        const bounds = await box(
+          page.getByRole("region", { name: "Game board", exact: true }),
+        );
+        // The board's right padding stays empty after compaction. Do not let
+        // locator auto-scrolling count as deliberate navigation before cancelling.
+        await page.mouse.click(bounds.x + bounds.width - 1, 300);
+      } else
         await page.keyboard.press(ending === "deselect" ? "Enter" : "Escape");
       for (const pile of piles)
         await pile
@@ -1173,7 +1218,13 @@ it("resets inspection and discards the previous room's reading position when roo
         }),
       state,
     );
-    await page.getByText("another-room", { exact: true }).waitFor();
+    await expect
+      .poll(() =>
+        page
+          .getByRole("button", { name: "Hand 5 of Clubs", exact: true })
+          .getAttribute("aria-pressed"),
+      )
+      .toBe("false");
     for (const pile of piles) {
       expect(
         await pile.getByRole("button", { name: "Close", exact: true }).count(),
@@ -1429,7 +1480,7 @@ it.each(["mouse", "touch"])(
           element.scrollIntoView({ block: "center" }),
         );
       const bounds = await box(destination);
-      expect(bounds.height).toBe(144);
+      expect(bounds.height).toBe(116);
       await move(bounds.x + 1, bounds.y + 1);
       await expect
         .poll(() => destination.getAttribute("data-drop-hovered"))
