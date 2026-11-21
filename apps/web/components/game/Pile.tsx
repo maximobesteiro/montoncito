@@ -352,7 +352,7 @@ function OverlappingLayout({
           </div>
           <button
             type="button"
-            className="brutal-button text-xs"
+            className={`brutal-button text-xs ${size === "sm" ? "own-inspection-control" : ""}`}
             aria-expanded={showHistory}
             aria-controls={id}
             disabled={presentation.temporarilyCollapsed}

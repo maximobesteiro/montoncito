@@ -45,6 +45,7 @@ export function DiscardPile({
       {isPending && <span className="text-xs font-bold">Pending</span>}
       <Pile
         cards={pile}
+        size={isOpponent ? "md" : "sm"}
         presentation={{
           kind: "overlapping",
           collapsedVisibleCount: isOpponent ? 1 : 3,

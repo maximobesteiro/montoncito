@@ -36,23 +36,12 @@ export function TurnIndicator({
   }
 
   return (
-    <div
-      className={`
-        p-4 brutal-border
-        ${isMyTurn ? "bg-active-bg" : "bg-inactive-bg"}
-        text-center
-        brutal-shadow
-      `}
+    <p
+      className={`min-w-0 break-words px-2 py-1 text-sm font-semibold ${isMyTurn ? "bg-active-bg" : "bg-inactive-bg"}`}
     >
-      <div className="text-2xl font-bold">
-        {`Turn ${gameState.turn.number}`}
-      </div>
-      <div className="text-base font-semibold mt-1">
-        <span>
-          Active: {activePlayer?.name || gameState.turn.activePlayer}
-          {isMyTurn && " (Your Turn)"}
-        </span>
-      </div>
-    </div>
+      {isMyTurn
+        ? "Your Turn"
+        : `Turn: ${activePlayer?.name || gameState.turn.activePlayer}`}
+    </p>
   );
 }

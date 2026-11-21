@@ -20,11 +20,22 @@ export function Hand({
   pendingCardId,
 }: HandProps) {
   return (
-    <div className="flex gap-2 flex-wrap">
+    <div
+      className="own-hand-cards"
+      style={
+        {
+          "--hand-count": Math.max(1, hand.cards.length),
+        } as React.CSSProperties
+      }
+    >
+      {hand.cards.length === 0 && (
+        <span className="empty-hand text-sm text-text-muted">Empty Hand</span>
+      )}
       {hand.cards.map((card) => (
         <Card
           key={card.id}
           card={card}
+          size="sm"
           faceUp={true}
           onClick={
             onCardClick && playableCards.has(card.id)

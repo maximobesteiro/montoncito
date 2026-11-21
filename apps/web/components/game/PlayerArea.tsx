@@ -40,19 +40,7 @@ export function PlayerArea({
   collapsedDiscardDestinations,
 }: PlayerAreaProps) {
   return (
-    <div
-      className={`
-        p-4 brutal-border
-        ${isCurrentPlayer ? "bg-highlight-bg" : "bg-muted"}
-        min-w-0 flex flex-col gap-4
-        brutal-shadow
-      `}
-    >
-      <h3 className="text-2xl font-bold brutal-border px-3 py-1 bg-card inline-block break-words">
-        {player.name || player.id}
-        {isCurrentPlayer && " (You)"}
-      </h3>
-
+    <div className="min-w-0 flex flex-col gap-4">
       <div className="player-cards">
         <div className="player-stock-hand">
           <div
@@ -69,13 +57,14 @@ export function PlayerArea({
               <span className="text-xs font-bold">Pending</span>
             )}
             <StockPile
+              size="sm"
               stock={player.stock}
               onTopCardClick={onStockClick}
               isPlayable={isStockPlayable}
               isSelected={isStockSelected}
             />
           </div>
-          <div role="group" aria-label="Your Hand" className="min-w-0">
+          <div role="group" aria-label="Your Hand" className="player-hand">
             <h4 className="text-sm font-semibold mb-2">Hand</h4>
             <Hand
               hand={player.hand}

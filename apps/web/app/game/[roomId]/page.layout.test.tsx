@@ -220,7 +220,7 @@ it.each([320, 390, 768, 1024, 1440])(
     try {
       await mountChatPage(page);
       await page
-        .getByRole("heading", { name: "Game room", exact: true })
+        .getByRole("region", { name: "Build piles", exact: true })
         .waitFor()
         .catch(() => {
           throw new Error(errors.join("\n"));
@@ -336,6 +336,153 @@ async function box(locator: Locator) {
   return bounds!;
 }
 
+it.each([
+  { width: 1440, height: 900 },
+  { width: 1024, height: 768 },
+  { width: 390, height: 844 },
+  { width: 320, height: 740 },
+  { width: 844, height: 390 },
+])(
+  "centers compact own sources and Builds at $width × $height",
+  async (viewport) => {
+    const page = await browser.newPage({ viewport });
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(3);
+      state.center.buildPiles = [];
+      await page.evaluate((state) => window.chatTest.update({ state }), state);
+      const stock = page.getByRole("group", {
+        name: "Your Stock",
+        exact: true,
+      });
+      const hand = page.getByRole("group", { name: "Your Hand", exact: true });
+      const builds = page.getByRole("region", {
+        name: "Build piles",
+        exact: true,
+      });
+      const [s, h, b, slot, card] = await Promise.all([
+        box(stock),
+        box(hand),
+        box(builds),
+        box(page.getByLabel("New Build pile", { exact: true })),
+        box(
+          page.getByRole("button", { name: "Hand Ace of Clubs", exact: true }),
+        ),
+      ]);
+      expect(card.width).toBe(56);
+      expect(card.height).toBe(80);
+      expect(slot.width).toBe(56);
+      expect(slot.height).toBe(80);
+      expect(s.x + s.width).toBeLessThan(h.x);
+      expect(Math.abs(s.y - h.y)).toBeLessThan(1);
+      expect(
+        Math.abs(slot.x + slot.width / 2 - (b.x + b.width / 2)),
+      ).toBeLessThan(1);
+      if (viewport.width >= 1024)
+        expect(
+          Math.abs(
+            h.x + h.width / 2 - (s.x + s.width + 24 + b.x + b.width) / 2,
+          ),
+        ).toBeLessThan(1);
+      expect(
+        await page
+          .getByRole("heading", { name: "Game room", exact: true })
+          .count(),
+      ).toBe(0);
+      expect(await page.getByText("Sequence 0", { exact: true }).count()).toBe(
+        0,
+      );
+      expect(await page.getByText("Alice (You)", { exact: true }).count()).toBe(
+        0,
+      );
+      expect(await builds.getByText("Your Turn", { exact: true }).count()).toBe(
+        1,
+      );
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(viewport.width);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it.each(["mouse", "touch"])(
+  "drags the exposed first overlapped Hand corner with %s at 320px",
+  async (method) => {
+    const page = await browser.newPage({
+      viewport: { width: 320, height: 740 },
+      hasTouch: true,
+    });
+    const input = await page.context().newCDPSession(page);
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(3);
+      state.center.buildPiles = [];
+      await page.evaluate((state) => window.chatTest.update({ state }), state);
+      const source = page.getByRole("button", {
+        name: "Hand Ace of Clubs",
+        exact: true,
+      });
+      await source.scrollIntoViewIfNeeded();
+      const pickup = await box(source);
+      const x = pickup.x + 9;
+      const y = pickup.y + 10;
+      if (method === "mouse") {
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        await page.mouse.move(x + 6, y);
+      } else {
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchStart",
+          touchPoints: [{ x, y, id: 1 }],
+        });
+      }
+      const overlay = page.getByLabel("Moving Ace of Clubs", { exact: true });
+      await overlay.waitFor();
+      expect((await box(overlay)).width).toBe(56);
+      expect((await box(overlay)).height).toBe(80);
+      const target = page.getByRole("button", {
+        name: "New Build pile",
+        exact: true,
+      });
+      const destination = await box(target);
+      const end = { x: destination.x + 20, y: destination.y + 30 };
+      if (method === "mouse") {
+        await page.mouse.move(end.x, end.y);
+      } else {
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ ...end, id: 1 }],
+        });
+      }
+      await expect
+        .poll(() => target.getAttribute("data-drop-hovered"))
+        .toBe("true");
+      if (method === "mouse") await page.mouse.up();
+      else
+        await input.send("Input.dispatchTouchEvent", {
+          type: "touchEnd",
+          touchPoints: [],
+        });
+      await overlay.waitFor({ state: "detached" });
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+        {
+          kind: "PLAY_HAND_TO_BUILD",
+          cardId: "player-1-hand-1",
+          target: "new",
+        },
+      ]);
+      expect(
+        await page.getByLabel("Hand Ace of Clubs", { exact: true }).count(),
+      ).toBe(1);
+    } finally {
+      await input.detach();
+      await page.close();
+    }
+  },
+);
+
 it.each([false, true])(
   "desktop chat opening cancels unsubmitted targeting while retaining pending=%s collapse",
   async (pending) => {
@@ -378,6 +525,145 @@ it.each([false, true])(
         // The persistent desktop panel permits a fresh board interaction.
         await source.click();
         expect(await source.getAttribute("aria-pressed")).toBe("true");
+      }
+    } finally {
+      await page.close();
+    }
+  },
+);
+
+it("keeps every overlapped Ace, King and Joker playable by exposed corner and keyboard", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 740 } });
+  try {
+    await mountChatPage(page);
+    const state = denseBoardState(4);
+    state.center.buildPiles = [];
+    state.byId["player-1"]!.hand.cards = [
+      { kind: "standard", id: "ace", rank: 1, suit: "Hearts" },
+      { kind: "standard", id: "eight", rank: 8, suit: "Spades" },
+      { kind: "standard", id: "king", rank: 13, suit: "Diamonds" },
+      { kind: "standard", id: "jack", rank: 11, suit: "Clubs" },
+      { kind: "joker", id: "joker" },
+    ];
+    await page.evaluate((state) => window.chatTest.update({ state }), state);
+    const names = [
+      "Ace of Hearts",
+      "8 of Spades",
+      "King of Diamonds",
+      "Jack of Clubs",
+      "Joker",
+    ];
+    const cards = names.map((name) =>
+      page.getByRole("button", { name: `Hand ${name}`, exact: true }),
+    );
+    for (const card of cards) {
+      await card.click({ position: { x: 9, y: 10 } });
+      expect(await card.getAttribute("aria-pressed")).toBe("true");
+    }
+    await page.keyboard.press("Escape");
+    for (const card of cards) {
+      await card.focus();
+      await page.keyboard.press("Space");
+      expect(await card.getAttribute("aria-pressed")).toBe("true");
+      expect(
+        await card.evaluate(
+          (element) => getComputedStyle(element).outlineWidth,
+        ),
+      ).toBe("3px");
+    }
+    await page
+      .getByRole("button", { name: "New Build pile", exact: true })
+      .click();
+    expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
+      { kind: "PLAY_HAND_TO_BUILD", cardId: "joker", target: "new" },
+    ]);
+    // No optimistic card movement or second Action while awaiting the server.
+    expect(await page.getByLabel("Hand Joker", { exact: true }).count()).toBe(
+      1,
+    );
+    expect(await page.getByText(/Action pending. Waiting/).count()).toBe(1);
+    expect(await page.getByRole("button", { name: /^Hand / }).count()).toBe(0);
+  } finally {
+    await page.close();
+  }
+});
+
+it.each([
+  { width: 1440, height: 900 },
+  { width: 1024, height: 768 },
+  { width: 390, height: 844 },
+  { width: 320, height: 740 },
+  { width: 844, height: 390 },
+])(
+  "reaches changing own areas and all dense Builds at $width × $height",
+  async (viewport) => {
+    const page = await browser.newPage({ viewport });
+    try {
+      await mountChatPage(page);
+      for (const [index, count] of [5, 2, 1, 0, 5, 5].entries()) {
+        const state = denseBoardState(((index % 4) + 1) as 1 | 2 | 3 | 4);
+        state.byId["player-1"]!.hand.cards = state.byId[
+          "player-1"
+        ]!.hand.cards.slice(0, count);
+        state.byId["player-1"]!.name = "A".repeat(32);
+        state.center.buildPiles = state.center.buildPiles.slice(
+          0,
+          [0, 6, 18, 0, 6, 18][index],
+        );
+        if (index === 0) state.byId["player-1"]!.discards = [[]];
+        if (state.center.buildPiles[0])
+          state.center.buildPiles[0].id = "LongBuildLabel".repeat(6);
+        await page.evaluate(
+          ({ state, seq }) => window.chatTest.update({ state, seq }),
+          { state, seq: index + 1 },
+        );
+        const hand = page.getByRole("group", {
+          name: "Your Hand",
+          exact: true,
+        });
+        await expect.poll(() => hand.getByLabel(/^Hand /).count()).toBe(count);
+        expect((await box(hand)).height).toBeGreaterThanOrEqual(100);
+        if (!count)
+          expect(
+            await hand.getByText("Empty Hand", { exact: true }).count(),
+          ).toBe(1);
+        expect(
+          await page
+            .getByRole("region", { name: "Build piles", exact: true })
+            .getByLabel(/^Build top/)
+            .count(),
+        ).toBe(state.center.buildPiles.length);
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBe(viewport.width);
+        const builds = page.getByRole("region", {
+          name: "Build piles",
+          exact: true,
+        });
+        expect(
+          await builds.evaluate(
+            (element) => element.scrollWidth <= element.clientWidth,
+          ),
+        ).toBe(true);
+        for (const source of await hand.getByRole("button").all()) {
+          await source.click({ position: { x: 9, y: 10 } });
+          expect(await source.getAttribute("aria-pressed")).toBe("true");
+          await page.keyboard.press("Escape");
+        }
+        for (const control of await page
+          .getByRole("group", { name: "Your Discard piles", exact: true })
+          .getByRole("button", { name: "View all" })
+          .all()) {
+          await control.scrollIntoViewIfNeeded();
+          const bounds = await box(control);
+          expect(bounds.width).toBeGreaterThanOrEqual(44);
+          expect(bounds.height).toBeGreaterThanOrEqual(44);
+          await control.click();
+          await page
+            .getByRole("group", { name: "Your Discard piles", exact: true })
+            .getByRole("button", { name: "Close", exact: true })
+            .click();
+        }
       }
     } finally {
       await page.close();
@@ -1599,12 +1885,12 @@ it.each([320, 390, 768, 1024, 1440])(
       const empty = page.getByLabel("Discard pile 2, empty", { exact: true });
       for (const target of [slot, empty]) {
         const bounds = await box(target);
-        expect(bounds.width).toBe(72);
-        expect(bounds.height).toBe(104);
+        expect(bounds.width).toBe(56);
+        expect(bounds.height).toBe(80);
       }
       expect(
         (await box(page.getByRole("region", { name: "Build piles" }))).height,
-      ).toBeGreaterThan(104);
+      ).toBeGreaterThan(80);
       await page.getByRole("button", { name: "Hand 5 of Clubs" }).click();
       const pile = page.getByRole("group", { name: "Alice Discard pile 1" });
       const destination = pile.getByRole("button", {
@@ -1616,7 +1902,7 @@ it.each([320, 390, 768, 1024, 1440])(
       const top = await box(pile.getByLabel(/^Discard pile 1,/));
       expect(bounds.x).toBe(covered.x);
       expect(bounds.y).toBe(covered.y);
-      expect(bounds.width).toBe(72);
+      expect(bounds.width).toBe(56);
       expect(bounds.y + bounds.height).toBe(top.y + top.height);
       expect(
         await destination.evaluate(
@@ -1783,7 +2069,7 @@ it.each([320, 390, 768, 1024, 1440])(
         if (name === "Alice") {
           const first = await box(compact.first());
           const last = await box(compact.last());
-          expect(last.y - first.y).toBe(40);
+          expect(last.y - first.y).toBe(36);
         }
         const open = pile.getByRole("button", { name: "View all" });
         const historyId = await open.getAttribute("aria-controls");
@@ -1821,8 +2107,8 @@ it.each([320, 390, 768, 1024, 1440])(
               ),
             };
           });
-          expect(dimensions.width).toBe(72);
-          expect(dimensions.height).toBe(104);
+          expect(dimensions.width).toBe(name === "Alice" ? 56 : 72);
+          expect(dimensions.height).toBe(name === "Alice" ? 80 : 104);
           expect(dimensions.left).toBeGreaterThanOrEqual(0);
           expect(dimensions.right).toBeLessThanOrEqual(width);
           expect(dimensions.top).toBeGreaterThanOrEqual(previousBottom);
@@ -1830,10 +2116,10 @@ it.each([320, 390, 768, 1024, 1440])(
           previousBottom = dimensions.bottom;
         }
         const bounds = await box(pile);
-        expect(bounds.height).toBeGreaterThan(3300);
+        expect(bounds.height).toBeGreaterThan(name === "Alice" ? 2600 : 3300);
         const controlBounds = await box(close);
         expect(controlBounds.y).toBeGreaterThanOrEqual(
-          (await box(cards.last())).y + 104,
+          (await box(cards.last())).y + (name === "Alice" ? 80 : 104),
         );
       }
       expect(
@@ -1849,8 +2135,8 @@ it.each([320, 390, 768, 1024, 1440])(
         name: "Discard pile 2, empty",
       });
       const emptyBounds = await box(destination);
-      expect(emptyBounds.width).toBe(72);
-      expect(emptyBounds.height).toBe(104);
+      expect(emptyBounds.width).toBe(56);
+      expect(emptyBounds.height).toBe(80);
       await destination.click();
       expect(await page.evaluate(() => window.chatTest.actions)).toEqual([
         { kind: "DISCARD_FROM_HAND", cardId: "player-1-hand-5", pileIndex: 1 },
@@ -1874,9 +2160,9 @@ it.each([320, 390, 768, 1024, 1440])(
       for (const { count, depth, offset } of [
         { count: 0, depth: 0, offset: 0 },
         { count: 1, depth: 0, offset: 0 },
-        { count: 2, depth: 1, offset: 4 },
-        { count: 3, depth: 2, offset: 8 },
-        { count: 8, depth: 2, offset: 8 },
+        { count: 2, depth: 1, offset: 3 },
+        { count: 3, depth: 2, offset: 6 },
+        { count: 8, depth: 2, offset: 6 },
       ]) {
         const state = denseBoardState(2);
         const cards = Array.from({ length: count }, (_, index) => ({
@@ -1935,13 +2221,13 @@ it.each([320, 390, 768, 1024, 1440])(
           const bounds = await box(pile);
           if (!count) {
             const empty = await box(pile.getByText("—", { exact: true }));
-            expect(empty.width).toBe(72);
-            expect(empty.height).toBe(104);
+            expect(empty.width).toBe(56);
+            expect(empty.height).toBe(80);
             continue;
           }
           const topBounds = await box(top);
-          expect(topBounds.width).toBe(72);
-          expect(topBounds.height).toBe(104);
+          expect(topBounds.width).toBe(56);
+          expect(topBounds.height).toBe(80);
           for (const card of [...(await covered.all()), top]) {
             const cardBounds = await box(card);
             expect(cardBounds.x).toBeGreaterThanOrEqual(bounds.x);
@@ -2109,12 +2395,8 @@ for (const width of [320, 390, 768, 1024, 1440]) {
         } else {
           expect(o.y).toBeGreaterThanOrEqual(d.y + d.height);
         }
-        if (width >= 768) {
-          expect(s.y).toBe(h.y);
-          expect(s.x + s.width).toBeLessThanOrEqual(h.x);
-        } else {
-          expect(s.y + s.height).toBeLessThanOrEqual(h.y);
-        }
+        expect(s.y).toBe(h.y);
+        expect(s.x + s.width).toBeLessThanOrEqual(h.x);
 
         const buildTops = build.getByLabel("Build top 2 of Clubs", {
           exact: true,
@@ -2141,8 +2423,11 @@ for (const width of [320, 390, 768, 1024, 1440]) {
         expect(await cards.count()).toBe(27 + count * 4);
         for (const card of await cards.all()) {
           const bounds = await box(card);
-          expect(bounds.width).toBe(72);
-          expect(bounds.height).toBe(104);
+          const own = await card.evaluate(
+            (element) => !element.closest("aside"),
+          );
+          expect(bounds.width).toBe(own ? 56 : 72);
+          expect(bounds.height).toBe(own ? 80 : 104);
           expect(bounds.x).toBeGreaterThanOrEqual(0);
           expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
           await card.scrollIntoViewIfNeeded();
@@ -2150,10 +2435,7 @@ for (const width of [320, 390, 768, 1024, 1440]) {
             await card.evaluate((element) => {
               const rect = element.getBoundingClientRect();
               return element.contains(
-                document.elementFromPoint(
-                  rect.x + rect.width / 2,
-                  rect.y + rect.height / 2,
-                ),
+                document.elementFromPoint(rect.x + 9, rect.y + 10),
               );
             }),
           ).toBe(true);
@@ -2173,7 +2455,8 @@ for (const width of [320, 390, 768, 1024, 1440]) {
         }
         const handCards = await hand.getByRole("button").all();
         expect(handCards).toHaveLength(5);
-        for (const card of handCards) await card.click({ trial: true });
+        for (const card of handCards)
+          await card.click({ trial: true, position: { x: 9, y: 10 } });
         for (const name of ["Bob", "Carol", "Dave"]) {
           const panel = page.getByRole("region", { name, exact: true });
           expect(await panel.getByText("Hand: 5 concealed cards").count()).toBe(

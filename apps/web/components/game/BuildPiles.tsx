@@ -8,8 +8,10 @@ import {
 import { cardDimensions, type CardSize } from "./Card";
 import { Pile, PileFootprint } from "./Pile";
 import { formatCardName } from "@/lib/format-card-name";
+import type { ReactNode } from "react";
 
 interface BuildPilesProps {
+  heading?: ReactNode;
   buildPiles: BuildPile[];
   size?: CardSize;
   onPileClick?: (buildId: BuildPileTarget) => void;
@@ -18,6 +20,7 @@ interface BuildPilesProps {
 }
 
 export function BuildPiles({
+  heading,
   buildPiles,
   size = "md",
   onPileClick,
@@ -27,9 +30,12 @@ export function BuildPiles({
   const dimensions = cardDimensions[size];
   return (
     <section aria-label="Build piles" className="min-w-0 flex flex-col gap-2">
-      <h3 className="text-lg font-bold">Build piles</h3>
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+        <h3 className="text-lg font-bold">Build piles</h3>
+        {heading}
+      </div>
       <div
-        className="flex gap-4 flex-wrap items-start"
+        className="flex gap-4 flex-wrap items-start justify-center"
         style={{ minHeight: dimensions.height }}
       >
         {buildPiles.map((pile) => {
@@ -40,7 +46,9 @@ export function BuildPiles({
                 cards={pile.cards}
                 size={size}
                 presentation={{ kind: "stacked", coveredFaceUp: true }}
-                label={`${pile.id} ${pile.nextRank ? `→ ${pile.nextRank}` : "(Complete)"}`}
+                label={
+                  <span className="inline-block max-w-40 break-all">{`${pile.id} ${pile.nextRank ? `→ ${pile.nextRank}` : "(Complete)"}`}</span>
+                }
                 coveredCardAriaLabel={(card) =>
                   `Covered Build ${formatCardName(card)}`
                 }

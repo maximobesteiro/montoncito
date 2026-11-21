@@ -60,6 +60,14 @@ The entry path, pending/error feedback, and existing Lobby controls are implemen
 - Core design goal: clarity of *whose turn it is* and *what moves are available*.
 - Board labels and new Game room chat messages keep each player's confirmed nickname captured at match start, including after game over. The board offers no nickname editor. Editing on the homepage or in another Lobby updates the shared preference for future matches. Chat history retains the sender name stored at send time.
 
+#### Compact own-play circuit
+
+- Build piles center within the play column, with Turn ownership beside their heading and quiet Draw/Recycle counts. The shared header retains read-only Match identity; the room identifier, Sequence number, separate Turn row and redundant local-player title are not shown. Connection/synchronization notices, rejection and submission errors, Pending Action feedback and game over remain available.
+- Own cards and empty destinations use 56 × 80 footprints. Stock stays left of Hand at every width. The Hand group, including its label, centers in the remaining space at its natural width; cards overlap only when that width is constrained, following the actual card count. An empty Hand retains card-height context.
+- The own area has no heavy enclosing panel. Discard piles follow Stock/Hand, retaining inspection, targeting and pending collapse. Inspection controls keep at least 44 × 44 hit areas. Dense Builds and landscape use the existing board scroll container, never a separate Build scroller or a filtered collection.
+- Exposed Hand corners remain pointer sources; each eligible card also supports keyboard selection. Overlap does not promise 44px exposed touch widths. Existing tap/hold/scroll, drag, whole-stack destination and Authoritative-state behavior still apply.
+- Visual reference: [sixth exploration at f524020](https://github.com/maximobesteiro/montoncito/blob/f524020/apps/web/app/game/%5BroomId%5D/layout.prototype.md), E alignment with D's in-flow mobile opponents. The prototype selector and experimental CSS are not production features. Browser geometry and touch emulation are not physical-device comfort validation; that check remains pending and non-blocking.
+
 ### 3. **Action Panel / Interaction Layer**
 - Displays available moves (playable cards, discard options) based on current reducer state.
 - Click-to-play (desktop) or drag-and-drop (mobile/desktop hybrid).
