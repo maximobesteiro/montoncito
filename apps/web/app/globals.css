@@ -132,17 +132,17 @@
   display: grid;
   /* Shrink only the exposed tracks; the final card keeps its whole footprint. */
   grid-template-columns:
-    repeat(calc(var(--hand-count) - 1), minmax(0, 56px))
-    56px;
+    repeat(calc(var(--hand-count) - 1), minmax(0, var(--hand-card-width)))
+    var(--hand-card-width);
   width: max-content;
   max-width: 100%;
   column-gap: 8px;
-  min-height: 80px;
+  min-height: var(--hand-card-height);
   padding-bottom: 4px;
 }
 
 .own-hand-cards:has(> :only-child) {
-  grid-template-columns: 56px;
+  grid-template-columns: var(--hand-card-width);
 }
 
 .own-hand-cards > [aria-pressed="true"],
@@ -153,7 +153,7 @@
 }
 
 .empty-hand {
-  width: 56px;
+  width: var(--hand-card-width);
 }
 
 .own-inspection-control {
