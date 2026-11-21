@@ -68,6 +68,14 @@ The entry path, pending/error feedback, and existing Lobby controls are implemen
 - Exposed Hand corners remain pointer sources; each eligible card also supports keyboard selection. Overlap does not promise 44px exposed touch widths. Existing tap/hold/scroll, drag, whole-stack destination and Authoritative-state behavior still apply.
 - Visual reference: [sixth exploration at f524020](https://github.com/maximobesteiro/montoncito/blob/f524020/apps/web/app/game/%5BroomId%5D/layout.prototype.md), E alignment with D's in-flow mobile opponents. The prototype selector and experimental CSS are not production features. Browser geometry and touch emulation are not physical-device comfort validation; that check remains pending and non-blocking.
 
+#### Compact opponents
+
+- [#120](https://github.com/maximobesteiro/montoncito/issues/120), part of spec #118, follows the sixth exploration in [`prototype/spec-118-source` at `f524020`](https://github.com/maximobesteiro/montoncito/blob/f524020/apps/web/app/game/%5BroomId%5D/layout.prototype.md): E's own-area alignment with D's mobile opponents. The experimental selector, styles and stand-in chat are not production components.
+- Below 1024px, every opponent remains in seated order after the own Discard piles, inside the existing board scroll flow, during every player's Turn. There is no fixed opponent panel, reserved opponent height, tab selection or nested opponent scroller. Landscape and dense boards may require scrolling.
+- Opponent areas use compact 48 × 64 public cards, Match identity, active-Turn indicator and concealed Hand count. Stock and Discard tops and counts remain readable, including empty piles; expandable Discard histories retain at least 44 × 44 inspection controls. Opponent and covered cards are never gameplay sources.
+- From 1024px, retain chat above opponents in the side column. The real chat's collapse preference, history, drafts, unread and offline/Pending Action behavior remain unchanged; mobile chat retains its reserved safe-area-aware dock and modal sheet.
+- Chromium geometry and touch emulation do not establish touch comfort. Manual validation on a physical mobile device remains pending and non-blocking.
+
 ### 3. **Action Panel / Interaction Layer**
 - Displays available moves (playable cards, discard options) based on current reducer state.
 - Click-to-play (desktop) or drag-and-drop (mobile/desktop hybrid).

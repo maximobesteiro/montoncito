@@ -45,14 +45,23 @@ export function DiscardPile({
       {isPending && <span className="text-xs font-bold">Pending</span>}
       <Pile
         cards={pile}
-        size={isOpponent ? "md" : "sm"}
+        size={isOpponent ? "xs" : "sm"}
         presentation={{
           kind: "overlapping",
           collapsedVisibleCount: isOpponent ? 1 : 3,
           expandable: true,
           temporarilyCollapsed,
         }}
-        label={pile.length > 1 ? `Discard ${number}` : undefined}
+        label={
+          isOpponent ? (
+            <>
+              Discard {number}
+              <span className="block">({pile.length})</span>
+            </>
+          ) : pile.length > 1 ? (
+            `Discard ${number}`
+          ) : undefined
+        }
         onClick={topClick}
         isPlayable={isPlayable}
         isSelected={isSelected}
