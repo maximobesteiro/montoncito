@@ -81,6 +81,126 @@ afterAll(async () => {
   await browser?.close();
 });
 
+it.each([
+  [1440, 900],
+  [1024, 768],
+  [390, 844],
+  [320, 740],
+  [844, 390],
+])(
+  "keeps compact rival tops inspectable in seated flow at %ix%i",
+  async (width, height) => {
+    const page = await browser.newPage({ viewport: { width, height } });
+    page.setDefaultTimeout(10_000);
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(4);
+      state.byId["player-2"]!.name = "W".repeat(32);
+      state.byId["player-2"]!.discards[0] = [];
+      state.byId["player-2"]!.discards[1] =
+        state.byId["player-2"]!.discards[1]!.slice(-1);
+      await page.evaluate((state) => window.chatTest.update({ state }), state);
+      const opponents = page.getByRole("complementary", { name: "Opponents" });
+      const rivals = opponents.getByRole("region");
+      await expect.poll(() => rivals.count()).toBe(3);
+      for (const [pile, count] of [
+        [1, 0],
+        [2, 1],
+        [3, 5],
+      ]) {
+        expect(
+          await rivals
+            .first()
+            .getByRole("group", {
+              name: `${"W".repeat(32)} Discard pile ${pile}`,
+              exact: true,
+            })
+            .getByText(`(${count})`, { exact: true })
+            .count(),
+        ).toBe(1);
+      }
+      expect(
+        await rivals.evaluateAll((elements) =>
+          elements.map((element) => element.getAttribute("aria-label")),
+        ),
+      ).toEqual(["W".repeat(32), "Carol", "Dave"]);
+      for (const activePlayer of state.players) {
+        state.turn.activePlayer = activePlayer;
+        await page.evaluate(
+          (state) => window.chatTest.update({ state }),
+          state,
+        );
+        await expect
+          .poll(() => opponents.getByText("Turn", { exact: true }).count())
+          .toBe(activePlayer === "player-1" ? 0 : 1);
+        expect(await rivals.count()).toBe(3);
+      }
+      for (let index = 0; index < 3; index++) {
+        const rival = rivals.nth(index);
+        expect(await rival.getByText("Hand: 5 concealed cards").count()).toBe(
+          1,
+        );
+        expect(
+          await rival
+            .getByRole("button")
+            .filter({ hasNotText: /View all|Close/ })
+            .count(),
+        ).toBe(0);
+        const top = rival.getByLabel("Stock top 3 of Clubs", { exact: true });
+        expect((await box(top)).width).toBe(48);
+        expect((await box(top)).height).toBe(64);
+        await top.click();
+        const stockLabel = await box(
+          rival.getByText("Stock (2)", { exact: true }),
+        );
+        const discardLabel = await box(rival.getByRole("group").first());
+        expect(Math.abs(stockLabel.y - discardLabel.y)).toBeLessThan(2);
+        const discard = rival.getByLabel("Discard pile 4, 3 of Clubs", {
+          exact: true,
+        });
+        expect((await box(discard)).width).toBe(48);
+        expect((await box(discard)).height).toBe(64);
+      }
+      if (width < 1024) {
+        const own = await box(
+          page.getByRole("group", { name: "Your Discard piles", exact: true }),
+        );
+        const first = await box(rivals.first());
+        expect(first.y).toBeGreaterThanOrEqual(own.y + own.height);
+        const lastControl = rivals
+          .last()
+          .getByRole("button", { name: "View all" })
+          .last();
+        await lastControl.scrollIntoViewIfNeeded();
+        const control = await box(lastControl);
+        const shell = await box(page.locator(".app-shell"));
+        expect(control.y + control.height).toBeLessThanOrEqual(
+          shell.y + shell.height,
+        );
+        expect(control.width).toBeGreaterThanOrEqual(44);
+        expect(control.height).toBeGreaterThanOrEqual(44);
+        await lastControl.click();
+        expect(
+          await rivals.last().getByRole("button", { name: "Close" }).count(),
+        ).toBe(1);
+      } else {
+        const chat = await box(
+          page.getByRole("region", { name: "Game room chat", exact: true }),
+        );
+        expect((await box(opponents)).y).toBeGreaterThanOrEqual(
+          chat.y + chat.height,
+        );
+      }
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBe(width);
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+);
+
 async function mountChatPage(page: Page) {
   await page.route("http://chat.test/**", (route) =>
     route.fulfill({
@@ -92,6 +212,60 @@ async function mountChatPage(page: Page) {
   await page.addStyleTag({ content: css });
   await page.addScriptTag({ content: clientScript });
 }
+
+it.each([
+  [1440, 900],
+  [1024, 768],
+  [390, 844],
+  [320, 740],
+  [844, 390],
+])(
+  "keeps a two-player rival reachable with one to four Discards at %ix%i",
+  async (width, height) => {
+    const page = await browser.newPage({ viewport: { width, height } });
+    page.setDefaultTimeout(10_000);
+    try {
+      await mountChatPage(page);
+      for (const count of [1, 2, 3, 4] as const) {
+        const state = denseBoardState(count);
+        state.players = state.players.slice(0, 2);
+        state.center.buildPiles = state.center.buildPiles.slice(
+          0,
+          count === 1 ? 0 : count === 2 ? 6 : 18,
+        );
+        state.turn.activePlayer = count % 2 === 0 ? "player-2" : "player-1";
+        await page.evaluate(
+          (state) => window.chatTest.update({ state }),
+          state,
+        );
+        const opponents = page.getByRole("complementary", {
+          name: "Opponents",
+        });
+        await expect
+          .poll(() => opponents.getByRole("group").count())
+          .toBe(count);
+        expect(await opponents.getByRole("region").count()).toBe(1);
+        const last = opponents.getByRole("group").last();
+        await last.getByRole("button", { name: "View all" }).click();
+        const close = last.getByRole("button", { name: "Close" });
+        await close.scrollIntoViewIfNeeded();
+        const bounds = await box(close);
+        const bottom =
+          width < 1024
+            ? (await box(page.locator(".app-shell"))).height
+            : height;
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(bottom);
+        await close.click();
+        expect(
+          await page.evaluate(() => document.documentElement.scrollWidth),
+        ).toBe(width);
+      }
+      expect(await page.evaluate(() => window.chatTest.actions)).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  },
+);
 
 it.each([320, 360, 390, 768])(
   "keeps a read-only maximum-length Match identity and usable header controls in one row at %ipx",
@@ -1821,8 +1995,8 @@ it.each([320, 390, 768, 1024, 1440])(
               ),
             };
           });
-          expect(dimensions.width).toBe(72);
-          expect(dimensions.height).toBe(104);
+          expect(dimensions.width).toBe(name === "Alice" ? 72 : 48);
+          expect(dimensions.height).toBe(name === "Alice" ? 104 : 64);
           expect(dimensions.left).toBeGreaterThanOrEqual(0);
           expect(dimensions.right).toBeLessThanOrEqual(width);
           expect(dimensions.top).toBeGreaterThanOrEqual(previousBottom);
@@ -1830,10 +2004,10 @@ it.each([320, 390, 768, 1024, 1440])(
           previousBottom = dimensions.bottom;
         }
         const bounds = await box(pile);
-        expect(bounds.height).toBeGreaterThan(3300);
+        expect(bounds.height).toBeGreaterThan(name === "Alice" ? 3300 : 2100);
         const controlBounds = await box(close);
         expect(controlBounds.y).toBeGreaterThanOrEqual(
-          (await box(cards.last())).y + 104,
+          (await box(cards.last())).y + (name === "Alice" ? 104 : 64),
         );
       }
       expect(
@@ -2141,8 +2315,11 @@ for (const width of [320, 390, 768, 1024, 1440]) {
         expect(await cards.count()).toBe(27 + count * 4);
         for (const card of await cards.all()) {
           const bounds = await box(card);
-          expect(bounds.width).toBe(72);
-          expect(bounds.height).toBe(104);
+          const opponent = await card.evaluate(
+            (element) => !!element.closest('[aria-label="Opponents"]'),
+          );
+          expect(bounds.width).toBe(opponent ? 48 : 72);
+          expect(bounds.height).toBe(opponent ? 64 : 104);
           expect(bounds.x).toBeGreaterThanOrEqual(0);
           expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
           await card.scrollIntoViewIfNeeded();
