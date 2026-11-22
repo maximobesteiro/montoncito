@@ -1,8 +1,10 @@
 "use client";
 
 import type { Hand as GameHand } from "@mont/core-game";
-import { Card } from "./Card";
+import { Card, cardDimensions, type CardSize } from "./Card";
 import { formatCardName } from "@/lib/format-card-name";
+
+const handCardSize: CardSize = "sm";
 
 interface HandProps {
   hand: GameHand;
@@ -20,11 +22,24 @@ export function Hand({
   pendingCardId,
 }: HandProps) {
   return (
-    <div className="flex gap-2 flex-wrap">
+    <div
+      className="own-hand-cards"
+      style={
+        {
+          "--hand-count": Math.max(1, hand.cards.length),
+          "--hand-card-width": `${cardDimensions[handCardSize].width}px`,
+          "--hand-card-height": `${cardDimensions[handCardSize].height}px`,
+        } as React.CSSProperties
+      }
+    >
+      {hand.cards.length === 0 && (
+        <span className="empty-hand text-sm text-text-muted">Empty Hand</span>
+      )}
       {hand.cards.map((card) => (
         <Card
           key={card.id}
           card={card}
+          size={handCardSize}
           faceUp={true}
           onClick={
             onCardClick && playableCards.has(card.id)

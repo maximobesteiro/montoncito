@@ -104,6 +104,11 @@ export function Pile({
   return (
     <div
       data-pile-inspection
+      data-pile-temporarily-collapsed={
+        presentation.kind === "overlapping" && presentation.temporarilyCollapsed
+          ? true
+          : undefined
+      }
       className={`flex flex-col items-center gap-1 ${className}`}
     >
       {label && (
@@ -352,7 +357,7 @@ function OverlappingLayout({
           </div>
           <button
             type="button"
-            className="brutal-button text-xs"
+            className={`brutal-button text-xs ${size === "sm" ? "own-inspection-control" : ""}`}
             aria-expanded={showHistory}
             aria-controls={id}
             disabled={presentation.temporarilyCollapsed}

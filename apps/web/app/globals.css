@@ -26,6 +26,20 @@
   display: none;
 }
 
+.opponent-area {
+  border-width: 2px;
+  box-shadow: 3px 3px 0 var(--color-brutal-shadow);
+}
+
+.opponent-area [data-pile-inspection] button[aria-expanded] {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 6px;
+  border-width: 2px;
+  box-shadow: 2px 2px 0 var(--color-brutal-shadow);
+  font-size: 11px;
+}
+
 @media (max-width: 1023px) {
   /* Reserve a full-width dock, so scrolling cards never pass behind the entry. */
   .game-room-page {
@@ -95,15 +109,50 @@
 
 .player-stock-hand {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: 24px;
   align-items: start;
 }
 
-@container (min-width: 34rem) {
-  .player-stock-hand {
-    grid-template-columns: 6rem minmax(0, 1fr);
-  }
+.player-hand {
+  justify-self: center;
+  min-width: 0;
+  max-width: 100%;
+  width: max-content;
+}
+
+.own-hand-cards {
+  display: grid;
+  /* Shrink only the exposed tracks; the final card keeps its whole footprint. */
+  grid-template-columns:
+    repeat(calc(var(--hand-count) - 1), minmax(0, var(--hand-card-width)))
+    var(--hand-card-width);
+  width: max-content;
+  max-width: 100%;
+  column-gap: 8px;
+  min-height: var(--hand-card-height);
+  padding-bottom: 4px;
+}
+
+.own-hand-cards:has(> :only-child) {
+  grid-template-columns: var(--hand-card-width);
+}
+
+.own-hand-cards > [aria-pressed="true"],
+.own-hand-cards > :focus-visible {
+  /* Raising z-index would hide the next card's exposed selectable corner. */
+  outline: 3px solid var(--color-foreground);
+  outline-offset: 2px;
+}
+
+.empty-hand {
+  width: var(--hand-card-width);
+}
+
+.own-inspection-control {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.25rem;
 }
 
 /* Enable class-based dark mode with .dark class on root element */

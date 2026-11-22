@@ -2,7 +2,7 @@
 
 import type { PlayerState } from "@mont/core-game";
 import { StockPile } from "./StockPile";
-import { DiscardPiles } from "./DiscardPiles";
+import { DiscardPile } from "./DiscardPile";
 
 interface OpponentAreaProps {
   player: PlayerState;
@@ -15,7 +15,7 @@ export function OpponentArea({ player, isActive = false }: OpponentAreaProps) {
   return (
     <section
       aria-label={name}
-      className="min-w-0 p-3 brutal-border bg-surface flex flex-col gap-3 brutal-shadow"
+      className="opponent-area min-w-0 p-3 brutal-border bg-surface flex flex-col gap-3 brutal-shadow"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="min-w-0 text-lg font-bold break-words">{name}</h3>
@@ -24,20 +24,21 @@ export function OpponentArea({ player, isActive = false }: OpponentAreaProps) {
             Turn
           </span>
         )}
-      </div>
-      <div className="flex flex-wrap items-center gap-3">
-        <StockPile stock={player.stock} />
         <p className="text-sm font-semibold">
           Hand: {handCount} concealed {handCount === 1 ? "card" : "cards"}
         </p>
       </div>
-      <div>
-        <h4 className="text-sm font-semibold mb-2">Discard piles</h4>
-        <DiscardPiles
-          discardPiles={player.discards}
-          playerName={name}
-          isOpponent
-        />
+      <div className="flex flex-wrap items-start gap-2">
+        <StockPile stock={player.stock} size="xs" />
+        {player.discards.map((pile, index) => (
+          <DiscardPile
+            key={index}
+            pile={pile}
+            pileIndex={index}
+            playerName={name}
+            isOpponent
+          />
+        ))}
       </div>
     </section>
   );

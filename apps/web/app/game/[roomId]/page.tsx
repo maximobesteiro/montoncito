@@ -128,23 +128,16 @@ function GameRoomContent({
 
   return (
     <main className="game-room-page min-h-screen space-y-4 bg-muted p-4 sm:p-6">
-      <header className="brutal-border brutal-shadow mx-auto flex max-w-6xl items-center justify-between bg-card p-4">
-        <div>
-          <h1 className="text-2xl font-bold">Game room</h1>
-          <p className="font-mono text-sm">{roomId}</p>
-          {connectionStatus === "connecting" && (
-            <p role="status" className="text-sm font-semibold">
-              Reconnecting to the Game room… Board is stale and read-only.
-            </p>
-          )}
-          {connectionStatus === "synchronizing" && (
-            <p role="status" className="text-sm font-semibold">
-              Synchronizing Game room… Board is stale and read-only.
-            </p>
-          )}
-        </div>
-        <p className="font-mono text-sm">Sequence {seq}</p>
-      </header>
+      {connectionStatus === "connecting" && (
+        <p role="status" className="text-sm font-semibold">
+          Reconnecting to the Game room… Board is stale and read-only.
+        </p>
+      )}
+      {connectionStatus === "synchronizing" && (
+        <p role="status" className="text-sm font-semibold">
+          Synchronizing Game room… Board is stale and read-only.
+        </p>
+      )}
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[2fr_1fr]">
         {currentPlayerId && (
           <div className="lg:col-span-2">
