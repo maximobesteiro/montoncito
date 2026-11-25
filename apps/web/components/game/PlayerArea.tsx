@@ -8,7 +8,7 @@ import { DiscardPiles } from "./DiscardPiles";
 
 interface PlayerAreaProps {
   player: PlayerState;
-  isCurrentPlayer?: boolean;
+  isActive: boolean;
   onHandCardClick?: (cardId: string) => void;
   onStockClick?: () => void;
   onDiscardClick?: (pileIndex: number) => void;
@@ -25,7 +25,7 @@ interface PlayerAreaProps {
 
 export function PlayerArea({
   player,
-  isCurrentPlayer = false,
+  isActive,
   onHandCardClick,
   onStockClick,
   onDiscardClick,
@@ -40,64 +40,65 @@ export function PlayerArea({
   collapsedDiscardDestinations,
 }: PlayerAreaProps) {
   return (
-    <div className="min-w-0 flex flex-col gap-4">
-      <div className="player-cards">
-        <div className="player-stock-hand">
-          <div
-            role="group"
-            aria-label="Your Stock"
-            className={
-              pendingAction?.kind === "PLAY_STOCK_TO_BUILD"
-                ? "outline outline-4 outline-dashed"
-                : ""
-            }
-          >
-            <h4 className="text-sm font-semibold mb-2">Stock</h4>
-            {pendingAction?.kind === "PLAY_STOCK_TO_BUILD" && (
-              <span className="text-xs font-bold">Pending</span>
-            )}
-            <StockPile
-              size="sm"
-              stock={player.stock}
-              onTopCardClick={onStockClick}
-              isPlayable={isStockPlayable}
-              isSelected={isStockSelected}
-            />
-          </div>
-          <div role="group" aria-label="Your Hand" className="player-hand">
-            <h4 className="text-sm font-semibold mb-2">Hand</h4>
-            <Hand
-              hand={player.hand}
-              onCardClick={onHandCardClick}
-              playableCards={playableHandCards}
-              selectedCardId={selectedHandCard}
-              pendingCardId={
-                pendingAction && "cardId" in pendingAction
-                  ? pendingAction.cardId
-                  : undefined
-              }
-            />
-          </div>
+    <section
+      aria-label="Your play area"
+      className={`board-surface player-surface player-cards min-w-0${isActive ? " active-turn-frame" : ""}`}
+    >
+      <div className="player-stock-hand">
+        <div
+          role="group"
+          aria-label="Your Stock"
+          className={
+            pendingAction?.kind === "PLAY_STOCK_TO_BUILD"
+              ? "outline outline-4 outline-dashed"
+              : ""
+          }
+        >
+          <h4 className="text-sm font-semibold mb-2">Your Stock</h4>
+          {pendingAction?.kind === "PLAY_STOCK_TO_BUILD" && (
+            <span className="text-xs font-bold">Pending</span>
+          )}
+          <StockPile
+            size="sm"
+            stock={player.stock}
+            onTopCardClick={onStockClick}
+            isPlayable={isStockPlayable}
+            isSelected={isStockSelected}
+          />
         </div>
-
-        <div role="group" aria-label="Your Discard piles">
-          <h4 className="text-sm font-semibold mb-2">Discard piles</h4>
-          <DiscardPiles
-            discardPiles={player.discards}
-            playerName={player.name || player.id}
-            onCardClick={onDiscardClick}
-            playablePiles={playableDiscardPiles}
-            selectedPile={selectedDiscardPile}
-            handDiscardTargets={handDiscardTargets}
-            pendingPile={
-              pendingAction && "pileIndex" in pendingAction
-                ? pendingAction.pileIndex
+        <div role="group" aria-label="Your Hand" className="player-hand">
+          <h4 className="text-sm font-semibold mb-2">Your Hand</h4>
+          <Hand
+            hand={player.hand}
+            onCardClick={onHandCardClick}
+            playableCards={playableHandCards}
+            selectedCardId={selectedHandCard}
+            pendingCardId={
+              pendingAction && "cardId" in pendingAction
+                ? pendingAction.cardId
                 : undefined
             }
-            collapsedDestinations={collapsedDiscardDestinations}
           />
         </div>
       </div>
-    </div>
+
+      <div role="group" aria-label="Your Discard piles">
+        <h4 className="text-sm font-semibold mb-2">Your Discard piles</h4>
+        <DiscardPiles
+          discardPiles={player.discards}
+          playerName={player.name || player.id}
+          onCardClick={onDiscardClick}
+          playablePiles={playableDiscardPiles}
+          selectedPile={selectedDiscardPile}
+          handDiscardTargets={handDiscardTargets}
+          pendingPile={
+            pendingAction && "pileIndex" in pendingAction
+              ? pendingAction.pileIndex
+              : undefined
+          }
+          collapsedDestinations={collapsedDiscardDestinations}
+        />
+      </div>
+    </section>
   );
 }

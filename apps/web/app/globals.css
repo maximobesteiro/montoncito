@@ -26,9 +26,38 @@
   display: none;
 }
 
-.opponent-area {
-  border-width: 2px;
-  box-shadow: 3px 3px 0 var(--color-brutal-shadow);
+.board-surface {
+  --board-surface-inset: 12px;
+  padding: var(--board-surface-inset);
+}
+
+.shared-build-surface {
+  background: var(--color-board-shared-surface);
+}
+
+.player-surface {
+  background: var(--color-board-player-surface);
+  --color-text-muted: var(--color-board-player-muted-text);
+}
+
+.active-turn-frame {
+  outline: 3px solid var(--color-board-turn-frame);
+}
+
+/* Borrow the play column's gutter, not the width available for cards. */
+.shared-build-surface,
+.player-cards {
+  margin-inline: calc(-1 * var(--board-surface-inset));
+}
+
+@media (max-width: 639px) {
+  .board-surface {
+    --board-surface-inset: 8px;
+  }
+
+  .opponent-area {
+    margin-inline: calc(-1 * var(--board-surface-inset));
+  }
 }
 
 .opponent-area [data-pile-inspection] button[aria-expanded] {
@@ -110,7 +139,8 @@
 .player-stock-hand {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  column-gap: 24px;
+  /* Offset the extra width of “Your Stock” without crowding the Hand. */
+  column-gap: 21px;
   align-items: start;
 }
 
@@ -181,6 +211,12 @@
   --color-card: #ffffff;
   --color-muted: #f9fafb;
 
+  /* Board surface roles */
+  --color-board-shared-surface: #dddddd;
+  --color-board-player-surface: #eeeeee;
+  --color-board-player-muted-text: #595959;
+  --color-board-turn-frame: #383838;
+
   /* Text colors */
   --color-text-primary: #171717;
   --color-text-muted: #6b7280;
@@ -239,6 +275,11 @@
   --color-surface: #1a1a1a;
   --color-card: #141414;
   --color-muted: #1f1f1f;
+
+  --color-board-shared-surface: #424242;
+  --color-board-player-surface: #2a2a2a;
+  --color-board-player-muted-text: #b3b3b3;
+  --color-board-turn-frame: #e0e0e0;
 
   /* Text colors */
   --color-text-primary: #ededed;

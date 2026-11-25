@@ -48,6 +48,11 @@ export function GameBoard({
   collapsedDiscardDestinations,
 }: GameBoardProps) {
   const currentPlayer = gameState.byId[currentPlayerId];
+  const activePlayerId =
+    gameState.phase === "turn" ? gameState.turn.activePlayer : undefined;
+  const turnIndicator = (
+    <TurnIndicator gameState={gameState} currentPlayerId={currentPlayerId} />
+  );
   const opponents = gameState.players
     .filter((id) => id !== currentPlayerId)
     .map((id) => gameState.byId[id])
@@ -59,20 +64,11 @@ export function GameBoard({
         <div className="min-w-0 flex flex-col gap-4">
           <BuildPiles
             size="sm"
-            heading={
-              <>
-                <TurnIndicator
-                  gameState={gameState}
-                  currentPlayerId={currentPlayerId}
-                />
-                <span className="text-xs text-text-muted">
-                  <span>Draw pile: {gameState.deck.drawPile.length} cards</span>
-                  {" · "}
-                  <span>
-                    Recycle pile: {gameState.deck.recyclePile.length} cards
-                  </span>
-                </span>
-              </>
+            turnIndicator={
+              gameState.phase === "turn" ? turnIndicator : undefined
+            }
+            gameOverStatus={
+              gameState.phase === "gameover" ? turnIndicator : undefined
             }
             buildPiles={gameState.center.buildPiles}
             onPileClick={onBuildPileClick}
@@ -86,7 +82,7 @@ export function GameBoard({
           {currentPlayer && (
             <PlayerArea
               player={currentPlayer}
-              isCurrentPlayer={true}
+              isActive={activePlayerId === currentPlayer.id}
               onHandCardClick={onHandCardClick}
               onStockClick={onStockClick}
               onDiscardClick={onDiscardClick}
@@ -109,10 +105,7 @@ export function GameBoard({
               <OpponentArea
                 key={opponent.id}
                 player={opponent}
-                isActive={
-                  gameState.phase === "turn" &&
-                  gameState.turn.activePlayer === opponent.id
-                }
+                isActive={activePlayerId === opponent.id}
               />
             ))}
           </aside>

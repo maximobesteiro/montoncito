@@ -11,9 +11,6 @@ export function TurnIndicator({
   gameState,
   currentPlayerId,
 }: TurnIndicatorProps) {
-  const activePlayer = gameState.byId[gameState.turn.activePlayer];
-  const isMyTurn = currentPlayerId === gameState.turn.activePlayer;
-
   if (gameState.phase === "gameover") {
     const winner = gameState.winner;
     return (
@@ -36,12 +33,27 @@ export function TurnIndicator({
   }
 
   return (
-    <p
-      className={`min-w-0 break-words px-2 py-1 text-sm font-semibold ${isMyTurn ? "bg-active-bg" : "bg-inactive-bg"}`}
-    >
-      {isMyTurn
-        ? "Your Turn"
-        : `Turn: ${activePlayer?.name || gameState.turn.activePlayer}`}
-    </p>
+    <div className="grid min-w-0 grid-cols-1 break-words text-right text-sm font-semibold">
+      {gameState.players.map((id) => {
+        const label =
+          id === currentPlayerId
+            ? "Your Turn"
+            : `Turn: ${gameState.byId[id]?.name || id}`;
+        // Size the header for all Match Nicknames so long ones can wrap without
+        // shifting the Build slots when the Turn changes.
+        return id === gameState.turn.activePlayer ? (
+          <p key={id} className="col-start-1 row-start-1 self-center">
+            {label}
+          </p>
+        ) : (
+          <span
+            key={id}
+            aria-hidden="true"
+            data-turn-label={label}
+            className="invisible col-start-1 row-start-1 before:content-[attr(data-turn-label)]"
+          />
+        );
+      })}
+    </div>
   );
 }

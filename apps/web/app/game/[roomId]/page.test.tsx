@@ -417,7 +417,9 @@ it("retains capped stacks and exact counts on the authoritative board while a St
   };
   render(<GameRoomPage />);
   const stock = within(screen.getByRole("group", { name: "Your Stock" }));
-  const builds = within(screen.getByRole("region", { name: "Build piles" }));
+  const builds = within(
+    screen.getByRole("region", { name: "Shared Build piles" }),
+  );
   expect(stock.getByText("Stock (3)")).toBeTruthy();
   expect(stock.getByText("Pending")).toBeTruthy();
   expect(stock.getAllByLabelText("Covered Stock card")).toHaveLength(2);
@@ -721,9 +723,9 @@ it("marks the pending source and target without moving cards across updates and 
       "Pending",
     );
     expect(
-      within(screen.getByRole("region", { name: "Build piles" })).getByText(
-        "Pending",
-      ),
+      within(
+        screen.getByRole("region", { name: "Shared Build piles" }),
+      ).getByText("Pending"),
     ).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Hand / })).toBeNull();
   };
@@ -874,12 +876,12 @@ it.each([
   {
     action: { kind: "PLAY_STOCK_TO_BUILD", target: "new" },
     source: "Your Stock",
-    target: "Build piles",
+    target: "Shared Build piles",
   },
   {
     action: { kind: "PLAY_DISCARD_TO_BUILD", pileIndex: 0, target: "build-1" },
     source: "Alice Discard pile 1",
-    target: "Build piles",
+    target: "Shared Build piles",
   },
   {
     action: { kind: "DISCARD_FROM_HAND", cardId: "nine", pileIndex: 1 },
@@ -902,7 +904,7 @@ it.each([
     ).toBeTruthy();
     expect(
       within(
-        screen.getByRole(target === "Build piles" ? "region" : "group", {
+        screen.getByRole(target === "Shared Build piles" ? "region" : "group", {
           name: target,
         }),
       ).getByText("Pending"),
@@ -1550,7 +1552,9 @@ it.each(["source", "space"])(
     fireEvent.click(screen.getByRole("textbox", { name: "Chat message" }));
     expect(hand.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(
-      cancel === "source" ? hand : screen.getByText(/Draw pile:/),
+      cancel === "source"
+        ? hand
+        : screen.getByRole("heading", { name: "Shared Build piles" }),
     );
     expect(hand.getAttribute("aria-pressed")).toBe("false");
     expect(within(own).getByRole("button", { name: "Close" })).toBeTruthy();
@@ -1668,7 +1672,7 @@ it("reads Builds, own Stock, Hand, Discards, then distinct opponents with Turn a
   state.turn.activePlayer = "player-2";
   gameRoom.view = { ...gameRoom.view, state };
   render(<GameRoomPage />);
-  const build = screen.getByRole("region", { name: "Build piles" });
+  const build = screen.getByRole("region", { name: "Shared Build piles" });
   const stock = screen.getByRole("group", { name: "Your Stock" });
   const hand = screen.getByRole("group", { name: "Your Hand" });
   const discards = screen.getByRole("group", { name: "Your Discard piles" });
@@ -2643,7 +2647,6 @@ it("plays only the top of an own Discard pile and clears selection on Build comp
     },
   };
   rerender(<GameRoomPage />);
-  expect(screen.getByText("Recycle pile: 12 cards")).toBeTruthy();
   expect(screen.queryByText("build-1 → 12")).toBeNull();
   expect(
     screen
