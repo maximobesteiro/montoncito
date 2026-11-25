@@ -37,6 +37,7 @@
 
 .player-surface {
   background: var(--color-board-player-surface);
+  --color-text-muted: var(--color-board-player-muted-text);
 }
 
 .active-turn-frame {
@@ -213,6 +214,7 @@
   /* Board surface roles */
   --color-board-shared-surface: #dddddd;
   --color-board-player-surface: #eeeeee;
+  --color-board-player-muted-text: #595959;
   --color-board-turn-frame: #383838;
 
   /* Text colors */
@@ -276,6 +278,7 @@
 
   --color-board-shared-surface: #424242;
   --color-board-player-surface: #2a2a2a;
+  --color-board-player-muted-text: #b3b3b3;
   --color-board-turn-frame: #e0e0e0;
 
   /* Text colors */

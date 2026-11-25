@@ -540,6 +540,14 @@ async function box(locator: Locator) {
   return bounds!;
 }
 
+function luminance(rgb: string) {
+  const [red, green, blue] = rgb.match(/\d+/g)!.map((channel) => {
+    const value = Number(channel) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red! + 0.7152 * green! + 0.0722 * blue!;
+}
+
 it("labels the empty shared and local surfaces without inventory and fits a long opponent Turn at 320px", async () => {
   const page = await browser.newPage({ viewport: { width: 320, height: 740 } });
   try {
@@ -687,6 +695,18 @@ it.each([
       const [shared, own, bob, carol] = initial.map(({ tone }) => tone);
       expect(own).toBe(bob);
       expect(own).toBe(carol);
+      for (const player of players) {
+        const countColor = await player
+          .getByText("5 cards", { exact: true })
+          .first()
+          .evaluate((count) => getComputedStyle(count).color);
+        const [darker, lighter] = [luminance(own!), luminance(countColor)].sort(
+          (a, b) => a - b,
+        );
+        expect((lighter! + 0.05) / (darker! + 0.05)).toBeGreaterThanOrEqual(
+          4.5,
+        );
+      }
       const gray = (color: string) => {
         const [red, green, blue] = color.match(/\d+/g)!.map(Number);
         expect(red).toBe(green);
