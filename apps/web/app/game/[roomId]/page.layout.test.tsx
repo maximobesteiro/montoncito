@@ -561,7 +561,23 @@ it("labels the empty shared and local surfaces without inventory and fits a long
     const builds = board.getByRole("region", { name: "Shared Build piles" });
     const title = builds.getByRole("heading", { name: "Shared Build piles" });
     const localTurn = builds.getByText("Your Turn", { exact: true });
-    await localTurn.waitFor();
+    const newBuild = builds.getByLabel("New Build pile", { exact: true });
+    const expectHeader = async (turnLabel: Locator) => {
+      await turnLabel.waitFor();
+      const [surface, heading, turn, slot] = await Promise.all([
+        box(builds),
+        box(title),
+        box(turnLabel),
+        box(newBuild),
+      ]);
+      expect(heading.x - surface.x).toBe(8);
+      expect(surface.x + surface.width - (turn.x + turn.width)).toBe(8);
+      expect(heading.x + heading.width).toBeLessThan(turn.x);
+      expect(heading.y).toBeLessThan(turn.y + turn.height);
+      expect(turn.y).toBeLessThan(heading.y + heading.height);
+      expect(turn.y + turn.height).toBeLessThan(slot.y);
+    };
+    await expectHeader(localTurn);
     expect(await board.textContent()).not.toMatch(/(?:Draw|Recycle) pile/i);
     expect(await board.ariaSnapshot()).not.toMatch(/(?:Draw|Recycle) pile/i);
     for (const name of ["Your Stock", "Your Hand", "Your Discard piles"])
@@ -573,24 +589,12 @@ it("labels the empty shared and local surfaces without inventory and fits a long
     expect(
       await builds.getByRole("button", { name: "New Build pile" }).isEnabled(),
     ).toBe(true);
-    const localSlot = await box(
-      builds.getByLabel("New Build pile", { exact: true }),
-    );
+    const localSlot = await box(newBuild);
     state.turn.activePlayer = "player-2";
     await page.evaluate((state) => window.chatTest.update({ state }), state);
     const opponentTurn = builds.getByText(`Turn: ${nickname}`, { exact: true });
-    await opponentTurn.waitFor();
-    const [surface, heading, turn, slot] = await Promise.all([
-      box(builds),
-      box(title),
-      box(opponentTurn),
-      box(builds.getByLabel("New Build pile", { exact: true })),
-    ]);
-    expect(heading.x - surface.x).toBe(8);
-    expect(surface.x + surface.width - (turn.x + turn.width)).toBe(8);
-    expect(heading.x + heading.width).toBeLessThan(turn.x);
-    expect(turn.y + turn.height).toBeLessThan(slot.y);
-    expect(slot).toEqual(localSlot);
+    await expectHeader(opponentTurn);
+    expect(await box(newBuild)).toEqual(localSlot);
     expect(
       await opponentTurn.evaluate(
         (el) =>
