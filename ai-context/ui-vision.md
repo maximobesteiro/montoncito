@@ -62,11 +62,19 @@ The entry path, pending/error feedback, and existing Lobby controls are implemen
 
 #### Compact own-play circuit
 
-- Build piles center within the play column, with Turn ownership beside their heading and quiet Draw/Recycle counts. The shared header retains read-only Match identity; the room identifier, Sequence number, separate Turn row and redundant local-player title are not shown. Connection/synchronization notices, rejection and submission errors, Pending Action feedback and game over remain available.
+- Build piles center within the play column, with Turn ownership in the shared surface header. The app header retains read-only Match identity; the room identifier, Sequence number, separate Turn row and redundant local-player title are not shown. Connection/synchronization notices, rejection and submission errors, Pending Action feedback and game over remain available.
 - Own cards and empty destinations use 56 × 80 footprints. Stock stays left of Hand at every width. The Hand group, including its label, centers in the remaining space at its natural width; cards overlap only when that width is constrained, following the actual card count. An empty Hand retains card-height context.
-- The own area has no heavy enclosing panel. Discard piles follow Stock/Hand, retaining inspection, targeting and pending collapse. Inspection controls keep at least 44 × 44 hit areas. Dense Builds and landscape use the existing board scroll container, never a separate Build scroller or a filtered collection.
+- Discard piles follow Stock/Hand, retaining inspection, targeting and pending collapse. Inspection controls keep at least 44 × 44 hit areas. Dense Builds and landscape use the existing board scroll container, never a separate Build scroller or a filtered collection.
 - Exposed Hand corners remain pointer sources; each eligible card also supports keyboard selection. Overlap does not promise 44px exposed touch widths. Existing tap/hold/scroll, drag, whole-stack destination and Authoritative-state behavior still apply.
 - Visual reference: [sixth exploration at f524020](https://github.com/maximobesteiro/montoncito/blob/f524020/apps/web/app/game/%5BroomId%5D/layout.prototype.md), E alignment with D's in-flow mobile opponents. The prototype selector and experimental CSS are not production features. Browser geometry and touch emulation are not physical-device comfort validation; that check remains pending and non-blocking.
+
+#### Board surfaces
+
+- Use surface hierarchy to distinguish ownership, not move legality. The shared Build area is the strongest board surface: a flat, unframed tone block even when only the New Build pile slot is present. Put `Shared Build piles` on the left and Turn ownership on the right, allowing long Match Nicknames to wrap. Draw and Recycle counts are not shown on the board.
+- Group the local player's Stock pile, Hand, and Discard piles on one quieter continuous surface. Use explicit ownership in existing labels (`Shared Build piles`, `Your Stock`, `Your Hand`, `Your Discard piles`), not another heading row or a repeated Nickname. Give each opponent the same flat player surface, without a permanent frame or hard shadow: gaps and Match nicknames distinguish adjacent players. Chat keeps its separate utility-panel and overlay styling; it is not a play surface.
+- The hierarchy must read in both grayscale light and dark modes without relying on an accent color. Define surface roles independently of palette. Theme presets, custom colors, and theme controls are out of scope. Preserve the compact geometry, single board scroller, and existing interactions.
+- Use the same contrasting 3px solid grayscale perimeter for whichever player owns the Turn according to Authoritative state. The frame takes no layout or hit-test space. It clears at game over while winner feedback remains. Keep the shared Build tone steady and the Turn text visible. Card focus, selection, legal targets and Pending Action feedback remain distinct.
+- Give Build and player surfaces 12px of inner padding, reduced to 8px on narrow phones. Reclaim outer gutters to preserve the compact card layout. Dense Builds still use the existing board scroller.
 
 #### Compact opponents
 

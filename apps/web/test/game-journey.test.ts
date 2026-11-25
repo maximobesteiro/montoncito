@@ -3020,7 +3020,7 @@ it.each([1440, 390])(
           .textContent(),
       ).toBe("🂠");
       const builds = alice.page.getByRole("region", {
-        name: "Build piles",
+        name: "Shared Build piles",
         exact: true,
       });
       expect(
@@ -3128,11 +3128,7 @@ it.each([1440, 390])(
       await synced(alice, bob, 1);
       expect(alice.snapshot()!.state.center.buildPiles).toEqual([]);
       expect(await builds.getByLabel(/^Covered Build/).count()).toBe(0);
-      expect(
-        await alice.page
-          .getByText("Recycle pile: 12 cards", { exact: true })
-          .isVisible(),
-      ).toBe(true);
+      expect(alice.snapshot()!.state.deck.recyclePile).toHaveLength(12);
       await tap(
         alice.page,
         alice.page.getByRole("button", { name: "Hand Ace of Clubs" }),

@@ -11,7 +11,8 @@ import { formatCardName } from "@/lib/format-card-name";
 import type { ReactNode } from "react";
 
 interface BuildPilesProps {
-  heading?: ReactNode;
+  turnIndicator?: ReactNode;
+  gameOverStatus?: ReactNode;
   buildPiles: BuildPile[];
   size?: CardSize;
   onPileClick?: (buildId: BuildPileTarget) => void;
@@ -20,7 +21,8 @@ interface BuildPilesProps {
 }
 
 export function BuildPiles({
-  heading,
+  turnIndicator,
+  gameOverStatus,
   buildPiles,
   size = "md",
   onPileClick,
@@ -29,11 +31,15 @@ export function BuildPiles({
 }: BuildPilesProps) {
   const dimensions = cardDimensions[size];
   return (
-    <section aria-label="Build piles" className="min-w-0 flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-        <h3 className="text-lg font-bold">Build piles</h3>
-        {heading}
+    <section
+      aria-label="Shared Build piles"
+      className="board-surface shared-build-surface min-w-0 flex flex-col gap-2"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="shrink-0 text-lg font-bold">Shared Build piles</h3>
+        {turnIndicator}
       </div>
+      {gameOverStatus}
       <div
         className="flex gap-4 flex-wrap items-start justify-center"
         style={{ minHeight: dimensions.height }}

@@ -131,7 +131,12 @@ it.each([
           state,
         );
         await expect
-          .poll(() => opponents.getByText("Turn", { exact: true }).count())
+          .poll(() =>
+            opponents
+              .getByText("Turn", { exact: true })
+              .filter({ visible: true })
+              .count(),
+          )
           .toBe(activePlayer === "player-1" ? 0 : 1);
         expect(await rivals.count()).toBe(3);
       }
@@ -419,7 +424,7 @@ it.each([320, 390, 768, 1024, 1440])(
     try {
       await mountChatPage(page);
       await page
-        .getByRole("region", { name: "Build piles", exact: true })
+        .getByRole("region", { name: "Shared Build piles", exact: true })
         .waitFor()
         .catch(() => {
           throw new Error(errors.join("\n"));
@@ -434,7 +439,7 @@ it.each([320, 390, 768, 1024, 1440])(
           page.getByRole("complementary", { name: "Opponents" }),
         );
         const buildBounds = await box(
-          page.getByRole("region", { name: "Build piles" }),
+          page.getByRole("region", { name: "Shared Build piles" }),
         );
         expect(chatBounds.x).toBeGreaterThanOrEqual(
           buildBounds.x + buildBounds.width,
@@ -535,6 +540,208 @@ async function box(locator: Locator) {
   return bounds!;
 }
 
+it("labels the empty shared and local surfaces without inventory and fits a long opponent Turn at 320px", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 740 } });
+  try {
+    await mountChatPage(page);
+    const state = denseBoardState(3);
+    state.center.buildPiles = [];
+    const nickname = "W".repeat(32);
+    state.byId["player-2"]!.name = nickname;
+    await page.evaluate((state) => window.chatTest.update({ state }), state);
+    const board = page.getByRole("region", { name: "Game board", exact: true });
+    const builds = board.getByRole("region", { name: "Shared Build piles" });
+    const title = builds.getByRole("heading", { name: "Shared Build piles" });
+    const localTurn = builds.getByText("Your Turn", { exact: true });
+    await localTurn.waitFor();
+    expect(await board.textContent()).not.toMatch(/(?:Draw|Recycle) pile/i);
+    expect(await board.ariaSnapshot()).not.toMatch(/(?:Draw|Recycle) pile/i);
+    for (const name of ["Your Stock", "Your Hand", "Your Discard piles"])
+      expect(
+        await board.getByRole("heading", { name, exact: true }).isVisible(),
+      ).toBe(true);
+
+    await board.getByRole("button", { name: "Hand Ace of Clubs" }).click();
+    expect(
+      await builds.getByRole("button", { name: "New Build pile" }).isEnabled(),
+    ).toBe(true);
+    const localSlot = await box(
+      builds.getByLabel("New Build pile", { exact: true }),
+    );
+    state.turn.activePlayer = "player-2";
+    await page.evaluate((state) => window.chatTest.update({ state }), state);
+    const opponentTurn = builds.getByText(`Turn: ${nickname}`, { exact: true });
+    await opponentTurn.waitFor();
+    const [surface, heading, turn, slot] = await Promise.all([
+      box(builds),
+      box(title),
+      box(opponentTurn),
+      box(builds.getByLabel("New Build pile", { exact: true })),
+    ]);
+    expect(heading.x - surface.x).toBe(8);
+    expect(surface.x + surface.width - (turn.x + turn.width)).toBe(8);
+    expect(heading.x + heading.width).toBeLessThan(turn.x);
+    expect(turn.y + turn.height).toBeLessThan(slot.y);
+    expect(slot).toEqual(localSlot);
+    expect(
+      await opponentTurn.evaluate(
+        (el) =>
+          el.scrollWidth <= el.clientWidth &&
+          el.clientHeight > parseFloat(getComputedStyle(el).lineHeight),
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBe(320);
+  } finally {
+    await page.close();
+  }
+});
+
+it.each([
+  { width: 320, mode: "light" },
+  { width: 390, mode: "dark" },
+  { width: 1440, mode: "light" },
+  { width: 1440, mode: "dark" },
+] as const)(
+  "moves only the active player's frame at $width px in $mode mode",
+  async ({ width, mode }) => {
+    const page = await browser.newPage({ viewport: { width, height: 900 } });
+    try {
+      await mountChatPage(page);
+      const state = denseBoardState(3);
+      state.players = state.players.slice(0, 3);
+      state.center.buildPiles = state.center.buildPiles.slice(0, 4);
+      await page.evaluate((state) => window.chatTest.update({ state }), state);
+      const builds = page.getByRole("region", { name: "Shared Build piles" });
+      await builds.getByText("Your Turn", { exact: true }).waitFor();
+      await page.getByRole("button", { name: "Toggle theme" }).click();
+      await page
+        .getByRole("option", {
+          name: mode === "dark" ? "Dark" : "Light",
+          exact: true,
+        })
+        .click();
+      const players = ["Your play area", "Bob", "Carol"].map((name) =>
+        page.getByRole("region", { name, exact: true }),
+      );
+      const surfaces = [builds, ...players];
+      const styles = () =>
+        Promise.all(
+          surfaces.map((surface) =>
+            surface.evaluate((element) => {
+              const style = getComputedStyle(element);
+              return {
+                tone: style.backgroundColor,
+                frame:
+                  style.outlineStyle === "none"
+                    ? "none"
+                    : `${style.outlineWidth} ${style.outlineStyle}`,
+                frameColor: style.outlineColor,
+                border: style.borderTopWidth,
+                shadow: style.boxShadow,
+              };
+            }),
+          ),
+        );
+      const cardLocators = [
+        builds.getByLabel("New Build pile", { exact: true }),
+        players[0]!.getByLabel("Hand Ace of Clubs", { exact: true }),
+        players[1]!.getByLabel("Stock top 3 of Clubs", { exact: true }),
+      ];
+      const geometry = () =>
+        Promise.all([...surfaces, ...cardLocators].map(box));
+      const before = await geometry();
+      // The compact board fits three Builds across on phones and four on desktop.
+      const tops = await Promise.all(
+        (
+          await builds.getByLabel("Build top 2 of Clubs", { exact: true }).all()
+        ).map(box),
+      );
+      expect(tops.slice(0, 3).map(({ y }) => y)).toEqual(
+        Array(3).fill(tops[0]!.y),
+      );
+      if (width < 1024) expect(tops[3]!.y).toBeGreaterThan(tops[0]!.y);
+      else expect(tops[3]!.y).toBe(tops[0]!.y);
+      const hand = players[0]!.getByRole("group", {
+        name: "Your Hand",
+        exact: true,
+      });
+      const handCards = await Promise.all(
+        (await hand.getByLabel(/^Hand /).all()).map(box),
+      );
+      expect(handCards).toHaveLength(5);
+      // Minimum exposed step measured on the compact board before surfaces.
+      const compactHandStep = width === 320 ? 32 : width === 390 ? 49.5 : 64;
+      for (const [index, card] of handCards.slice(1).entries())
+        expect(card.x - handCards[index]!.x).toBeGreaterThanOrEqual(
+          compactHandStep,
+        );
+      const initial = await styles();
+      const frames = (values: Awaited<ReturnType<typeof styles>>) =>
+        values.map(({ frame }) => frame);
+      expect(frames(initial)).toEqual(["none", "3px solid", "none", "none"]);
+      expect(initial.map(({ border, shadow }) => [border, shadow])).toEqual(
+        Array.from({ length: 4 }, () => ["0px", "none"]),
+      );
+      const [shared, own, bob, carol] = initial.map(({ tone }) => tone);
+      expect(own).toBe(bob);
+      expect(own).toBe(carol);
+      const gray = (color: string) => {
+        const [red, green, blue] = color.match(/\d+/g)!.map(Number);
+        expect(red).toBe(green);
+        expect(red).toBe(blue);
+        return red!;
+      };
+      expect(
+        (gray(shared!) - gray(own!)) * (mode === "dark" ? 1 : -1),
+      ).toBeGreaterThan(0);
+      expect(
+        Math.abs(gray(initial[1]!.frameColor) - gray(own!)),
+      ).toBeGreaterThan(100);
+      const [buildArea, localArea, firstRival, secondRival] = before;
+      expect(localArea!.y).toBeGreaterThan(buildArea!.y + buildArea!.height);
+      expect(secondRival!.y).toBeGreaterThan(
+        firstRival!.y + firstRival!.height,
+      );
+      if (width < 1024)
+        expect(firstRival!.y).toBeGreaterThan(localArea!.y + localArea!.height);
+
+      state.turn.activePlayer = "player-2";
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 1 }),
+        state,
+      );
+      await builds.getByText("Turn: Bob", { exact: true }).waitFor();
+      const next = await styles();
+      expect(frames(next)).toEqual(["none", "none", "3px solid", "none"]);
+      expect(next[2]!.frameColor).toBe(initial[1]!.frameColor);
+      expect(next.map(({ tone }) => tone)).toEqual(
+        initial.map(({ tone }) => tone),
+      );
+      expect(await geometry()).toEqual(before);
+
+      state.phase = "gameover";
+      state.winner = "player-2";
+      await page.evaluate(
+        (state) => window.chatTest.update({ state, seq: 2 }),
+        state,
+      );
+      await builds
+        .getByRole("heading", { name: "Bob wins!", exact: true })
+        .waitFor();
+      expect(frames(await styles())).toEqual(["none", "none", "none", "none"]);
+      for (const card of cardLocators)
+        expect(await box(card)).toMatchObject({
+          width: card === cardLocators[2] ? 48 : 56,
+          height: card === cardLocators[2] ? 64 : 80,
+        });
+    } finally {
+      await page.close();
+    }
+  },
+);
+
 it.each([
   { width: 1440, height: 900 },
   { width: 1024, height: 768 },
@@ -556,7 +763,7 @@ it.each([
       });
       const hand = page.getByRole("group", { name: "Your Hand", exact: true });
       const builds = page.getByRole("region", {
-        name: "Build piles",
+        name: "Shared Build piles",
         exact: true,
       });
       const [s, h, b, slot, card] = await Promise.all([
@@ -580,7 +787,9 @@ it.each([
       if (viewport.width >= 1024)
         expect(
           Math.abs(
-            h.x + h.width / 2 - (s.x + s.width + 24 + b.x + b.width) / 2,
+            h.x +
+              h.width / 2 -
+              (s.x + s.width + 21 + b.x + b.width - (s.x - b.x)) / 2,
           ),
         ).toBeLessThan(1);
       expect(
@@ -699,7 +908,7 @@ it("keeps a long-name game-over notice readable in the compact Build heading", a
       })
       .waitFor();
     const builds = page.getByRole("region", {
-      name: "Build piles",
+      name: "Shared Build piles",
       exact: true,
     });
     expect(
@@ -867,7 +1076,7 @@ it.each([
           ).toBe(1);
         expect(
           await page
-            .getByRole("region", { name: "Build piles", exact: true })
+            .getByRole("region", { name: "Shared Build piles", exact: true })
             .getByLabel(/^Build top/)
             .count(),
         ).toBe(state.center.buildPiles.length);
@@ -875,7 +1084,7 @@ it.each([
           await page.evaluate(() => document.documentElement.scrollWidth),
         ).toBe(viewport.width);
         const builds = page.getByRole("region", {
-          name: "Build piles",
+          name: "Shared Build piles",
           exact: true,
         });
         expect(
@@ -2139,7 +2348,8 @@ it.each([320, 390, 768, 1024, 1440])(
         expect(bounds.height).toBe(80);
       }
       expect(
-        (await box(page.getByRole("region", { name: "Build piles" }))).height,
+        (await box(page.getByRole("region", { name: "Shared Build piles" })))
+          .height,
       ).toBeGreaterThan(80);
       await page.getByRole("button", { name: "Hand 5 of Clubs" }).click();
       const pile = page.getByRole("group", { name: "Alice Discard pile 1" });
@@ -2614,7 +2824,7 @@ for (const width of [320, 390, 768, 1024, 1440]) {
           await page.evaluate(() => document.documentElement.scrollWidth),
         ).toBe(width);
 
-        const build = page.getByRole("region", { name: "Build piles" });
+        const build = page.getByRole("region", { name: "Shared Build piles" });
         const stock = page.getByRole("group", {
           name: "Your Stock",
           exact: true,
